@@ -1,0 +1,623 @@
+/**
+ * LLR: Integrated Styling for Editor and Sidebar
+ */
+
+/* ============================================================
+   1. 進行中 [/] ： アイコンの完全上書き（メインエディタ用）
+   ============================================================ */
+/* チェックボックス本体の設定 */
+.markdown-source-view.mod-cm6 .task-list-item-checkbox[data-task="/"] {
+    background-color: transparent !important;
+    background-image: none !important;
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    border: 1px solid var(--checkbox-border-color) !important;
+    position: relative !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+}
+
+.markdown-source-view.mod-cm6 .task-list-item-checkbox[data-task="/"]::after {
+    display: none !important;
+    content: none !important;
+}
+
+.markdown-source-view.mod-cm6 .task-list-item-checkbox[data-task="/"]::before {
+    content: "▶" !important;
+    color: var(--interactive-accent) !important;
+    font-size: 10px !important;
+    position: absolute !important;
+    z-index: 100 !important;
+    top: 50% !important;
+    left: 54% !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+/* ============================================================
+   2. 完了 [x] ： チェックボックスを保護しつつテキストのみ調整 (メインエディタ用)
+   ============================================================ */
+.markdown-source-view.mod-cm6 .task-list-item-checkbox[data-task="x"]::before {
+    content: none !important;
+}
+
+.markdown-source-view.mod-cm6 .task-list-item-checkbox[data-task="x"] {
+    opacity: 1 !important;
+}
+
+.markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="x"] {
+    text-decoration: none !important;
+}
+
+.markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="x"] span:not(.cm-widgetBuffer):not(.task-list-item-checkbox) {
+    text-decoration: none !important;
+    opacity: 0.88 !important;
+}
+
+.markdown-rendered .task-list-item.is-checked {
+    opacity: 1 !important;
+}
+
+.markdown-rendered .task-list-item.is-checked .task-list-item-checkbox {
+    opacity: 1 !important;
+}
+
+.markdown-rendered .task-list-item.is-checked,
+.markdown-rendered .task-list-item.is-checked > p,
+.markdown-rendered .task-list-item.is-checked > .task-list-item-checkbox + * {
+    text-decoration: none !important;
+}
+
+.markdown-rendered .task-list-item.is-checked > p,
+.markdown-rendered .task-list-item.is-checked > .task-list-item-checkbox + * {
+    opacity: 0.9 !important;
+}
+
+/* ============================================================
+   3. 特殊ステータスのテキストスタイル (メインエディタ用)
+   ============================================================ */
+.markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="/"] .cm-list-1 {
+    color: var(--text-normal) !important;
+    font-weight: 600 !important;
+}
+
+/* ============================================================
+   3.1 モバイル拡大モード：task 行の見た目だけ拡大
+   ============================================================ */
+body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-task-line[data-task] .task-list-item-checkbox {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+    margin-right: 0.28rem !important;
+    border-radius: 7px !important;
+    flex: 0 0 24px !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-image: none !important;
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+    position: relative !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    border: 1.5px solid var(--checkbox-border-color) !important;
+    background-color: transparent !important;
+}
+
+body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-task-line[data-task] .task-list-item-checkbox[data-task="/"]::before {
+    font-size: 12px !important;
+    top: 49% !important;
+    left: 52% !important;
+}
+
+body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="x"] .task-list-item-checkbox {
+    background-color: color-mix(in srgb, var(--interactive-accent) 16%, transparent) !important;
+    border-color: color-mix(in srgb, var(--interactive-accent) 38%, var(--checkbox-border-color)) !important;
+}
+
+body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="x"] .task-list-item-checkbox::before {
+    content: "" !important;
+    position: absolute !important;
+    left: 49% !important;
+    top: 41% !important;
+    width: 11px !important;
+    height: 7px !important;
+    border-left: 2px solid var(--interactive-accent) !important;
+    border-bottom: 2px solid var(--interactive-accent) !important;
+    transform: translate(-50%, -50%) rotate(-45deg) !important;
+}
+
+body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-task-line[data-task="x"] .task-list-item-checkbox::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* ============================================================
+   4. サイドバー要約ビュー：専用レイアウト（精密修正版）
+   ============================================================ */
+
+/* ── コンテナ：標準パディングの強制排除 ── */
+.view-type-llr-summary-view .view-content,
+.view-type-llr-summary-view .tree-item-self,
+.view-type-llr-summary-view .nav-files-container {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Obsidian の nav-file 区切り線をサマリー内では無効化 */
+.view-type-llr-summary-view .tree-item.nav-file,
+.view-type-llr-summary-view .nav-file {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 子要素の高さを狂わせる疑似要素を阻止 */
+.llr-item-self::before,
+.llr-item-self::after {
+    display: none !important;
+    content: none !important;
+}
+
+.llr-summary-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--background-primary);
+}
+
+.nav-files-container.llr-list-container {
+    flex: 1;
+    overflow-y: auto !important;
+    padding: 0 !important;
+}
+
+.llr-section-divider-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px 6px;
+    user-select: none;
+}
+
+.llr-section-divider-line {
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--background-modifier-border) 12%,
+        var(--background-modifier-border) 88%,
+        transparent 100%
+    );
+    opacity: 0.8;
+}
+
+.llr-section-divider-label {
+    font-family: var(--font-interface) !important;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+    opacity: 0.95;
+}
+
+.is-mobile .llr-section-divider-row {
+    padding: 8px 8px 4px;
+    gap: 6px;
+}
+
+.is-mobile .llr-section-divider-label {
+    font-size: 10px;
+}
+
+/* ── ヘッダー ── */
+.llr-nav-header {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--divider-color);
+    background-color: var(--background-primary);
+}
+
+.llr-date-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px 4px;
+    min-height: 34px;
+}
+
+.llr-date-label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--font-interface) !important;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--text-normal);
+    cursor: pointer;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.llr-date-main {
+    font-variant-numeric: tabular-nums;
+}
+
+.llr-date-dow {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.llr-date-dow.day-weekday {
+    color: var(--text-muted);
+}
+
+.llr-date-dow.day-saturday {
+    color: var(--text-accent);
+}
+
+.llr-date-dow.day-sunday {
+    color: var(--text-error);
+}
+
+.is-mobile .llr-date-label {
+    font-size: 23px;
+    gap: 4px;
+}
+
+.is-mobile .llr-date-dow {
+    font-size: 15px;
+}
+
+.llr-nav-btns {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.llr-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    font-family: var(--font-interface) !important;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+    background: transparent;
+}
+
+.llr-nav-btn:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.llr-is-projected .llr-time {
+    color: var(--text-normal) !important;
+    opacity: 0.88;
+    font-style: normal !important;
+}
+
+.llr-nav-btn:active {
+    background: var(--background-modifier-active-hover);
+}
+
+.llr-nav-btn[aria-label="今日へ移動"] {
+    min-width: auto;
+    height: 28px;
+    margin: 0 4px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+
+.llr-summary-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 2px 8px 8px;
+    background-color: var(--background-primary);
+}
+
+.llr-info-box {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 9px 11px;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    min-height: 52px;
+}
+
+.llr-info-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.llr-info-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-normal);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.llr-info-value-inline {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0;
+    white-space: nowrap;
+}
+
+.llr-info-value-tail {
+    margin-left: 0.28em;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+}
+
+.llr-info-subvalue {
+    margin-top: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+
+/* ── タスクアイテム：極限圧縮（18px） ── */
+.llr-item-self {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 6px 6px 6px 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 1px 4px !important;
+    border-radius: 10px !important;
+    border: 1px solid transparent !important;
+    transition: background-color 120ms ease, border-color 120ms ease !important;
+}
+
+/* モバイル向け：タスクごとの塊を意識した余白設定 */
+.is-mobile .llr-item-self {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.llr-row-top,
+.llr-row-bottom {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: 24px !important;
+    min-height: 24px !important;
+}
+
+/* モバイル向け：行自体は詰めつつ、タップエリアは確保 */
+.is-mobile .llr-row-top,
+.is-mobile .llr-row-bottom {
+    height: auto !important;
+    min-height: 32px !important;
+}
+
+.is-mobile .llr-row-bottom {
+    margin-top: -4px !important;
+    /* 上の行（時刻・バー）に引き寄せる */
+}
+
+.llr-row-top {
+    cursor: pointer;
+}
+
+.llr-item-self.is-clickable {
+    cursor: pointer;
+}
+
+.llr-row-bottom {
+    margin-top: 3px !important;
+}
+
+.llr-item-self:hover {
+    background: var(--background-modifier-hover) !important;
+    border-color: transparent !important;
+}
+
+.llr-item-leftover .llr-item-self {
+    background-image: linear-gradient(rgba(214, 166, 90, 0.42), rgba(214, 166, 90, 0.42)) !important;
+    background-repeat: no-repeat !important;
+    background-size: 2px calc(100% - 12px) !important;
+    background-position: 0 6px !important;
+    padding-left: 10px !important;
+    margin-left: 8px !important;
+}
+
+.llr-item-leftover .llr-time,
+.llr-item-leftover .llr-task-name {
+    opacity: 0.94 !important;
+}
+
+.llr-collapse-icon,
+.llr-spacer {
+    display: none !important;
+}
+
+.llr-time {
+    flex: 0 0 98px !important;
+    /* 時刻の有無に関わらず幅を固定してバーの開始位置を揃える */
+    padding: 0 6px 0 12px !important;
+    font-size: 15px !important;
+    font-family: var(--font-text) !important;
+    color: var(--text-muted) !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: 0 !important;
+}
+
+.llr-bar-wrap {
+    flex: 1 !important;
+    height: 3px !important;
+    background: var(--background-modifier-border) !important;
+    margin-right: 12px !important;
+    border-radius: 2px !important;
+    overflow: hidden !important;
+}
+
+.llr-bar-fill {
+    height: 100% !important;
+    background: var(--interactive-accent) !important;
+    opacity: 0.34 !important;
+}
+
+.llr-elapsed {
+    flex: 0 0 56px !important;
+    font-size: 12px !important;
+    color: var(--text-muted) !important;
+    text-align: right !important;
+    padding-right: 12px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+}
+
+.llr-task-name {
+    flex: 1 !important;
+    font-size: 17px !important;
+    padding-left: 12px !important;
+    color: var(--text-normal) !important;
+    font-family: var(--font-text) !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    letter-spacing: -0.01em !important;
+}
+
+.llr-reserved-tail {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    margin-left: 6px !important;
+    vertical-align: baseline !important;
+    transform: translateY(-0.03em) !important;
+}
+
+.llr-reserved-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 11px !important;
+    height: 11px !important;
+    color: var(--text-muted) !important;
+    opacity: 0.82 !important;
+}
+
+.llr-reserved-icon svg {
+    width: 11px !important;
+    height: 11px !important;
+    stroke-width: 2px !important;
+}
+
+.llr-reserved-time {
+    font-size: 0.56em !important;
+    line-height: 1 !important;
+    color: var(--text-muted) !important;
+    opacity: 0.82 !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: 0.01em !important;
+}
+
+/* ── 状態別の表示（サイドバー専用） ── */
+
+/* 完了：取り消し線は使わず、少し薄い色で区別する。 */
+.llr-item-done .llr-task-name {
+    opacity: 0.96 !important;
+    font-weight: normal !important;
+    text-decoration: none !important;
+}
+
+.llr-item-done .llr-task-name {
+    color: var(--text-normal) !important;
+}
+
+.llr-item-done .llr-time {
+    text-decoration: none !important;
+    color: var(--text-muted) !important;
+    opacity: 0.72 !important;
+}
+
+/* 進行中：文字を太く、色をはっきりと。 */
+.llr-item-running .llr-task-name {
+    font-weight: 600 !important;
+    color: var(--text-normal) !important;
+}
+
+.llr-item-running .llr-item-self {
+    background: color-mix(in srgb, var(--background-secondary) 92%, var(--background-primary) 8%) !important;
+    border-color: var(--background-modifier-border) !important;
+    border-radius: 8px !important;
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.02),
+        0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+.llr-item-running .llr-item-self:hover {
+    background: color-mix(in srgb, var(--background-secondary) 88%, var(--background-primary) 12%) !important;
+    border-color: var(--divider-color) !important;
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.02),
+        0 1px 4px rgba(0, 0, 0, 0.10) !important;
+}
+
+.llr-item-running .llr-time {
+    color: var(--text-normal) !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+.llr-item-running .llr-elapsed {
+    color: var(--interactive-accent) !important;
+    font-weight: 600 !important;
+}
+
+.llr-item-running .llr-bar-fill {
+    background-color: var(--interactive-accent) !important;
+    opacity: 1 !important;
+    /* 進行中はさらに強調 */
+}

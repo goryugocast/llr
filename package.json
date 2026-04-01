@@ -1,0 +1,32 @@
+{
+  "name": "obsidian-llr-plugin",
+  "version": "0.1.0",
+  "description": "LLR: Live Life Recording system for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "dev:sync": "OBSIDIAN_SYNC_ON_BUILD=1 node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "build:sync": "OBSIDIAN_SYNC_ON_BUILD=1 node esbuild.config.mjs production",
+    "test": "vitest",
+    "changelog:update": "bash scripts/update_changelog.sh"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "llr"
+  ],
+  "author": "goryugo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.23.0",
+    "obsidian": "^1.7.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "builtin-modules": "^3.3.0"
+  }
+}
