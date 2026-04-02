@@ -61,7 +61,7 @@ Register `Toggle Task` in Obsidian's **Mobile Toolbar** (the icon row above the 
 
 Open the summary sidebar to see running tasks, remaining estimates, and daily totals at a glance.
 
-![Summary View](assets/llr-summary-view.png)
+<img src="assets/llr-summary-view.png" width="300" alt="Summary View">
 
 ## Documentation
 
