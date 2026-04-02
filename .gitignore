@@ -6,9 +6,11 @@ coverage/
 .idea/
 .vscode/
 .obsidian/
+AGENTS.md
 /main.js
 *.tmp
 *.bak
 *.orig
 docs/internal/*.html
 docs/internal/**/*.html
+docs/internal/NOTE_ai-companion-strategy.private.md
