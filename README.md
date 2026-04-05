@@ -32,6 +32,8 @@ All you need is `Toggle Task`:
 
 Records are Markdown checkboxes. Edit the timestamps by hand anytime — LLR recalculates automatically.
 
+LLR tries not to "fight" normal Markdown editing. Broad auto-correction is avoided; consistency fixes are mainly attached to explicit LLR actions such as commands and checkbox gestures.
+
 ## Main Commands
 
 | Command | What it does |
@@ -68,6 +70,7 @@ Open the summary sidebar to see running tasks, remaining estimates, and daily to
 - **English:** https://goryugo.com/en/llr/
 - **日本語:** https://goryugo.com/topics/llr
 - **For AI assistants:** [`docs/`](https://github.com/goryugocast/llr/tree/main/docs) in this repository
+- **Design principle:** see [`docs/specs/設計思想.md`](https://github.com/goryugocast/llr/blob/main/docs/specs/%E8%A8%AD%E8%A8%88%E6%80%9D%E6%83%B3.md) and [`docs/specs/UI操作仕様.md`](https://github.com/goryugocast/llr/blob/main/docs/specs/UI%E6%93%8D%E4%BD%9C%E4%BB%95%E6%A7%98.md)
 
 ## Development
 

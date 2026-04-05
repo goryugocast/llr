@@ -1217,6 +1217,7 @@ export default class LlrPlugin extends Plugin {
         });
 
         await this.applyTaskResult(editor, view, targetLine, lineText, result);
+        this.runDurationDriftFixForLlrAction(editor, 'checkbox press');
         this.scheduleUIUpdate();
     }
 
@@ -1877,10 +1878,7 @@ export default class LlrPlugin extends Plugin {
         }
 
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        const driftFixCount = this.fixDurationDriftAcrossEditor(editor);
-        if (driftFixCount > 0) {
-            this.debugLog('Auto fixed duration drift after toggle', { driftFixCount });
-        }
+        this.runDurationDriftFixForLlrAction(editor, 'toggle task');
     }
 
     private resolveDefaultToggleDelegatedAction(lineText: string): 'taskify' | 'complete' | 'duplicate' | undefined {
@@ -1919,6 +1917,7 @@ export default class LlrPlugin extends Plugin {
         });
         if (!result) return;
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.runDurationDriftFixForLlrAction(editor, 'start task from previous completion');
     }
 
     async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
@@ -1935,6 +1934,7 @@ export default class LlrPlugin extends Plugin {
         const result = transformCheckboxPress(lineText, new Date(), 'long');
         if (!result) return;
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.runDurationDriftFixForLlrAction(editor, 'reset task keep time');
     }
 
     async handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): Promise<void> {
@@ -1954,6 +1954,7 @@ export default class LlrPlugin extends Plugin {
             after: result.content,
         });
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.runDurationDriftFixForLlrAction(editor, 'adjust time');
     }
 
     async handleFixDurationDriftAll(editor: Editor, view: MarkdownView): Promise<void> {
@@ -1967,6 +1968,7 @@ export default class LlrPlugin extends Plugin {
 
     private fixDurationDriftAcrossEditor(editor: Editor): number {
         let changedCount = 0;
+        const cursor = editor.getCursor();
         const lastLine = editor.lastLine();
         for (let line = 0; line <= lastLine; line++) {
             const current = editor.getLine(line);
@@ -1975,7 +1977,22 @@ export default class LlrPlugin extends Plugin {
             editor.replaceRange(normalized, { line, ch: 0 }, { line, ch: current.length });
             changedCount++;
         }
+        if (changedCount > 0) {
+            const cursorLine = Math.min(cursor.line, editor.lastLine());
+            const cursorCh = Math.min(cursor.ch, editor.getLine(cursorLine).length);
+            editor.setCursor({ line: cursorLine, ch: cursorCh });
+        }
         return changedCount;
+    }
+
+    private runDurationDriftFixForLlrAction(editor: Editor, reason: string): void {
+        const changedCount = this.fixDurationDriftAcrossEditor(editor);
+        if (changedCount > 0) {
+            this.debugLog('Auto fixed duration drift after LLR action', {
+                reason,
+                changedCount,
+            });
+        }
     }
 
     async handleDeferTaskToTomorrow(editor: Editor, view: MarkdownView): Promise<void> {
