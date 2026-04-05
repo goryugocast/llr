@@ -3,7 +3,7 @@
 ## この文書の役割
 - **対象**: `start_before` を持つルーチンに対する `@done` 記号の意味づけ
 - **目的**: 実装前に、通常完了と `@done` 完了の境界を明確にする
-- **Status**: Planned
+- **Status**: Implemented
 
 ## 背景
 - `start_before` により、ルーチンは due より前から表示できる。
