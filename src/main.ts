@@ -42,6 +42,18 @@ interface RoutineCompletionSnapshotEntry {
     atDoneCompletedSignatures: Set<string>;
 }
 
+interface LlrPostActionContext {
+    editor: Editor;
+    view: MarkdownView;
+    file: TFile;
+    reason: string;
+}
+
+interface LlrPostActionPassResult {
+    kind: 'duration-drift' | 'routine-reschedule-marker';
+    changedCount: number;
+}
+
 const DEFAULT_SETTINGS: LlrSettings = {
     debugModeEnabled: false,
     estimateWarningEnabled: true,
@@ -1217,7 +1229,7 @@ export default class LlrPlugin extends Plugin {
         });
 
         await this.applyTaskResult(editor, view, targetLine, lineText, result);
-        this.runDurationDriftFixForLlrAction(editor, 'checkbox press');
+        await this.runPostLlrActionAdjustments(editor, view, 'checkbox press');
         this.scheduleUIUpdate();
     }
 
@@ -1878,7 +1890,7 @@ export default class LlrPlugin extends Plugin {
         }
 
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        this.runDurationDriftFixForLlrAction(editor, 'toggle task');
+        await this.runPostLlrActionAdjustments(editor, view, 'toggle task');
     }
 
     private resolveDefaultToggleDelegatedAction(lineText: string): 'taskify' | 'complete' | 'duplicate' | undefined {
@@ -1917,7 +1929,7 @@ export default class LlrPlugin extends Plugin {
         });
         if (!result) return;
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        this.runDurationDriftFixForLlrAction(editor, 'start task from previous completion');
+        await this.runPostLlrActionAdjustments(editor, view, 'start task from previous completion');
     }
 
     async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
@@ -1934,7 +1946,7 @@ export default class LlrPlugin extends Plugin {
         const result = transformCheckboxPress(lineText, new Date(), 'long');
         if (!result) return;
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        this.runDurationDriftFixForLlrAction(editor, 'reset task keep time');
+        await this.runPostLlrActionAdjustments(editor, view, 'reset task keep time');
     }
 
     async handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): Promise<void> {
@@ -1954,15 +1966,22 @@ export default class LlrPlugin extends Plugin {
             after: result.content,
         });
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        this.runDurationDriftFixForLlrAction(editor, 'adjust time');
+        await this.runPostLlrActionAdjustments(editor, view, 'adjust time');
     }
 
     async handleFixDurationDriftAll(editor: Editor, view: MarkdownView): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Fix Duration Drift (All Completed Tasks)')) return;
+        if (!view.file) return;
 
         const changedCount = this.fixDurationDriftAcrossEditor(editor);
+        const markerCount = await this.processPendingRoutineRescheduleMarkersInEditor({
+            editor,
+            view,
+            file: view.file,
+            reason: 'fix-duration-drift-all',
+        });
 
-        this.debugLog('Fix duration drift (all) done', { changedCount });
+        this.debugLog('Fix duration drift (all) done', { changedCount, markerCount });
         this.showLlrNotice(`LLR: 実績時間のズレを ${changedCount} 行修正しました。`);
     }
 
@@ -1985,12 +2004,29 @@ export default class LlrPlugin extends Plugin {
         return changedCount;
     }
 
-    private runDurationDriftFixForLlrAction(editor: Editor, reason: string): void {
-        const changedCount = this.fixDurationDriftAcrossEditor(editor);
-        if (changedCount > 0) {
-            this.debugLog('Auto fixed duration drift after LLR action', {
+    private async runPostLlrActionAdjustments(editor: Editor, view: MarkdownView, reason: string): Promise<void> {
+        const file = view.file;
+        if (!file) return;
+
+        const context: LlrPostActionContext = { editor, view, file, reason };
+        const results: LlrPostActionPassResult[] = [
+            {
+                kind: 'duration-drift',
+                changedCount: this.fixDurationDriftAcrossEditor(editor),
+            },
+            {
+                kind: 'routine-reschedule-marker',
+                changedCount: await this.processPendingRoutineRescheduleMarkersInEditor(context),
+            },
+        ];
+
+        for (const result of results) {
+            if (result.changedCount <= 0) continue;
+            this.debugLog('Post LLR action pass applied', {
                 reason,
-                changedCount,
+                pass: result.kind,
+                changedCount: result.changedCount,
+                file: file.path,
             });
         }
     }
@@ -2010,6 +2046,7 @@ export default class LlrPlugin extends Plugin {
                 lineIndex,
                 skipLine,
             });
+            await this.runPostLlrActionAdjustments(editor, view, 'skip-task-log-only');
             return;
         }
 
@@ -2038,6 +2075,49 @@ export default class LlrPlugin extends Plugin {
     private isRoutineRescheduleEligibleLine(lineText: string): boolean {
         const trimmed = lineText.trim();
         return /^- \[( |\/|x)\]/.test(trimmed) || /^- skip:\s*/i.test(trimmed);
+    }
+
+    private async processPendingRoutineRescheduleMarkersInEditor(context: LlrPostActionContext): Promise<number> {
+        const { editor, view, file, reason } = context;
+        if (!this.ensureDailyNoteView(view, 'Reschedule Routine')) return 0;
+        if (this.isFutureDailyNoteFile(file)) return 0;
+
+        let processedCount = 0;
+        const baseDate = new Date();
+        baseDate.setHours(0, 0, 0, 0);
+
+        for (let lineIndex = 0; lineIndex <= editor.lastLine(); lineIndex++) {
+            const lineText = editor.getLine(lineIndex);
+            if (!this.isRoutineRescheduleEligibleLine(lineText)) continue;
+
+            const marker = parseRoutineRescheduleMarker(lineText, baseDate);
+            if (!marker) continue;
+
+            const routineFile = this.resolveSingleRoutineFileForLine(lineText, file.path);
+            if (!routineFile) continue;
+
+            const routineNote = await this.routineEngine.readRoutineNote(routineFile);
+            if (!routineNote) continue;
+
+            if (routineNote.next_due !== marker.canonicalDate) {
+                await this.routineEngine.updateNextDue(routineFile, { nextDue: marker.canonicalDate });
+            }
+
+            const updatedLine = replaceRoutineRescheduleMarker(lineText, marker);
+            editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
+            processedCount += 1;
+            this.debugLog('Routine reschedule marker applied', {
+                reason,
+                file: file.path,
+                lineIndex,
+                routinePath: routineFile.path,
+                nextDue: marker.canonicalDate,
+                originalLine: lineText,
+                updatedLine,
+            });
+        }
+
+        return processedCount;
     }
 
     private isFutureDailyNoteFile(file: TFile): boolean {
@@ -2072,48 +2152,17 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
-        const cursor = editor.getCursor();
-        const lineIndex = cursor.line;
-        const lineText = editor.getLine(lineIndex);
-        if (!this.isRoutineRescheduleEligibleLine(lineText)) {
-            this.showLlrNotice('LLR: routine の先送りはチェックボックス行または skip 行で使ってください。');
-            return;
-        }
-        const baseDate = new Date();
-        baseDate.setHours(0, 0, 0, 0);
-
-        const marker = parseRoutineRescheduleMarker(lineText, baseDate);
-        if (!marker) {
-            this.showLlrNotice('LLR: @日付 が見つからないか、未来日として解釈できません。');
-            return;
-        }
-
-        const routineFile = this.resolveSingleRoutineFileForLine(lineText, view.file.path);
-        if (!routineFile) {
-            this.showLlrNotice('LLR: 先送り対象の routine リンクを1つだけ含む行で実行してください。');
-            return;
-        }
-
-        const routineNote = await this.routineEngine.readRoutineNote(routineFile);
-        if (!routineNote) {
-            this.showLlrNotice('LLR: routine ノートを読めませんでした。');
-            return;
-        }
-
-        if (routineNote.next_due !== marker.canonicalDate) {
-            await this.routineEngine.updateNextDue(routineFile, { nextDue: marker.canonicalDate });
-        }
-
-        const updatedLine = replaceRoutineRescheduleMarker(lineText, marker);
-        editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
-        editor.setCursor(lineIndex, updatedLine.length);
-        this.debugLog('Routine rescheduled from marker', {
-            lineIndex,
-            routinePath: routineFile.path,
-            nextDue: marker.canonicalDate,
-            originalLine: lineText,
-            updatedLine,
+        const processedCount = await this.processPendingRoutineRescheduleMarkersInEditor({
+            editor,
+            view,
+            file: view.file,
+            reason: 'reschedule-routine-command',
         });
+        if (processedCount === 0) {
+            this.showLlrNotice('LLR: このページで処理できる routine の @日付 は見つかりませんでした。');
+            return;
+        }
+        this.showLlrNotice(`LLR: routine の先送りを ${processedCount} 件反映しました。`);
     }
 
     private removeEditorLine(editor: Editor, lineIndex: number, lineText: string): void {
