@@ -67,6 +67,8 @@
 ### E. Routine Insert / Daily Note Auto Insert
 - `Insert Routine` コマンドで当日 `due` のルーチンを挿入。
 - デイリーノート作成時、マーカー検出で自動展開（`vault.on('create')` + 短時間リトライ）。
+- 実験中: 外部生成ノート共存のため、起動時/デイリーノート open 時にも **今日のノートのみ** 後追い確認。
+- 安全策として、マーカー必須・展開済みスタンプ付きで二重展開を抑制。
 - 対応マーカー:
   - `{{llr-today}}`
   - `{{llr-routines}}`
