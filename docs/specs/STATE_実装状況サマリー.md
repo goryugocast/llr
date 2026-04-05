@@ -22,6 +22,7 @@
 - `Reset Task (Keep Estimate)`
 - `Duplicate Task`
 - `Skip Task (Log Only)`
+- `Reschedule Routine`
 - `Insert Routine`
 
 ### B. Core Services
@@ -29,6 +30,9 @@
   - 時刻数・ステータスに応じたトグル変換
   - Smart Estimate（`30`, `1.5h`）
   - Force Action (`start/complete/interrupt/duplicate/retroComplete/taskify`)
+- `src/service/routine-reschedule-marker.ts`
+  - `@MMDD` / `@M/D` / `@M月D日` / `@YYYY-MM-DD` の routine 先送り指示を解釈
+  - 処理済み表記 `→YYYY-MM-DD` への正規化
 - `src/service/task-parser.ts`
   - タスク行を `status / times / estimate / content` に分解・合成
   - `[[wikilink]]` を含むタスクでも本文と見積りを分離
