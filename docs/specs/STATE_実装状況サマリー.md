@@ -33,6 +33,9 @@
 - `src/service/routine-reschedule-marker.ts`
   - `@MMDD` / `@M/D` / `@M月D日` / `@YYYY-MM-DD` の routine 先送り指示を解釈
   - 処理済み表記 `→YYYY-MM-DD` への正規化
+- `src/service/routine-atdone-marker.ts`
+  - 未処理 `@done` と処理済み `→done` の判定
+  - `@done` から `→done` への正規化
 - `src/service/task-parser.ts`
   - タスク行を `status / times / estimate / content` に分解・合成
   - `[[wikilink]]` を含むタスクでも本文と見積りを分離
@@ -124,12 +127,7 @@
 - サイドバー上でのタスク編集（チェックボックス操作 / インライン編集 / Add Task）
 - `app.vault.process` を使った安全な書き戻し
 
-### C. Routine Semantics (Future candidates)
-- `start_before` 付きルーチンに対する `@done` 明示完了
-  - 前倒し表示期間内でのみ有効化し、その回を消費して `next_due` を次回へ送る案を仕様化中
-  - 未処理 `@done` を成功時に `→done` へ正規化する予定
-
-### D. Settings UI (Future candidates)
+### C. Settings UI (Future candidates)
 - `Work File Path` / `Routine Folder` / `Archive Folder` などの設定UI
 - Day boundary / rollover まわりの設定UI
 

@@ -1,10 +1,11 @@
 import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, moment, normalizePath } from 'obsidian';
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
 import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
-import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent } from './service/routine-engine';
+import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent, type RoutineNote } from './service/routine-engine';
 import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
+import { hasAnyRoutineAtDoneMarker, hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { computeSummaryData } from './service/summary-calculator';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
@@ -50,7 +51,7 @@ interface LlrPostActionContext {
 }
 
 interface LlrPostActionPassResult {
-    kind: 'duration-drift' | 'routine-reschedule-marker';
+    kind: 'duration-drift' | 'routine-reschedule-marker' | 'routine-atdone-marker';
     changedCount: number;
 }
 
@@ -1421,7 +1422,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     private hasAtDoneMarker(lineText: string): boolean {
-        return /(^|\s)@done\b/i.test(lineText);
+        return hasAnyRoutineAtDoneMarker(lineText);
     }
 
     private createEmptyRoutineCompletionSnapshotEntry(): RoutineCompletionSnapshotEntry {
@@ -1436,6 +1437,29 @@ export default class LlrPlugin extends Plugin {
     private buildRoutineCompletionSignature(lineNumber: number, lineText: string): string {
         const normalized = lineText.trim();
         return normalized ? `${lineNumber}:${normalized}` : `${lineNumber}:__completed__`;
+    }
+
+    private wasLinePreviouslyCompletedForRoutine(file: TFile, routinePath: string, lineIndex: number): boolean {
+        const snapshot = this.routineCompletionSnapshotByFile.get(file.path);
+        const entry = snapshot?.get(routinePath);
+        if (!entry) return false;
+
+        const prefix = `${lineIndex}:`;
+        for (const signature of entry.completedSignatures) {
+            if (signature.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    private shouldApplyAtDoneToRoutine(routineNote: RoutineNote | null, completionDate: Date): routineNote is RoutineNote {
+        if (!routineNote?.next_due) return false;
+
+        const leadDays = routineNote.start_before ?? 0;
+        if (leadDays <= 0) return false;
+
+        const completionDay = moment(completionDate).format('YYYY-MM-DD');
+        const visibleFrom = moment(routineNote.next_due).subtract(leadDays, 'days').format('YYYY-MM-DD');
+        return completionDay >= visibleFrom && completionDay <= routineNote.next_due;
     }
 
     private async buildRoutineCompletionSnapshot(file: TFile): Promise<Map<string, RoutineCompletionSnapshotEntry> | null> {
@@ -1974,6 +1998,12 @@ export default class LlrPlugin extends Plugin {
         if (!view.file) return;
 
         const changedCount = this.fixDurationDriftAcrossEditor(editor);
+        const atDoneCount = await this.processPendingRoutineAtDoneMarkersInEditor({
+            editor,
+            view,
+            file: view.file,
+            reason: 'fix-duration-drift-all',
+        });
         const markerCount = await this.processPendingRoutineRescheduleMarkersInEditor({
             editor,
             view,
@@ -1981,7 +2011,7 @@ export default class LlrPlugin extends Plugin {
             reason: 'fix-duration-drift-all',
         });
 
-        this.debugLog('Fix duration drift (all) done', { changedCount, markerCount });
+        this.debugLog('Fix duration drift (all) done', { changedCount, atDoneCount, markerCount });
         this.showLlrNotice(`LLR: 実績時間のズレを ${changedCount} 行修正しました。`);
     }
 
@@ -2010,6 +2040,10 @@ export default class LlrPlugin extends Plugin {
 
         const context: LlrPostActionContext = { editor, view, file, reason };
         const results: LlrPostActionPassResult[] = [
+            {
+                kind: 'routine-atdone-marker',
+                changedCount: await this.processPendingRoutineAtDoneMarkersInEditor(context),
+            },
             {
                 kind: 'duration-drift',
                 changedCount: this.fixDurationDriftAcrossEditor(editor),
@@ -2075,6 +2109,50 @@ export default class LlrPlugin extends Plugin {
     private isRoutineRescheduleEligibleLine(lineText: string): boolean {
         const trimmed = lineText.trim();
         return /^- \[( |\/|x)\]/.test(trimmed) || /^- skip:\s*/i.test(trimmed);
+    }
+
+    private async processPendingRoutineAtDoneMarkersInEditor(context: LlrPostActionContext): Promise<number> {
+        const { editor, view, file, reason } = context;
+        if (!this.ensureDailyNoteView(view, '@done')) return 0;
+        if (this.isFutureDailyNoteFile(file)) return 0;
+
+        let processedCount = 0;
+        const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
+
+        for (let lineIndex = 0; lineIndex <= editor.lastLine(); lineIndex++) {
+            const lineText = editor.getLine(lineIndex);
+            if (!lineText.trim().startsWith('- [x]')) continue;
+            if (!hasPendingRoutineAtDoneMarker(lineText)) continue;
+
+            const routineFile = this.resolveSingleRoutineFileForLine(lineText, file.path);
+            if (!routineFile) continue;
+
+            const routineNote = await this.routineEngine.readRoutineNote(routineFile);
+            if (!this.shouldApplyAtDoneToRoutine(routineNote, completionBaseDate)) continue;
+
+            const updatedLine = replacePendingRoutineAtDoneMarker(lineText);
+            if (!updatedLine) continue;
+
+            const shouldProcessDirectly = this.wasLinePreviouslyCompletedForRoutine(file, routineFile.path, lineIndex);
+            if (shouldProcessDirectly) {
+                await this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' });
+            }
+
+            editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
+            processedCount += 1;
+            this.debugLog('Routine @done marker applied', {
+                reason,
+                file: file.path,
+                lineIndex,
+                routinePath: routineFile.path,
+                completionBaseDate: completionBaseDate.toISOString(),
+                directProcess: shouldProcessDirectly,
+                originalLine: lineText,
+                updatedLine,
+            });
+        }
+
+        return processedCount;
     }
 
     private async processPendingRoutineRescheduleMarkersInEditor(context: LlrPostActionContext): Promise<number> {
