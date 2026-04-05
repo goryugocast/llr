@@ -119,7 +119,12 @@
 - サイドバー上でのタスク編集（チェックボックス操作 / インライン編集 / Add Task）
 - `app.vault.process` を使った安全な書き戻し
 
-### C. Settings UI (Future candidates)
+### C. Routine Semantics (Future candidates)
+- `start_before` 付きルーチンに対する `@done` 明示完了
+  - 前倒し表示期間内でのみ有効化し、その回を消費して `next_due` を次回へ送る案を仕様化中
+  - 本文中の `@done` は自動削除しない方針
+
+### D. Settings UI (Future candidates)
 - `Work File Path` / `Routine Folder` / `Archive Folder` などの設定UI
 - Day boundary / rollover まわりの設定UI
 
