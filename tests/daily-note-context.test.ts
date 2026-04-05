@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isDailyNoteMatch, resolveDailyNoteDate, resolveReferenceDate, type DailyNoteDescriptor, type DailyNoteSettings } from '../src/service/daily-note-context';
+import {
+    isDailyNoteMatch,
+    resolveDailyNoteDate,
+    resolveMutationReferenceDate,
+    resolveReferenceDate,
+    type DailyNoteDescriptor,
+    type DailyNoteSettings,
+} from '../src/service/daily-note-context';
 
 function parseByFormat(basename: string, format: string): Date | null {
     if (format === 'YYYY-MM-DD' && /^\d{4}-\d{2}-\d{2}$/.test(basename)) {
@@ -64,5 +71,20 @@ describe('daily-note-context', () => {
         const resolved = resolveReferenceDate(null, fallback);
         expect(resolved.toISOString()).toBe('2026-02-28T09:30:00.000Z');
         expect(resolved).not.toBe(fallback);
+    });
+
+    it('clamps future mutation dates to the runtime fallback day', () => {
+        const resolved = resolveMutationReferenceDate(
+            new Date('2026-03-01T00:00:00Z'),
+            new Date('2026-02-28T09:30:00Z')
+        );
+        expect(resolved.toISOString()).toBe('2026-02-28T09:30:00.000Z');
+    });
+
+    it('keeps past mutation dates for retroactive completion', () => {
+        const primary = new Date('2026-02-27T00:00:00Z');
+        const resolved = resolveMutationReferenceDate(primary, new Date('2026-02-28T09:30:00Z'));
+        expect(resolved.toISOString()).toBe('2026-02-27T00:00:00.000Z');
+        expect(resolved).not.toBe(primary);
     });
 });

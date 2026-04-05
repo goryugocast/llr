@@ -304,7 +304,7 @@ export class RoutineEngine {
         return targetStr >= visibleFrom && targetStr <= displayDue;
     }
 
-    private async normalizeOverdueNextDue(note: RoutineNote, targetDate: Date): Promise<RoutineNote> {
+    private normalizeOverdueNextDueForPreview(note: RoutineNote, targetDate: Date): RoutineNote {
         if (!note.frequency) return note;
         if (!note.next_due) return note;
         if (note.frequency.type === 'none') return note;
@@ -325,8 +325,7 @@ export class RoutineEngine {
         }
 
         if (candidate !== note.next_due) {
-            await this.updateNextDue(note.file, { nextDue: candidate });
-            this.emitDebugEvent('fetchDueRoutines:catchup-next-due', {
+            this.emitDebugEvent('fetchDueRoutines:preview-catchup-next-due', {
                 file: note.file.path,
                 from: note.next_due,
                 to: candidate,
@@ -577,7 +576,7 @@ export class RoutineEngine {
             if (!note || !note.frequency) continue; // Must have a frequency to be a recurring routine
             if (!note.next_due) continue;
 
-            const normalizedNote = await this.normalizeOverdueNextDue(note, today);
+            const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
 
             const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
 

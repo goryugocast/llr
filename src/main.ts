@@ -6,7 +6,7 @@ import { computeStatusBarMetrics, DurationCalculator } from './service/status-ba
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { computeSummaryData } from './service/summary-calculator';
-import { isDailyNoteMatch, resolveDailyNoteDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
+import { isDailyNoteMatch, resolveDailyNoteDate, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 
 interface LlrSettings {
     debugModeEnabled: boolean;
@@ -1671,7 +1671,7 @@ export default class LlrPlugin extends Plugin {
             if (!(routineFile instanceof TFile)) continue;
 
             const completionDelta = current.completedCount - prev.completedCount;
-            const completionBaseDate = resolveReferenceDate(this.parseDailyNoteDate(file), new Date());
+            const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
             this.debugLog('Routine completion state changed', {
                 file: file.path,
                 routinePath,
