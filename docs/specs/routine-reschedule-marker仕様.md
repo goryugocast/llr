@@ -19,6 +19,7 @@
 - この全体走査は、LLR 内部では post action pass のひとつとして扱う。
 - 明示コマンド `Reschedule Routine` も同じく **現在ページ全体** を対象にする。
 - 成功したら task 行の `@日付` は **処理済み記号** `→YYYY-MM-DD` に書き換える。
+- この書き換え規則は [設計思想](/Users/goryugo/GitHub/llr/docs/specs/設計思想.md) の **@ Marker Protocol** に従う。
 
 ## 設計原則との関係
 - この機能は [設計思想](/Users/goryugo/GitHub/llr/docs/specs/設計思想.md) の **Action-Bound Correction** に従う。

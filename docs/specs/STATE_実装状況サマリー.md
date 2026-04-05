@@ -127,7 +127,7 @@
 ### C. Routine Semantics (Future candidates)
 - `start_before` 付きルーチンに対する `@done` 明示完了
   - 前倒し表示期間内でのみ有効化し、その回を消費して `next_due` を次回へ送る案を仕様化中
-  - 本文中の `@done` は自動削除しない方針
+  - 未処理 `@done` を成功時に `→done` へ正規化する予定
 
 ### D. Settings UI (Future candidates)
 - `Work File Path` / `Routine Folder` / `Archive Folder` などの設定UI
