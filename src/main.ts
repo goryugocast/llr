@@ -4,6 +4,7 @@ import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskAct
 import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent } from './service/routine-engine';
 import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
+import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { computeSummaryData } from './service/summary-calculator';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
@@ -71,6 +72,7 @@ const TRANSLATIONS = {
         'command.resetTaskKeepTime': 'Reset Task (Keep Estimate)',
         'command.duplicateTask': 'Duplicate Task',
         'command.skipTaskLogOnly': 'Skip Task (Log Only)',
+        'command.rescheduleRoutine': 'Reschedule Routine',
         'command.insertRoutine': 'Insert Routine',
         'settings.language.name': 'UI Language',
         'settings.language.desc': 'Choose language for settings and command labels.',
@@ -117,6 +119,7 @@ const TRANSLATIONS = {
         'command.resetTaskKeepTime': 'タスクをリセット（見積維持）',
         'command.duplicateTask': 'タスク複製',
         'command.skipTaskLogOnly': 'タスクをスキップ（ログのみ）',
+        'command.rescheduleRoutine': 'ルーチンを先送り',
         'command.insertRoutine': 'ルーチンを挿入',
         'settings.language.name': 'UI言語',
         'settings.language.desc': '設定画面とコマンド名の表示言語を選びます。',
@@ -461,6 +464,18 @@ export default class LlrPlugin extends Plugin {
                 void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), async () => {
                     this.debugLog('Command: Skip Task (Log Only)');
                     await this.handleDeferTaskToTomorrow(editor, view);
+                });
+            }
+        });
+
+        this.addCommand({
+            id: 'reschedule-routine',
+            name: this.t('command.rescheduleRoutine'),
+            icon: 'calendar-clock',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('reschedule-routine', this.t('command.rescheduleRoutine'), async () => {
+                    this.debugLog('Command: Reschedule Routine');
+                    await this.handleRescheduleRoutine(editor, view);
                 });
             }
         });
@@ -2001,6 +2016,87 @@ export default class LlrPlugin extends Plugin {
 
     private buildUnskippedTaskLine(lineText: string): string {
         return lineText.replace(/^- skip:\s*/i, '- [ ] ');
+    }
+
+    private isRoutineRescheduleEligibleLine(lineText: string): boolean {
+        const trimmed = lineText.trim();
+        return /^- \[( |\/|x)\]/.test(trimmed) || /^- skip:\s*/i.test(trimmed);
+    }
+
+    private isFutureDailyNoteFile(file: TFile): boolean {
+        const noteDate = this.parseDailyNoteDate(file);
+        if (!noteDate) return false;
+
+        const normalizedNote = new Date(noteDate);
+        normalizedNote.setHours(0, 0, 0, 0);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return normalizedNote.getTime() > today.getTime();
+    }
+
+    private resolveSingleRoutineFileForLine(lineText: string, sourcePath: string): TFile | null {
+        const linkTexts = this.routineEngine.extractLinkTexts(lineText);
+        const resolved = linkTexts
+            .map((linkText) => this.routineEngine.resolveRoutineFile(linkText, sourcePath))
+            .filter((file): file is TFile => file instanceof TFile);
+
+        const uniqueByPath = [...new Map(resolved.map((file) => [file.path, file])).values()];
+        if (uniqueByPath.length !== 1) return null;
+        return uniqueByPath[0];
+    }
+
+    async handleRescheduleRoutine(editor: Editor, view: MarkdownView): Promise<void> {
+        if (!this.ensureDailyNoteView(view, 'Reschedule Routine')) return;
+        if (!view.file) return;
+
+        if (this.isFutureDailyNoteFile(view.file)) {
+            this.showLlrNotice('LLR: 未来日のデイリーノートではルーチン先送りを実行しません。');
+            return;
+        }
+
+        const cursor = editor.getCursor();
+        const lineIndex = cursor.line;
+        const lineText = editor.getLine(lineIndex);
+        if (!this.isRoutineRescheduleEligibleLine(lineText)) {
+            this.showLlrNotice('LLR: routine の先送りはチェックボックス行または skip 行で使ってください。');
+            return;
+        }
+        const baseDate = new Date();
+        baseDate.setHours(0, 0, 0, 0);
+
+        const marker = parseRoutineRescheduleMarker(lineText, baseDate);
+        if (!marker) {
+            this.showLlrNotice('LLR: @日付 が見つからないか、未来日として解釈できません。');
+            return;
+        }
+
+        const routineFile = this.resolveSingleRoutineFileForLine(lineText, view.file.path);
+        if (!routineFile) {
+            this.showLlrNotice('LLR: 先送り対象の routine リンクを1つだけ含む行で実行してください。');
+            return;
+        }
+
+        const routineNote = await this.routineEngine.readRoutineNote(routineFile);
+        if (!routineNote) {
+            this.showLlrNotice('LLR: routine ノートを読めませんでした。');
+            return;
+        }
+
+        if (routineNote.next_due !== marker.canonicalDate) {
+            await this.routineEngine.updateNextDue(routineFile, { nextDue: marker.canonicalDate });
+        }
+
+        const updatedLine = replaceRoutineRescheduleMarker(lineText, marker);
+        editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
+        editor.setCursor(lineIndex, updatedLine.length);
+        this.debugLog('Routine rescheduled from marker', {
+            lineIndex,
+            routinePath: routineFile.path,
+            nextDue: marker.canonicalDate,
+            originalLine: lineText,
+            updatedLine,
+        });
     }
 
     private removeEditorLine(editor: Editor, lineIndex: number, lineText: string): void {
