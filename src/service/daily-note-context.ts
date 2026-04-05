@@ -42,3 +42,15 @@ export function resolveDailyNoteDate(
 export function resolveReferenceDate(primaryDate: Date | null, fallbackDate: Date): Date {
     return primaryDate ? new Date(primaryDate) : new Date(fallbackDate);
 }
+
+function toDateOnlyTime(date: Date): number {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+export function resolveMutationReferenceDate(primaryDate: Date | null, fallbackDate: Date): Date {
+    if (!primaryDate) return new Date(fallbackDate);
+    if (toDateOnlyTime(primaryDate) > toDateOnlyTime(fallbackDate)) {
+        return new Date(fallbackDate);
+    }
+    return new Date(primaryDate);
+}

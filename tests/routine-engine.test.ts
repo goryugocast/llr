@@ -380,7 +380,7 @@ describe('RoutineEngine', () => {
             expect(results[0].file.path).toBe('routines/repeat/today.md');
         });
 
-        it('catches up overdue completion-anchored routines, saves next_due, and shows them only when due today', async () => {
+        it('catches up overdue completion-anchored routines for preview only and shows them only when due today', async () => {
             const routineFile = makeFile('routine/sticky.md');
             mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
             mockApp.metadataCache.getFileCache.mockReturnValue({
@@ -392,11 +392,11 @@ describe('RoutineEngine', () => {
             const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
 
             const results = await engine.fetchDueRoutines(new Date('2026-02-27T12:00:00'));
-            expect(updateSpy).toHaveBeenCalledWith(routineFile, { nextDue: '2026-02-28' });
+            expect(updateSpy).not.toHaveBeenCalled();
             expect(results).toHaveLength(0);
         });
 
-        it('shows overdue completion-anchored routines after catch-up when the normalized due date is today', async () => {
+        it('shows overdue completion-anchored routines after preview catch-up when the normalized due date is today', async () => {
             const routineFile = makeFile('routine/sticky-today.md');
             mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
             mockApp.metadataCache.getFileCache.mockReturnValue({
@@ -408,9 +408,10 @@ describe('RoutineEngine', () => {
             const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
 
             const results = await engine.fetchDueRoutines(new Date('2026-02-28T12:00:00'));
-            expect(updateSpy).toHaveBeenCalledWith(routineFile, { nextDue: '2026-02-28' });
+            expect(updateSpy).not.toHaveBeenCalled();
             expect(results).toHaveLength(1);
             expect(results[0].file.path).toBe('routine/sticky-today.md');
+            expect(results[0].next_due).toBe('2026-02-28');
         });
 
         it('treats repeat none as sticky when next_due remains in the past', async () => {
@@ -441,7 +442,7 @@ describe('RoutineEngine', () => {
             expect(results).toHaveLength(0);
         });
 
-        it('catches up overdue due-anchored routines and only shows them on the next valid day', async () => {
+        it('catches up overdue due-anchored routines for preview and only shows them on the next valid day', async () => {
             const routineFile = makeFile('routine/catchup.md');
             mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
             const frontmatter = {
@@ -454,14 +455,16 @@ describe('RoutineEngine', () => {
             });
 
             const notYet = await engine.fetchDueRoutines(new Date('2026-02-27T12:00:00'));
-            expect(updateSpy).toHaveBeenCalledWith(routineFile, { nextDue: '2026-03-03' });
+            expect(updateSpy).not.toHaveBeenCalled();
             expect(notYet).toHaveLength(0);
+            expect(frontmatter.next_due).toBe('2026-02-21');
 
             updateSpy.mockClear();
             const onNextValidDay = await engine.fetchDueRoutines(new Date('2026-03-03T12:00:00'));
             expect(onNextValidDay).toHaveLength(1);
             expect(onNextValidDay[0].file.path).toBe('routine/catchup.md');
             expect(updateSpy).not.toHaveBeenCalled();
+            expect(onNextValidDay[0].next_due).toBe('2026-03-03');
         });
 
         it('keeps overdue routines visible when rollover is explicitly enabled', async () => {
