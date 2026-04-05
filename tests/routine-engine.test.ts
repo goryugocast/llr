@@ -270,6 +270,44 @@ describe('RoutineEngine', () => {
             // phase: 2/21 -> 2/26 -> 3/03 ; must be strictly after today
             expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-03-03', repeat: undefined });
         });
+
+        it('advances from current next_due when @done mode is requested within the start_before window', async () => {
+            const mockFile = { path: 'routine/start-before-done.md' } as TFile;
+            const routineNote = {
+                file: mockFile,
+                frequency: { type: 'schedule', expression: 'every week on thu' } as any,
+                next_due: '2026-04-09',
+                start_before: 2,
+            };
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            await engine.processCompletion(
+                routineNote as any,
+                new Date('2026-04-08T09:00:00'),
+                { mode: 'advanceFromDue' }
+            );
+
+            expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-04-16', repeat: undefined });
+        });
+
+        it('ignores @done mode outside the start_before window and falls back to normal completion logic', async () => {
+            const mockFile = { path: 'routine/start-before-done-outside.md' } as TFile;
+            const routineNote = {
+                file: mockFile,
+                frequency: { type: 'schedule', expression: 'every week on thu' } as any,
+                next_due: '2026-04-09',
+                start_before: 2,
+            };
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            await engine.processCompletion(
+                routineNote as any,
+                new Date('2026-04-05T09:00:00'),
+                { mode: 'advanceFromDue' }
+            );
+
+            expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-04-09', repeat: undefined });
+        });
     });
 
     describe('Advanced Link & File Resolution', () => {
@@ -305,7 +343,9 @@ describe('RoutineEngine', () => {
             mockApp.metadataCache.getFirstLinkpathDest.mockReturnValue(mockFile);
 
             // 1. Schedule update
-            engine.scheduleUpdate(mockFile, 'src.md', new Date());
+            engine.scheduleUpdate(mockFile, 'src.md', {
+                completionDate: new Date('2026-02-22T09:00:00'),
+            });
             expect(vi.getTimerCount()).toBe(1);
 
             // 2. Cancel update (task unchecked)
