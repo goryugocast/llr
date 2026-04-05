@@ -38,6 +38,18 @@ export interface RoutineNote {
     rollover?: boolean;
 }
 
+export type RoutineCompletionMode = 'normal' | 'advanceFromDue';
+
+export interface RoutineCompletionRequest {
+    completionDate: Date;
+    mode?: RoutineCompletionMode;
+}
+
+interface PendingRoutineUpdate {
+    timer: ReturnType<typeof setTimeout>;
+    request: RoutineCompletionRequest;
+}
+
 export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'): Date {
     const cutoffTotalMinutes = parseCutoffMinutes(cutoffTimeHHmm);
     const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
@@ -53,7 +65,7 @@ export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'):
 export class RoutineEngine {
     private app: App;
     private routineFolder: string;
-    private pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    private pendingTimers: Map<string, PendingRoutineUpdate> = new Map();
     private onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     private onNotice?: (message: string, timeout?: number) => void;
 
@@ -166,6 +178,22 @@ export class RoutineEngine {
         }
 
         throw new Error('Due-anchor catch-up exceeded iteration limit');
+    }
+
+    private shouldAdvanceFromCurrentDue(
+        note: RoutineNote,
+        completionDate: Date,
+        mode: RoutineCompletionMode
+    ): boolean {
+        if (mode !== 'advanceFromDue') return false;
+        if (!note.next_due) return false;
+
+        const leadDays = note.start_before ?? 0;
+        if (leadDays <= 0) return false;
+
+        const completionDay = toDateString(this.normalizeToDateOnly(completionDate));
+        const visibleFrom = toDateString(this.addDays(fromDateString(note.next_due), -leadDays));
+        return completionDay >= visibleFrom && completionDay <= note.next_due;
     }
 
     /**
@@ -416,14 +444,20 @@ export class RoutineEngine {
      * @param routineNote - The resolved routine note
      * @param completionDate - The date the task was marked complete (for 'after' type)
      */
-    async processCompletion(routineNote: RoutineNote, completionDate: Date): Promise<void> {
+    async processCompletion(
+        routineNote: RoutineNote,
+        completionDate: Date,
+        options: { mode?: RoutineCompletionMode } = {}
+    ): Promise<void> {
         const { file, next_due } = routineNote;
         let { frequency } = routineNote;
+        const requestedMode = options.mode ?? 'normal';
         this.emitDebugEvent('processCompletion:start', {
             file: file.path,
             completionAt: completionDate.toISOString(),
             hasFrequency: !!frequency,
             next_due: next_due ?? null,
+            mode: requestedMode,
         });
 
         try {
@@ -437,16 +471,19 @@ export class RoutineEngine {
 
             const completionDay = this.normalizeToDateOnly(completionDate);
             const isDueAnchored = usesDueAnchor(frequency);
-            const newNextDue = isDueAnchored
-                ? this.calculateNextDueForDueAnchor(frequency, next_due, completionDay)
-                : calculateNextDue(frequency, completionDay);
+            const shouldAdvanceFromDue = this.shouldAdvanceFromCurrentDue(routineNote, completionDay, requestedMode);
+            const newNextDue = shouldAdvanceFromDue && next_due
+                ? calculateNextDue(frequency, fromDateString(next_due))
+                : isDueAnchored
+                    ? this.calculateNextDueForDueAnchor(frequency, next_due, completionDay)
+                    : calculateNextDue(frequency, completionDay);
 
             await this.updateNextDue(file, { nextDue: newNextDue, repeat: repeatToAppend });
             this.emitDebugEvent('processCompletion:done', {
                 file: file.path,
                 newNextDue,
                 baseDate: toDateString(completionDay),
-                anchorMode: isDueAnchored ? 'due' : 'completion',
+                anchorMode: shouldAdvanceFromDue ? 'atdone' : isDueAnchored ? 'due' : 'completion',
             });
         } catch (e) {
             console.error('[LLR] processCompletion error:', e);
@@ -466,13 +503,13 @@ export class RoutineEngine {
      * Schedule or cancel a debounced routine update for a specific file.
      * Use file path as key for stable debouncing across any state change.
      */
-    scheduleUpdate(routineFile: TFile, sourcePath: string, completionDate: Date | null): void {
+    scheduleUpdate(routineFile: TFile, sourcePath: string, request: RoutineCompletionRequest | null): void {
         const key = `${sourcePath}:${routineFile.path}`;
 
         // 1. Cancel any existing pending update for this specific file
         const existing = this.pendingTimers.get(key);
         if (existing) {
-            clearTimeout(existing);
+            clearTimeout(existing.timer);
             this.pendingTimers.delete(key);
             this.emitDebugEvent('scheduleUpdate:cancel-existing', {
                 key,
@@ -482,17 +519,18 @@ export class RoutineEngine {
         }
 
         // 2. If task was marked complete, schedule renewal
-        if (completionDate) {
+        if (request) {
             const scheduledAt = new Date();
             const executeAt = new Date(scheduledAt.getTime() + DEBOUNCE_DELAY_MS);
             this.emitDebugEvent('scheduleUpdate:scheduled', {
                 key,
                 routineFile: routineFile.path,
                 sourcePath,
-                completionAt: completionDate.toISOString(),
+                completionAt: request.completionDate.toISOString(),
                 scheduledAt: scheduledAt.toISOString(),
                 executeAt: executeAt.toISOString(),
                 delayMs: DEBOUNCE_DELAY_MS,
+                mode: request.mode ?? 'normal',
             });
             const timer = setTimeout(async () => {
                 console.log(`[LLR] Executing routine update for: ${routineFile.basename}`);
@@ -505,7 +543,7 @@ export class RoutineEngine {
                 });
                 const routineNote = await this.readRoutineNote(routineFile);
                 if (routineNote) {
-                    await this.processCompletion(routineNote, completionDate);
+                    await this.processCompletion(routineNote, request.completionDate, { mode: request.mode });
                 } else {
                     this.emitDebugEvent('scheduleUpdate:missing-routine-note', {
                         key,
@@ -514,7 +552,7 @@ export class RoutineEngine {
                 }
             }, DEBOUNCE_DELAY_MS);
 
-            this.pendingTimers.set(key, timer);
+            this.pendingTimers.set(key, { timer, request });
         } else {
             this.emitDebugEvent('scheduleUpdate:not-scheduled', {
                 key,
@@ -531,8 +569,8 @@ export class RoutineEngine {
      */
     async flushAll(): Promise<void> {
         this.emitDebugEvent('flushAll:start', { pendingCount: this.pendingTimers.size });
-        for (const [key, timer] of this.pendingTimers.entries()) {
-            clearTimeout(timer);
+        for (const [key, pending] of this.pendingTimers.entries()) {
+            clearTimeout(pending.timer);
             this.pendingTimers.delete(key);
 
             // parse key: sourcePath:routinePath
@@ -549,9 +587,9 @@ export class RoutineEngine {
                         key,
                         routineFile: file.path,
                     });
-                    // During flushAll, we don't know the exact completion date easily, 
-                    // so we use NOW, which is safe for most cases.
-                    await this.processCompletion(routineNote, new Date());
+                    await this.processCompletion(routineNote, pending.request.completionDate, {
+                        mode: pending.request.mode,
+                    });
                 }
             }
         }

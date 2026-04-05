@@ -1,7 +1,7 @@
 import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, moment, normalizePath } from 'obsidian';
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
 import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
-import { RoutineEngine, type RoutineEngineDebugEvent } from './service/routine-engine';
+import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent } from './service/routine-engine';
 import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
@@ -32,6 +32,13 @@ interface DebugRecord {
     source: 'plugin' | 'routine-engine';
     message: string;
     data?: unknown;
+}
+
+interface RoutineCompletionSnapshotEntry {
+    totalCount: number;
+    completedCount: number;
+    completedSignatures: Set<string>;
+    atDoneCompletedSignatures: Set<string>;
 }
 
 const DEFAULT_SETTINGS: LlrSettings = {
@@ -208,7 +215,7 @@ export default class LlrPlugin extends Plugin {
     private scheduleValidationTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private lastScheduleValidationError: Map<string, string> = new Map();
     private metadataChangedTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-    private routineCompletionSnapshotByFile: Map<string, Map<string, { totalCount: number; completedCount: number }>> = new Map();
+    private routineCompletionSnapshotByFile: Map<string, Map<string, RoutineCompletionSnapshotEntry>> = new Map();
     private dailyNoteAutoInsertTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private debugFolderEnsured = false;
@@ -1370,19 +1377,46 @@ export default class LlrPlugin extends Plugin {
         if (!this.isDailyNoteFile(file)) return;
         if (this.routineCompletionSnapshotByFile.has(file.path)) return;
 
-        const snapshot = this.buildRoutineCompletionSnapshot(file);
-        if (!snapshot) return;
+        void this.primeRoutineCompletionSnapshotAsync(file);
+    }
 
+    private async primeRoutineCompletionSnapshotAsync(file: TFile): Promise<void> {
+        const snapshot = await this.buildRoutineCompletionSnapshot(file);
+        if (!snapshot) return;
         this.routineCompletionSnapshotByFile.set(file.path, snapshot);
     }
 
-    private buildRoutineCompletionSnapshot(file: TFile): Map<string, { totalCount: number; completedCount: number }> | null {
+    private getActiveEditorContentForFile(file: TFile): string | null {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view?.file || view.file.path !== file.path) return null;
+        return view.editor.getValue();
+    }
+
+    private hasAtDoneMarker(lineText: string): boolean {
+        return /(^|\s)@done\b/i.test(lineText);
+    }
+
+    private createEmptyRoutineCompletionSnapshotEntry(): RoutineCompletionSnapshotEntry {
+        return {
+            totalCount: 0,
+            completedCount: 0,
+            completedSignatures: new Set<string>(),
+            atDoneCompletedSignatures: new Set<string>(),
+        };
+    }
+
+    private buildRoutineCompletionSignature(lineNumber: number, lineText: string): string {
+        const normalized = lineText.trim();
+        return normalized ? `${lineNumber}:${normalized}` : `${lineNumber}:__completed__`;
+    }
+
+    private async buildRoutineCompletionSnapshot(file: TFile): Promise<Map<string, RoutineCompletionSnapshotEntry> | null> {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache || !cache.listItems) {
             return null;
         }
 
-        const currentSnapshot = new Map<string, { totalCount: number; completedCount: number }>();
+        const currentSnapshot = new Map<string, RoutineCompletionSnapshotEntry>();
         const listItems = [...cache.listItems]
             .filter((item) => typeof item.task === 'string')
             .sort((a, b) =>
@@ -1397,6 +1431,9 @@ export default class LlrPlugin extends Plugin {
         if (listItems.length === 0 || links.length === 0) {
             return currentSnapshot;
         }
+
+        const activeContent = this.getActiveEditorContentForFile(file);
+        const lines = activeContent?.split('\n') ?? null;
 
         let linkCursor = 0;
         const resolvedRoutineCache = new Map<string, TFile | null>();
@@ -1430,11 +1467,22 @@ export default class LlrPlugin extends Plugin {
                 seenRoutinePathsInItem.add(routineFile.path);
 
                 const isComplete = item.task === 'x';
-                const prevCounts = currentSnapshot.get(routineFile.path) ?? { totalCount: 0, completedCount: 0 };
-                currentSnapshot.set(routineFile.path, {
-                    totalCount: prevCounts.totalCount + 1,
-                    completedCount: prevCounts.completedCount + (isComplete ? 1 : 0),
-                });
+                const lineNumber = item.position.start.line;
+                const lineText = lines?.[lineNumber] ?? '';
+                const signature = isComplete ? this.buildRoutineCompletionSignature(lineNumber, lineText) : null;
+                const hasAtDone = isComplete && lineText.length > 0 && this.hasAtDoneMarker(lineText);
+                const entry = currentSnapshot.get(routineFile.path) ?? this.createEmptyRoutineCompletionSnapshotEntry();
+                entry.totalCount += 1;
+                if (isComplete) {
+                    entry.completedCount += 1;
+                    if (signature) {
+                        entry.completedSignatures.add(signature);
+                    }
+                    if (hasAtDone && signature) {
+                        entry.atDoneCompletedSignatures.add(signature);
+                    }
+                }
+                currentSnapshot.set(routineFile.path, entry);
             }
         }
 
@@ -1633,7 +1681,7 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
-        const currentSnapshot = this.buildRoutineCompletionSnapshot(file);
+        const currentSnapshot = await this.buildRoutineCompletionSnapshot(file);
         if (!currentSnapshot) {
             this.routineCompletionSnapshotByFile.delete(file.path);
             return;
@@ -1660,8 +1708,8 @@ export default class LlrPlugin extends Plugin {
         ]);
 
         for (const routinePath of routinePaths) {
-            const current = currentSnapshot.get(routinePath) ?? { totalCount: 0, completedCount: 0 };
-            const prev = previousSnapshot.get(routinePath) ?? { totalCount: 0, completedCount: 0 };
+            const current = currentSnapshot.get(routinePath) ?? this.createEmptyRoutineCompletionSnapshotEntry();
+            const prev = previousSnapshot.get(routinePath) ?? this.createEmptyRoutineCompletionSnapshotEntry();
 
             if (prev.completedCount === current.completedCount) {
                 continue;
@@ -1672,6 +1720,18 @@ export default class LlrPlugin extends Plugin {
 
             const completionDelta = current.completedCount - prev.completedCount;
             const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
+            const addedCompletedSignatures = completionDelta > 0
+                ? [...current.completedSignatures].filter((signature) => !prev.completedSignatures.has(signature))
+                : [];
+            const hasAtDoneCompletion = addedCompletedSignatures.some((signature) =>
+                current.atDoneCompletedSignatures.has(signature)
+            );
+            const completionRequest: RoutineCompletionRequest | null = completionDelta > 0
+                ? {
+                    completionDate: completionBaseDate,
+                    mode: hasAtDoneCompletion ? 'advanceFromDue' : 'normal',
+                }
+                : null;
             this.debugLog('Routine completion state changed', {
                 file: file.path,
                 routinePath,
@@ -1682,13 +1742,15 @@ export default class LlrPlugin extends Plugin {
                     to: current.completedCount,
                     delta: completionDelta,
                 },
+                addedCompletedSignatures,
+                completionMode: completionRequest?.mode ?? null,
             });
 
             // Trigger engine only when the count of completed items changes.
             this.routineEngine.scheduleUpdate(
                 routineFile,
                 file.path,
-                completionDelta > 0 ? completionBaseDate : null
+                completionRequest
             );
         }
     }
