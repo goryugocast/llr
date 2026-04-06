@@ -13,17 +13,18 @@
 - `Open Summary View`
 - `Toggle Task`
 - `Adjust Time (1m)`
-- `Fix Duration Drift (All Completed Tasks)`
-- `Retro Complete Task`
-- `Start Task (Force)`
-- `Stop Task (Force)`
-- `Start Task (Align to Previous Completion)`
-- `Interrupt Task`
-- `Reset Task (Keep Estimate)`
+- `Start Task`
+- `Complete Task`
+- `Start Task at Previous Time`
 - `Duplicate Task`
-- `Skip Task (Log Only)`
+- `Skip Task`
 - `Reschedule Routine`
 - `Insert Routine`
+- 内部用として残す非表示コマンド/アクション:
+  - `Interrupt Task`
+  - `Fix Duration Drift (All Completed Tasks)`
+  - `Reset Task (Keep Estimate)`
+  - `Retro Complete Task`
 
 ### B. Core Services
 - `src/service/task-transformer.ts`
@@ -71,6 +72,9 @@
 - 長押し成立後のクリック抑止で二重実行を防止。
 - モバイルでは触覚フィードバックを実施（短押し1回、長押し2連続）。
 - 関連する軽微な補正（例: duration drift 補正）は、通常編集監視ではなく、LLR のコマンド / チェック操作にぶら下げて実行する。
+- 早めに着手したい整理として、長押し挙動は将来的に「内部コマンド相当の単位」を定義し、その呼び出し元として再整理する。
+- すぐやること:
+  - もしタップ動作が別実装経路になっている箇所があれば、同じ内部関数を呼ぶように統一する。
 
 ### E. Routine Insert / Daily Note Auto Insert
 - `Insert Routine` コマンドで当日 `due` のルーチンを挿入。
