@@ -438,8 +438,8 @@ export default class LlrPlugin extends Plugin {
     private debugLog(message: string, data?: any) {
         const timestamp = new Date().toISOString();
         const logMsg = `[LLR Debug ${timestamp}] ${message}`;
-        console.log(logMsg);
-        if (data) console.log(data);
+        console.debug(logMsg);
+        if (data) console.debug(data);
         this.emitDebugRecord('plugin', message, data);
     }
 
@@ -1478,7 +1478,6 @@ export default class LlrPlugin extends Plugin {
     }
 
     onunload() {
-        console.log('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
         if (this.statusBarDebounce) clearTimeout(this.statusBarDebounce);
         if (this.refreshTimer) clearInterval(this.refreshTimer);

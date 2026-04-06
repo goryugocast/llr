@@ -1,4 +1,4 @@
-# LLR: Live Life Recording system
+# LLR — Live Life Recording
 
 > **日本語ドキュメント:** https://goryugo.com/topics/llr
 
