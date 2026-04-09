@@ -5,10 +5,11 @@ import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEv
 import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
-import { hasAnyRoutineAtDoneMarker, hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
+import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { computeSummaryData } from './service/summary-calculator';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
+import { TaskParser } from './service/task-parser';
 
 interface LlrSettings {
     debugModeEnabled: boolean;
@@ -48,6 +49,8 @@ interface LlrPostActionContext {
     view: MarkdownView;
     file: TFile;
     reason: string;
+    skipAtDoneLineIndexes?: Set<number>;
+    processedAtDoneCompletions?: Map<string, Set<string>>;
 }
 
 interface LlrPostActionPassResult {
@@ -1365,8 +1368,8 @@ export default class LlrPlugin extends Plugin {
         return view.editor.getValue();
     }
 
-    private hasAtDoneMarker(lineText: string): boolean {
-        return hasAnyRoutineAtDoneMarker(lineText);
+    private hasPendingAtDoneMarker(lineText: string): boolean {
+        return hasPendingRoutineAtDoneMarker(lineText);
     }
 
     private createEmptyRoutineCompletionSnapshotEntry(): RoutineCompletionSnapshotEntry {
@@ -1466,7 +1469,7 @@ export default class LlrPlugin extends Plugin {
                 const lineNumber = item.position.start.line;
                 const lineText = lines?.[lineNumber] ?? '';
                 const signature = isComplete ? this.buildRoutineCompletionSignature(lineNumber, lineText) : null;
-                const hasAtDone = isComplete && lineText.length > 0 && this.hasAtDoneMarker(lineText);
+                const hasAtDone = isComplete && lineText.length > 0 && this.hasPendingAtDoneMarker(lineText);
                 const entry = currentSnapshot.get(routineFile.path) ?? this.createEmptyRoutineCompletionSnapshotEntry();
                 entry.totalCount += 1;
                 if (isComplete) {
@@ -1677,6 +1680,18 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        const processedAtDoneCompletions = new Map<string, Set<string>>();
+        if (activeView?.file?.path === file.path) {
+            await this.processPendingRoutineAtDoneMarkersInEditor({
+                editor: activeView.editor,
+                view: activeView,
+                file,
+                reason: 'metadata-changed',
+                processedAtDoneCompletions,
+            });
+        }
+
         const currentSnapshot = await this.buildRoutineCompletionSnapshot(file);
         if (!currentSnapshot) {
             this.routineCompletionSnapshotByFile.delete(file.path);
@@ -1716,13 +1731,16 @@ export default class LlrPlugin extends Plugin {
 
             const completionDelta = current.completedCount - prev.completedCount;
             const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
+            const suppressedCompletedSignatures = processedAtDoneCompletions.get(routinePath) ?? new Set<string>();
             const addedCompletedSignatures = completionDelta > 0
-                ? [...current.completedSignatures].filter((signature) => !prev.completedSignatures.has(signature))
+                ? [...current.completedSignatures]
+                    .filter((signature) => !prev.completedSignatures.has(signature))
+                    .filter((signature) => !suppressedCompletedSignatures.has(signature))
                 : [];
             const hasAtDoneCompletion = addedCompletedSignatures.some((signature) =>
                 current.atDoneCompletedSignatures.has(signature)
             );
-            const completionRequest: RoutineCompletionRequest | null = completionDelta > 0
+            const completionRequest: RoutineCompletionRequest | null = addedCompletedSignatures.length > 0
                 ? {
                     completionDate: completionBaseDate,
                     mode: hasAtDoneCompletion ? 'advanceFromDue' : 'normal',
@@ -1738,6 +1756,7 @@ export default class LlrPlugin extends Plugin {
                     to: current.completedCount,
                     delta: completionDelta,
                 },
+                suppressedCompletedSignatures: [...suppressedCompletedSignatures],
                 addedCompletedSignatures,
                 completionMode: completionRequest?.mode ?? null,
             });
@@ -1857,8 +1876,13 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
+        const shouldSkipAtDoneOnCurrentLine = forceAction === 'start'
+            || (!forceAction && lineText.trim().startsWith('- [ ]'));
+
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        await this.runPostLlrActionAdjustments(editor, view, 'toggle task');
+        await this.runPostLlrActionAdjustments(editor, view, 'toggle task', {
+            skipAtDoneLineIndexes: shouldSkipAtDoneOnCurrentLine ? new Set([cursor.line]) : undefined,
+        });
     }
 
     private resolveDefaultToggleDelegatedAction(lineText: string): 'taskify' | 'complete' | 'duplicate' | undefined {
@@ -1897,7 +1921,9 @@ export default class LlrPlugin extends Plugin {
         });
         if (!result) return;
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
-        await this.runPostLlrActionAdjustments(editor, view, 'start task from previous completion');
+        await this.runPostLlrActionAdjustments(editor, view, 'start task from previous completion', {
+            skipAtDoneLineIndexes: new Set([cursor.line]),
+        });
     }
 
     async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
@@ -1978,11 +2004,16 @@ export default class LlrPlugin extends Plugin {
         return changedCount;
     }
 
-    private async runPostLlrActionAdjustments(editor: Editor, view: MarkdownView, reason: string): Promise<void> {
+    private async runPostLlrActionAdjustments(
+        editor: Editor,
+        view: MarkdownView,
+        reason: string,
+        options: { skipAtDoneLineIndexes?: Set<number> } = {}
+    ): Promise<void> {
         const file = view.file;
         if (!file) return;
 
-        const context: LlrPostActionContext = { editor, view, file, reason };
+        const context: LlrPostActionContext = { editor, view, file, reason, skipAtDoneLineIndexes: options.skipAtDoneLineIndexes };
         const results: LlrPostActionPassResult[] = [
             {
                 kind: 'routine-atdone-marker',
@@ -2055,6 +2086,10 @@ export default class LlrPlugin extends Plugin {
         return /^- \[( |\/|x)\]/.test(trimmed) || /^- skip:\s*/i.test(trimmed);
     }
 
+    private isRoutineAtDoneEligibleLine(lineText: string): boolean {
+        return this.isRoutineRescheduleEligibleLine(lineText);
+    }
+
     private async processPendingRoutineAtDoneMarkersInEditor(context: LlrPostActionContext): Promise<number> {
         const { editor, view, file, reason } = context;
         if (!this.ensureDailyNoteView(view, '@done')) return 0;
@@ -2065,7 +2100,8 @@ export default class LlrPlugin extends Plugin {
 
         for (let lineIndex = 0; lineIndex <= editor.lastLine(); lineIndex++) {
             const lineText = editor.getLine(lineIndex);
-            if (!lineText.trim().startsWith('- [x]')) continue;
+            if (context.skipAtDoneLineIndexes?.has(lineIndex)) continue;
+            if (!this.isRoutineAtDoneEligibleLine(lineText)) continue;
             if (!hasPendingRoutineAtDoneMarker(lineText)) continue;
 
             const routineFile = this.resolveSingleRoutineFileForLine(lineText, file.path);
@@ -2077,9 +2113,13 @@ export default class LlrPlugin extends Plugin {
             const updatedLine = replacePendingRoutineAtDoneMarker(lineText);
             if (!updatedLine) continue;
 
-            const shouldProcessDirectly = this.wasLinePreviouslyCompletedForRoutine(file, routineFile.path, lineIndex);
-            if (shouldProcessDirectly) {
-                await this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' });
+            await this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' });
+
+            if (context.processedAtDoneCompletions && TaskParser.parseLine(lineText).status === 'x') {
+                const signature = this.buildRoutineCompletionSignature(lineIndex, updatedLine);
+                const signatures = context.processedAtDoneCompletions.get(routineFile.path) ?? new Set<string>();
+                signatures.add(signature);
+                context.processedAtDoneCompletions.set(routineFile.path, signatures);
             }
 
             editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
@@ -2090,7 +2130,6 @@ export default class LlrPlugin extends Plugin {
                 lineIndex,
                 routinePath: routineFile.path,
                 completionBaseDate: completionBaseDate.toISOString(),
-                directProcess: shouldProcessDirectly,
                 originalLine: lineText,
                 updatedLine,
             });
