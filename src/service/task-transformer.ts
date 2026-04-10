@@ -18,6 +18,13 @@ export interface CheckboxPressOptions {
     unstartedLongPressStartTime?: string;
 }
 
+const TASK_STATUS_PREFIX_REGEX = /^- \[( |\/|x)\] ?/;
+
+export function getChecklistContentStartCh(lineText: string): number {
+    const match = lineText.match(TASK_STATUS_PREFIX_REGEX);
+    return match ? match[0].length : 0;
+}
+
 export function transformTaskLine(
     lineText: string,
     now: Date,

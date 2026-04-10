@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     adjustTaskTimeByMinutes,
+    getChecklistContentStartCh,
     normalizeCompletedTaskActualDuration,
     transformCheckboxPress,
     transformTaskLine,
@@ -32,6 +33,16 @@ describe('task-transformer v2', () => {
                 type: 'update',
                 content: '- [ ] 09:00 [[朝のルーチン]] (15m)',
             });
+        });
+    });
+
+    describe('cursor helpers', () => {
+        it('returns the content start right after a running checklist prefix', () => {
+            expect(getChecklistContentStartCh('- [/] 18:00 原稿修正 17:30 - (30m)')).toBe(6);
+        });
+
+        it('returns 0 when the line has no explicit checklist prefix', () => {
+            expect(getChecklistContentStartCh('原稿修正')).toBe(0);
         });
     });
 
