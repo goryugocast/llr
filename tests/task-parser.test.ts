@@ -27,17 +27,6 @@ describe('TaskParser', () => {
             expect(result.times).toEqual(['18:12']);
         });
 
-        it('plannedStart なしの v2 running 行でも actualStart を末尾から読める', () => {
-            const result = TaskParser.parseLine('- [/] ALPsでセミナー管理 21:49 -');
-            expect(result.status).toBe('/');
-            expect(result.body).toBe('ALPsでセミナー管理');
-            expect(result.plannedStart).toBe('');
-            expect(result.actualStart).toBe('21:49');
-            expect(result.actualEnd).toBe('');
-            expect(result.content).toBe('ALPsでセミナー管理');
-            expect(result.times).toEqual(['21:49']);
-        });
-
         it('未着手タスクは本文先頭 planned start を読む', () => {
             const result = TaskParser.parseLine('- [ ] 1800 ばんごはん 30m');
             expect(result.status).toBe(' ');

@@ -2314,17 +2314,15 @@ export default class LlrPlugin extends Plugin {
         const now = new Date();
         const endTimeStr = this.formatTime(now);
 
-        const parsed = TaskParser.parseLine(lineText);
-        const startTimeStr = parsed.actualStart;
-        if (parsed.status !== '/' || !startTimeStr) {
-            this.debugLog('Complete failed: No running start time found in line', { lineText, parsed });
+        // Regex to find start time: - [/] HH:mm ...
+        const match = lineText.match(/- \[\/\]\s*(\d{2}:\d{2})/);
+        if (!match) {
+            this.debugLog('Complete failed: No start time found in line', { lineText });
             this.showLlrNotice('LLR: Start time not found.');
             return;
         }
-
+        const startTimeStr = match[1];
         const duration = calculateDuration(startTimeStr, endTimeStr);
-        const actualDuration = `${duration}m`;
-        const estimate = parsed.estimate === actualDuration ? '' : parsed.estimate;
 
         this.debugLog('Completing Task...', {
             lineIndex,
@@ -2334,14 +2332,27 @@ export default class LlrPlugin extends Plugin {
             duration
         });
 
-        const newLine = TaskParser.serialize({
-            ...parsed,
-            status: 'x',
-            actualEnd: endTimeStr,
-            estimate,
-            actualDuration,
-            marker: null,
-        });
+        // ALLタイムスタンプ、ダッシュ、経過時間（括弧）等のゴミを根こそぎ消す正規表現
+        const cleanupRegex = /(\d{2}:\d{2}\s*(-|>)?\s*|\(\d+m( > \d+m)?\)\s*)+/g;
+        let content = lineText.replace(/^- \[\/\]\s*\d{2}:\d{2}(?:\s*-\s*)?/, '').trim();
+        content = content.replace(cleanupRegex, '').trim();
+
+        // オリジナルのテキストから、変更前の「見積もり」を抽出（XXm > YYm の形式も考慮）
+        const estimateMatch = lineText.match(/\(([^)]+)m\)/);
+        let timeInfo = `(${duration}m)`;
+
+        if (estimateMatch) {
+            // (30m > 45m) のような場合、最初の 30 を見積もりとして採用
+            const estimate = estimateMatch[1].split('>')[0].trim();
+            if (estimate !== duration.toString()) {
+                timeInfo = `(${estimate}m > ${duration}m)`;
+            }
+        }
+
+        const indentMatch = lineText.match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1] : '';
+        const taskSuffix = content.trim();
+        const newLine = `${indent}- [x] ${startTimeStr} - ${endTimeStr} ${timeInfo}${taskSuffix ? ` ${taskSuffix}` : ''}`;
 
         // setLine よりも replaceRange の方が Live Preview のウィジェット更新がかかりやすい
         editor.replaceRange(newLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
