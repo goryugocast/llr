@@ -1,5 +1,5 @@
-const PENDING_ATDONE_PATTERN = /(^|\s)([@＠])done\b/i;
-const PROCESSED_ATDONE_PATTERN = /(^|\s)→done\b/i;
+const PENDING_ATDONE_PATTERN = /(^|\s)([@＠])done\s*$/i;
+const PROCESSED_ATDONE_PATTERN = /(^|\s)→done\s*$/i;
 
 export function hasPendingRoutineAtDoneMarker(lineText: string): boolean {
     return PENDING_ATDONE_PATTERN.test(lineText);

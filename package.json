@@ -9,7 +9,9 @@
     "build": "node esbuild.config.mjs production",
     "build:sync": "OBSIDIAN_SYNC_ON_BUILD=1 node esbuild.config.mjs production",
     "test": "vitest",
-    "changelog:update": "bash scripts/update_changelog.sh"
+    "changelog:update": "bash scripts/update_changelog.sh",
+    "migrate:legacy-to-v2": "node scripts/migrate_legacy_task_lines_to_v2.js",
+    "migrate:v2-to-legacy": "node scripts/revert_v2_task_lines_to_legacy.js"
   },
   "keywords": [
     "obsidian",

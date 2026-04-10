@@ -1,3 +1,5 @@
+import { TaskParser } from './task-parser';
+
 export type DurationCalculator = (start: string, end: string) => number;
 
 interface LineParseResult {
@@ -31,7 +33,6 @@ export function estimateFromLineEnd(text: string): number {
     const singleParen = text.match(/\(\s*(\d+(?:\.\d+)?)\s*(h|m|min)\s*\)/i);
     if (singleParen) return toMinutes(singleParen[1], singleParen[2]);
 
-    // "30m" / "60min" / "1.5h" at line end
     const bare = text.match(/(\d+(?:\.\d+)?)\s*(h|m|min)\s*$/i);
     if (bare) return toMinutes(bare[1], bare[2]);
 
@@ -64,9 +65,9 @@ export function computeStatusBarMetrics(
 
         let remainingForThisLine = mins;
         if (isRunning) {
-            const timeMatch = parsed.content.match(/(\d{2}:\d{2})/);
-            if (timeMatch) {
-                const elapsed = durationCalculator(timeMatch[1], nowTime);
+            const task = TaskParser.parseLine(lines[i]);
+            if (task.actualStart) {
+                const elapsed = durationCalculator(task.actualStart, nowTime);
                 remainingForThisLine = Math.max(0, mins - elapsed);
             }
         }
