@@ -7,7 +7,7 @@ export interface ParsedRoutineRescheduleMarker {
     canonicalDate: string;
 }
 
-const MARKER_PATTERN = /(^|\s)([@＠])(\d{4}-\d{1,2}-\d{1,2}|\d{4}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)(?=\s|$)/g;
+const MARKER_PATTERN = /(^|\s)([@＠])(\d{4}-\d{1,2}-\d{1,2}|\d{4}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)\s*$/;
 const ONE_YEAR_MS = 366 * 24 * 60 * 60 * 1000;
 
 function normalizeDateOnly(date: Date): Date {
@@ -76,10 +76,12 @@ function parseMarkerToDate(rawMarker: string, baseDate: Date): string | null {
 }
 
 export function parseRoutineRescheduleMarker(lineText: string, baseDate: Date): ParsedRoutineRescheduleMarker | null {
-    const matches = [...lineText.matchAll(MARKER_PATTERN)];
-    if (matches.length !== 1) return null;
-
-    const match = matches[0];
+    const match = lineText.match(MARKER_PATTERN);
+    if (!match) return null;
+    const prelude = lineText.slice(0, match.index ?? 0);
+    if (prelude.match(/(^|\s)([@＠])(\d{4}-\d{1,2}-\d{1,2}|\d{4}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)(?=\s|$)/)) {
+        return null;
+    }
     const prefix = match[1] ?? '';
     const rawMarker = match[3] ?? '';
     const canonicalDate = parseMarkerToDate(rawMarker, baseDate);

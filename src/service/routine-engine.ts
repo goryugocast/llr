@@ -415,7 +415,7 @@ export class RoutineEngine {
 
                 if (repairNeeded) {
                     this.emitDebugEvent('updateNextDue:repair-frontmatter', { file: file.path });
-                    console.log(`[LLR] Repairing malformed frontmatter for ${file.path}`);
+                    console.debug(`[LLR] Repairing malformed frontmatter for ${file.path}`);
                     await this.app.vault.modify(file, lines.join('\n'));
                     this.emitNotice('LLR: YAMLを修復しました', 3000);
                 }
@@ -533,7 +533,7 @@ export class RoutineEngine {
                 mode: request.mode ?? 'normal',
             });
             const timer = setTimeout(async () => {
-                console.log(`[LLR] Executing routine update for: ${routineFile.basename}`);
+                console.debug(`[LLR] Executing routine update for: ${routineFile.basename}`);
                 this.pendingTimers.delete(key);
                 this.emitDebugEvent('scheduleUpdate:timer-fired', {
                     key,
