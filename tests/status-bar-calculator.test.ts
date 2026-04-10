@@ -26,9 +26,9 @@ describe('status-bar-calculator', () => {
             const lines = [
                 'Task 30m',
                 'Task 30m memo',
-                '- [/] Running 09:00 - (60m)',
+                '- [/] 09:00 - Running (60m)',
                 '  Indented 50m',
-                '- [x] Done 10:00 - 10:30 (30m)',
+                '- [x] 10:00 - 10:30 (30m)',
             ];
 
             const result = computeStatusBarMetrics(lines, 2, '09:30', calculateDuration);

@@ -7,9 +7,6 @@ export interface SummaryItem {
     displayText: string; // タスク名のみ（時刻・見積を除いた純粋なコンテンツ）
     times: string[];    // ['09:00', '10:23'] など
     estimate: string;   // '58m' など（表示用）
-    plannedStart: string;
-    actualStart: string;
-    actualEnd: string;
     line: number;
     status: string;
     isDone: boolean;
@@ -99,9 +96,6 @@ export function computeSummaryData(
             displayText: parsed.content,
             times: parsed.times,
             estimate: parsed.estimate,
-            plannedStart: parsed.plannedStart,
-            actualStart: parsed.actualStart,
-            actualEnd: parsed.actualEnd,
             line: i,
             status: parsed.status,
             isDone,
@@ -125,12 +119,12 @@ export function computeSummaryData(
 
     for (const item of doneItems) {
         if (item.isDone) {
-            if (item.actualStart && item.actualEnd) {
-                item.displayStartTime = item.actualStart;
-                item.displayEndTime = item.actualEnd;
-            } else if (item.actualStart) {
-                item.displayStartTime = item.actualStart;
-                item.displayEndTime = item.actualStart;
+            if (item.times.length >= 2) {
+                item.displayStartTime = item.times[0];
+                item.displayEndTime = item.times[1];
+            } else if (item.times.length === 1) {
+                item.displayStartTime = item.times[0];
+                item.displayEndTime = item.times[0];
             }
             item.isProjected = false;
         }
@@ -138,7 +132,7 @@ export function computeSummaryData(
 
     let plannedAnchorMinutes = nowH * 60 + nowM;
     for (const item of runningItems) {
-        const startTimeStr = item.actualStart || nowTime;
+        const startTimeStr = item.times.length > 0 ? item.times[0] : nowTime;
         item.displayStartTime = startTimeStr;
         const est = item.duration > 0 ? item.duration : 0;
         const startAbs = resolveRunningStartAbsoluteMinutes(startTimeStr, plannedAnchorMinutes);
@@ -455,7 +449,7 @@ function recomputeFutureDisplayTimes(items: SummaryPresentationItem[], nowTime: 
     let plannedAnchorMinutes = nowMinutes;
     for (const item of items) {
         if (item.isRunning) {
-            const startTimeStr = item.actualStart || nowTime;
+            const startTimeStr = item.times.length > 0 ? item.times[0] : nowTime;
             item.displayStartTime = startTimeStr;
             const est = item.duration > 0 ? item.duration : 0;
             const startAbs = resolveRunningStartAbsoluteMinutes(startTimeStr, plannedAnchorMinutes);

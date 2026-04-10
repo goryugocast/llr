@@ -370,7 +370,7 @@ export class SummaryView extends ItemView {
     }
 
     private resolveSectionLabelForItem(item: SummaryItem): string | null {
-        const start = item.displayStartTime ?? item.actualStart ?? item.plannedStart;
+        const start = item.displayStartTime ?? item.times[0];
         if (!start || !/^\d{2}:\d{2}$/.test(start)) return null;
         const [hh, mm] = start.split(':').map(Number);
         const value = hh * 100 + mm;
@@ -440,7 +440,7 @@ export class SummaryView extends ItemView {
         this.renderTaskName(taskNameEl, item.displayText || '(無題)');
 
         if (this.isReservedStartItem(item)) {
-            const reserved = item.plannedStart;
+            const reserved = item.times[0];
             const tailEl = taskNameEl.createEl('span', {
                 cls: 'llr-reserved-tail',
                 attr: {
@@ -498,7 +498,7 @@ export class SummaryView extends ItemView {
     }
 
     private isReservedStartItem(item: SummaryItem): boolean {
-        return !item.isDone && !item.isRunning && !!item.plannedStart;
+        return !item.isDone && !item.isRunning && item.times.length === 1;
     }
 
     private parseClockMinutes(hhmm?: string): number | null {
@@ -510,7 +510,7 @@ export class SummaryView extends ItemView {
 
     private getReservedStartDelayMinutes(item: SummaryItem): number {
         if (!this.isReservedStartItem(item)) return 0;
-        const reservedMin = this.parseClockMinutes(item.plannedStart);
+        const reservedMin = this.parseClockMinutes(item.times[0]);
         const displayMin = this.parseClockMinutes(item.displayStartTime);
         if (reservedMin === null || displayMin === null) return 0;
         return Math.max(0, displayMin - reservedMin);

@@ -1,6 +1,6 @@
 import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, moment, normalizePath } from 'obsidian';
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
-import { CheckboxPressIntent, adjustTaskTimeByMinutes, getChecklistContentStartCh, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
+import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
 import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent, type RoutineNote } from './service/routine-engine';
 import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
@@ -56,10 +56,6 @@ interface LlrPostActionContext {
 interface LlrPostActionPassResult {
     kind: 'duration-drift' | 'routine-reschedule-marker' | 'routine-atdone-marker';
     changedCount: number;
-}
-
-interface ApplyTaskResultOptions {
-    placeCursorAfterChecklist?: boolean;
 }
 
 const DEFAULT_SETTINGS: LlrSettings = {
@@ -1180,9 +1176,7 @@ export default class LlrPlugin extends Plugin {
             resultPreview: result.content.slice(0, 120),
         });
 
-        await this.applyTaskResult(editor, view, targetLine, lineText, result, {
-            placeCursorAfterChecklist: this.shouldPlaceCursorAfterChecklist(lineText, result),
-        });
+        await this.applyTaskResult(editor, view, targetLine, lineText, result);
         await this.runPostLlrActionAdjustments(editor, view, 'checkbox press');
         this.scheduleUIUpdate();
     }
@@ -1885,9 +1879,7 @@ export default class LlrPlugin extends Plugin {
         const shouldSkipAtDoneOnCurrentLine = forceAction === 'start'
             || (!forceAction && lineText.trim().startsWith('- [ ]'));
 
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result, {
-            placeCursorAfterChecklist: this.shouldPlaceCursorAfterChecklist(lineText, result),
-        });
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
         await this.runPostLlrActionAdjustments(editor, view, 'toggle task', {
             skipAtDoneLineIndexes: shouldSkipAtDoneOnCurrentLine ? new Set([cursor.line]) : undefined,
         });
@@ -1928,9 +1920,7 @@ export default class LlrPlugin extends Plugin {
             unstartedLongPressStartTime: startTime,
         });
         if (!result) return;
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result, {
-            placeCursorAfterChecklist: this.shouldPlaceCursorAfterChecklist(lineText, result),
-        });
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
         await this.runPostLlrActionAdjustments(editor, view, 'start task from previous completion', {
             skipAtDoneLineIndexes: new Set([cursor.line]),
         });
@@ -2255,36 +2245,23 @@ export default class LlrPlugin extends Plugin {
         editor.setCursor(previousLine, editor.getLine(previousLine).length);
     }
 
-    private shouldPlaceCursorAfterChecklist(
-        previousLineText: string,
-        result: { type: 'update' | 'insert' | 'complete' | 'interrupt' | 'none'; content: string; extraContent?: string }
-    ): boolean {
-        if (result.type !== 'update' && result.type !== 'insert') return false;
-        return !previousLineText.startsWith('- [/]') && result.content.startsWith('- [/]');
-    }
-
     private async applyTaskResult(
         editor: Editor,
         view: MarkdownView,
         lineIndex: number,
         lineText: string,
-        result: { type: 'update' | 'insert' | 'complete' | 'interrupt' | 'none'; content: string; extraContent?: string },
-        options: ApplyTaskResultOptions = {}
+        result: { type: 'update' | 'insert' | 'complete' | 'interrupt' | 'none'; content: string; extraContent?: string }
     ): Promise<void> {
-        const nextCursorCh = options.placeCursorAfterChecklist
-            ? getChecklistContentStartCh(result.content)
-            : result.content.length;
-
         switch (result.type) {
             case 'update':
                 editor.replaceRange(result.content, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
-                editor.setCursor(lineIndex, nextCursorCh);
+                editor.setCursor(lineIndex, result.content.length);
                 this.debugLog('Task updated', { content: result.content });
                 // No manual call needed here anymore, onMetadataChanged will catch it
                 break;
             case 'insert':
                 editor.replaceRange('\n' + result.content, { line: lineIndex, ch: lineText.length });
-                editor.setCursor(lineIndex + 1, nextCursorCh);
+                editor.setCursor(lineIndex + 1, result.content.length);
                 this.debugLog('New task inserted', { content: result.content });
                 break;
             case 'complete':
