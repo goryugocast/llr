@@ -538,6 +538,50 @@ describe('RoutineEngine', () => {
             expect(results).toHaveLength(0);
         });
 
+        it('includes a one-off routine note when next_due is today even without repeat', async () => {
+            const routineFile = makeFile('routine/one-off-today.md');
+            mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: {
+                    next_due: '2026-02-27',
+                },
+            });
+
+            const results = await engine.fetchDueRoutines(new Date('2026-02-27T12:00:00'));
+            expect(results).toHaveLength(1);
+            expect(results[0].file.path).toBe('routine/one-off-today.md');
+            expect(results[0].next_due).toBe('2026-02-27');
+            expect(results[0].frequency).toBeUndefined();
+        });
+
+        it('shows a one-off routine note during the lead window defined by start_before', async () => {
+            const routineFile = makeFile('routine/one-off-lead-window.md');
+            mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: {
+                    next_due: '2026-03-03',
+                    start_before: 1,
+                },
+            });
+
+            const results = await engine.fetchDueRoutines(new Date('2026-03-02T12:00:00'));
+            expect(results).toHaveLength(1);
+            expect(results[0].file.path).toBe('routine/one-off-lead-window.md');
+        });
+
+        it('does not keep overdue one-off routine notes visible after next_due passes', async () => {
+            const routineFile = makeFile('routine/one-off-overdue.md');
+            mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: {
+                    next_due: '2026-02-26',
+                },
+            });
+
+            const results = await engine.fetchDueRoutines(new Date('2026-02-27T12:00:00'));
+            expect(results).toHaveLength(0);
+        });
+
         it('shows a routine during the lead window defined by start_before', async () => {
             const routineFile = makeFile('routine/lead-window.md');
             mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });

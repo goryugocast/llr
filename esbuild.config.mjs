@@ -27,7 +27,7 @@ const pluginDirNames = (
 const legacyPluginIdsToDisable = (
     process.env.OBSIDIAN_DISABLE_PLUGIN_IDS
         ? process.env.OBSIDIAN_DISABLE_PLUGIN_IDS.split(",").map((s) => s.trim()).filter(Boolean)
-        : ["obsidian-taskchute-plugin", "project-tc"]
+        : []
 ).filter((id) => id !== pluginId);
 const targetDirs = (
     process.env.OBSIDIAN_PLUGIN_TARGETS

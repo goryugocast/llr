@@ -290,8 +290,12 @@ export class RoutineEngine {
     }
 
     private resolveDisplayDueDate(note: RoutineNote, targetDate: Date): string | null {
-        if (!note.frequency) return null;
         const targetStr = toDateString(targetDate);
+
+        // One-off routine notes can omit repeat/frequency and still surface via next_due.
+        if (!note.frequency) {
+            return note.next_due ?? null;
+        }
 
         if (!note.next_due) {
             return note.frequency.type === 'none' ? null : targetStr;
@@ -611,7 +615,7 @@ export class RoutineEngine {
             if (child.extension !== 'md') continue;
 
             const note = await this.readRoutineNote(child);
-            if (!note || !note.frequency) continue; // Must have a frequency to be a recurring routine
+            if (!note) continue;
             if (!note.next_due) continue;
 
             const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
