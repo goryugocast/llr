@@ -1,72 +1,76 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { TaskParser } from '../src/service/task-parser';
 
 describe('TaskParser', () => {
     describe('parseLine', () => {
-        it('完了タスクを正しく分解する', () => {
-            const result = TaskParser.parseLine('- [x] 09:25 - 10:23 (58m) 起きた');
+        it('v2 完了タスクを planned / actual / duration に分解する', () => {
+            const result = TaskParser.parseLine('- [x] 18:00 原稿修正 18:12 - 18:35 (30m > 23m)');
             expect(result.status).toBe('x');
-            expect(result.times).toEqual(['09:25', '10:23']);
-            expect(result.estimate).toBe('58m');
-            expect(result.content).toBe('起きた');
-        });
-
-        it('進行中タスクを正しく分解する', () => {
-            const result = TaskParser.parseLine('- [/] 10:22 - タスクシュート');
-            expect(result.status).toBe('/');
-            expect(result.times).toEqual(['10:22']);
-            expect(result.content).toBe('タスクシュート');
-        });
-
-        it('未完了タスク（時刻なし）を正しく分解する', () => {
-            const result = TaskParser.parseLine('- [ ] 読書 (30m)');
-            expect(result.status).toBe(' ');
-            expect(result.times).toEqual([]);
+            expect(result.plannedStart).toBe('18:00');
+            expect(result.actualStart).toBe('18:12');
+            expect(result.actualEnd).toBe('18:35');
             expect(result.estimate).toBe('30m');
-            expect(result.content).toBe('読書');
+            expect(result.actualDuration).toBe('23m');
+            expect(result.content).toBe('原稿修正');
+            expect(result.times).toEqual(['18:12', '18:35']);
         });
 
-        it('括弧なし見積り（末尾 15m）を正しく分解する', () => {
-            const result = TaskParser.parseLine('- [ ] [[💪プッシュアップ]] 15m');
-            expect(result.status).toBe(' ');
-            expect(result.times).toEqual([]);
-            expect(result.estimate).toBe('15m');
-            expect(result.content).toBe('[[💪プッシュアップ]]');
+        it('v2 実行中タスクを本文保全しつつ分解する', () => {
+            const result = TaskParser.parseLine('- [/] 18:00 原稿修正 18:12 - (30m)');
+            expect(result.status).toBe('/');
+            expect(result.body).toBe('18:00 原稿修正');
+            expect(result.plannedStart).toBe('18:00');
+            expect(result.actualStart).toBe('18:12');
+            expect(result.actualEnd).toBe('');
+            expect(result.estimate).toBe('30m');
+            expect(result.content).toBe('原稿修正');
+            expect(result.times).toEqual(['18:12']);
         });
 
-        it('未完了タスク（時刻あり）を正しく分解する', () => {
-            const result = TaskParser.parseLine('- [ ] 11:00 - 12:00 ジム');
-            expect(result.status).toBe(' ');
-            expect(result.times).toEqual(['11:00', '12:00']);
-            expect(result.content).toBe('ジム');
+        it('本文の後ろに開始時刻がある進行中タスクも分解できる', () => {
+            const result = TaskParser.parseLine('- [/] ALPsでセミナー管理 21:49 -');
+            expect(result.status).toBe('/');
+            expect(result.body).toBe('ALPsでセミナー管理');
+            expect(result.actualStart).toBe('21:49');
+            expect(result.content).toBe('ALPsでセミナー管理');
+            expect(result.times).toEqual(['21:49']);
         });
 
-        it('未完了タスク（単一時刻プレフィクス）を正しく分解する', () => {
-            const result = TaskParser.parseLine('- [ ] 12:00 [[🥢昼ごはん]] (60m)');
-            expect(result.status).toBe(' ');
-            expect(result.times).toEqual(['12:00']);
-            expect(result.estimate).toBe('60m');
-            expect(result.content).toBe('[[🥢昼ごはん]]');
-        });
-
-        it('未完了タスクの先頭4桁を開始見込み時刻として分解する', () => {
+        it('未着手タスクは本文先頭 planned start を読む', () => {
             const result = TaskParser.parseLine('- [ ] 1800 ばんごはん 30m');
             expect(result.status).toBe(' ');
-            expect(result.times).toEqual(['18:00']);
+            expect(result.plannedStart).toBe('18:00');
             expect(result.estimate).toBe('30m');
             expect(result.content).toBe('ばんごはん');
+            expect(result.times).toEqual(['18:00']);
         });
 
-        it('estimate > actual を含む完了行でも正しく解析する', () => {
-            const result = TaskParser.parseLine('- [x] 09:00 - 09:30 (30m > 25m) 朝食');
-            expect(result.estimate).toBe('30m > 25m');
-            expect(result.content).toBe('朝食');
+        it('末尾 marker だけを意味として扱う', () => {
+            const result = TaskParser.parseLine('- [ ] 18:00 原稿修正 (30m) @done');
+            expect(result.marker).toEqual({
+                kind: 'atdone',
+                raw: '@done',
+                value: 'done',
+                pending: true,
+            });
+            expect(result.content).toBe('原稿修正');
         });
 
-        it('estimate → content の順でも正しく解析する', () => {
-            const result = TaskParser.parseLine('- [x] 09:00 - 09:30 (30m) 朝食');
-            expect(result.estimate).toBe('30m');
-            expect(result.content).toBe('朝食');
+        it('本文中の @ は marker として扱わない', () => {
+            const result = TaskParser.parseLine('- [ ] 18:00 原稿修正 @done 追記 (30m)');
+            expect(result.marker).toBeNull();
+            expect(result.content).toBe('原稿修正 @done 追記');
+        });
+
+        it('処理済み日付 marker を読む', () => {
+            const result = TaskParser.parseLine('- [ ] 原稿修正 →2026-04-10');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '→2026-04-10',
+                value: '2026-04-10',
+                pending: false,
+            });
+            expect(result.content).toBe('原稿修正');
         });
 
         it('plain 行を正しく分解する', () => {
@@ -77,24 +81,36 @@ describe('TaskParser', () => {
     });
 
     describe('serialize', () => {
-        it('完了タスクを正しく合成する', () => {
+        it('v2 完了タスクを正しく合成する', () => {
             const result = TaskParser.serialize({
                 status: 'x',
-                times: ['09:25', '10:23'],
-                estimate: '58m',
-                content: '起きた',
+                body: '18:00 原稿修正',
+                content: '原稿修正',
+                plannedStart: '18:00',
+                actualStart: '18:12',
+                actualEnd: '18:35',
+                estimate: '30m',
+                actualDuration: '23m',
+                marker: null,
+                times: ['18:12', '18:35'],
             });
-            expect(result).toBe('- [x] 09:25 - 10:23 (58m) 起きた');
+            expect(result).toBe('- [x] 18:00 原稿修正 18:12 - 18:35 (30m > 23m)');
         });
 
-        it('進行中タスク（終了時刻なし）を正しく合成する', () => {
+        it('v2 実行中タスクを正しく合成する', () => {
             const result = TaskParser.serialize({
                 status: '/',
-                times: ['10:22'],
-                estimate: '',
+                body: '18:00 図書館へ',
                 content: '図書館へ',
+                plannedStart: '18:00',
+                actualStart: '18:12',
+                actualEnd: '',
+                estimate: '45m',
+                actualDuration: '',
+                marker: null,
+                times: ['18:12'],
             });
-            expect(result).toBe('- [/] 10:22 - 図書館へ');
+            expect(result).toBe('- [/] 18:00 図書館へ 18:12 - (45m)');
         });
     });
 

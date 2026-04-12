@@ -28,7 +28,7 @@
 
 ### B. Core Services
 - `src/service/task-transformer.ts`
-  - 時刻数・ステータスに応じたトグル変換
+  - v2 task line grammar（本文先頭に planned start を保持し、実績時刻/所要時間は本文末尾へ置く）に沿ったトグル変換
   - Smart Estimate（`30`, `1.5h`）
   - Force Action (`start/complete/interrupt/duplicate/retroComplete/taskify`)
 - `src/service/routine-reschedule-marker.ts`
@@ -38,9 +38,11 @@
   - 未処理 `@done` と処理済み `→done` の判定
   - `@done` から `→done` への正規化
 - `src/service/task-parser.ts`
-  - タスク行を `status / times / estimate / content` に分解・合成
+  - v2 task line grammar: タスク行を `status / plannedStart / body / content / actualStart / actualEnd / estimate / actualDuration / marker` に分解・合成
+  - 本文先頭トークンを plannedStart として解釈、実績時刻（`HH:mm -` / `HH:mm - HH:mm`）は本文末尾から抽出
   - `[[wikilink]]` を含むタスクでも本文と見積りを分離
-  - 末尾 bare 見積り（`15m`, `1h`, `30 min`）の抽出
+  - 括弧内・末尾 bare 見積り（`15m`, `1h`, `30 min`）の抽出
+  - `@done` / `@MMDD` 等の marker を末尾から抽出し pending/resolved を判定
 - `src/service/time-calculator.ts`
   - 終了時刻計算 / 所要時間計算 / テキストからの時間推定
 - `src/service/routine-engine.ts`
@@ -67,8 +69,8 @@
   - `[x]` は no-op
 - 長押し（モバイル: 450ms / デスクトップ: 900ms）:
   - `[ ] -> [/]`（直近完了の終了時刻で開始。なければ現在時刻）
-  - `[/] -> [ ]`（時刻保持）
-  - `[x] -> [ ]`（時刻保持）
+  - `[/] -> [ ]`（本文先頭の planned start は保ちつつ、末尾の実績時刻だけ外す）
+  - `[x] -> [ ]`（本文先頭の planned start は保ちつつ、末尾の実績時刻だけ外す）
 - 長押し成立後のクリック抑止で二重実行を防止。
 - モバイルでは触覚フィードバックを実施（短押し1回、長押し2連続）。
 - 関連する軽微な補正（例: duration drift 補正）は、通常編集監視ではなく、LLR のコマンド / チェック操作にぶら下げて実行する。

@@ -1,3 +1,5 @@
+import { TaskParser } from './task-parser';
+
 /**
  * Adds minutes to a start time string.
  * @param startTime "09:00"
@@ -49,15 +51,29 @@ export function parseTimeToMinutes(time: string): number | null {
 }
 
 export function extractCompletionEndTime(text: string): string | null {
-    const match = text.match(/^- \[x\]\s*(\d{2}:\d{2})(?:\s*-\s*(\d{2}:\d{2}))?/);
-    if (!match) return null;
-    return match[2] ?? match[1];
+    if (text.match(/^- \[x\]/)) {
+        // v2 format: actual times are in tail position — body actualStart - actualEnd (duration)
+        const parsed = TaskParser.parseLine(text);
+        if (parsed.actualEnd) return parsed.actualEnd;
+        if (parsed.actualStart) return parsed.actualStart;
+
+        // v1 legacy format: times appear right after [x] at line start
+        const legacyMatch = text.match(/^- \[x\]\s*(\d{2}:\d{2})(?:\s*-\s*(\d{2}:\d{2}))?/);
+        if (legacyMatch) return legacyMatch[2] ?? legacyMatch[1];
+    }
+
+    // Running task: no end time yet, use its start time as the latest activity anchor
+    if (text.match(/^- \[\/\]/)) {
+        const parsed = TaskParser.parseLine(text);
+        if (parsed.actualStart) return parsed.actualStart;
+    }
+
+    return null;
 }
 
 export function findLatestCompletionEndTime(lines: Iterable<string>, referenceTime?: string): string | null {
     const referenceMinutes = referenceTime ? parseTimeToMinutes(referenceTime) : null;
-    let latest: { time: string; minutes: number } | null = null;
-    let latestBeforeReference: { time: string; minutes: number } | null = null;
+    let best: { time: string; minutesAgo: number } | null = null;
 
     for (const line of lines) {
         const endTime = extractCompletionEndTime(line.trim());
@@ -66,18 +82,24 @@ export function findLatestCompletionEndTime(lines: Iterable<string>, referenceTi
         const minutes = parseTimeToMinutes(endTime);
         if (minutes === null) continue;
 
-        if (!latest || minutes > latest.minutes) {
-            latest = { time: endTime, minutes };
+        // Compute "how many minutes ago" relative to reference, handling day rollover.
+        // If no reference, treat larger minute values as more recent (absolute latest).
+        let minutesAgo: number;
+        if (referenceMinutes === null) {
+            minutesAgo = -minutes;
+        } else if (minutes <= referenceMinutes) {
+            minutesAgo = referenceMinutes - minutes;
+        } else {
+            // Time is after reference — treat as previous day
+            minutesAgo = referenceMinutes + (1440 - minutes);
         }
 
-        if (referenceMinutes !== null && minutes <= referenceMinutes) {
-            if (!latestBeforeReference || minutes > latestBeforeReference.minutes) {
-                latestBeforeReference = { time: endTime, minutes };
-            }
+        if (!best || minutesAgo < best.minutesAgo) {
+            best = { time: endTime, minutesAgo };
         }
     }
 
-    return latestBeforeReference?.time ?? latest?.time ?? null;
+    return best?.time ?? null;
 }
 
 /**

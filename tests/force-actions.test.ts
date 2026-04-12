@@ -1,97 +1,88 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { transformTaskLine } from '../src/service/task-transformer';
 
-describe('transformTaskLine Force Actions', () => {
+describe('transformTaskLine force actions (v2)', () => {
     const mockNow = new Date('2026-02-19T17:30:00');
 
-    describe('Force: Start', () => {
-        it('should start an unstarted task', () => {
-            const line = '- [ ] Task A';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result?.type).toBe('update');
-            expect(result?.content).toBe('- [/] 17:30 - Task A');
-        });
-
-        it('should start a dash-prefixed plain task', () => {
-            const line = '- Task A';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result?.type).toBe('update');
-            expect(result?.content).toBe('- [/] 17:30 - Task A');
-        });
-
-        it('should normalize 4-digit start and m estimate when force starting', () => {
-            const line = '- [ ] 1200 Task A 15m';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result?.type).toBe('update');
-            expect(result?.content).toBe('- [/] 12:00 - Task A (15m)');
-        });
-
-        it('should preserve planned time when force starting', () => {
-            const line = '- [ ] 07:30 - Task A';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result?.type).toBe('update');
-            expect(result?.content).toBe('- [/] 07:30 - Task A');
-        });
-
-        it('should return null if already running (Safety)', () => {
-            const line = '- [/] 12:00 - Task A';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result).toBeNull();
-        });
-
-        it('should restart (clone) if already done', () => {
-            const line = '- [x] 12:00 - 13:00 (60m) Task A';
-            const result = transformTaskLine(line, mockNow, 'start');
-            expect(result?.type).toBe('insert');
-            expect(result?.content).toBe('- [/] 17:30 - Task A');
-        });
-    });
-
-    describe('Force: Complete', () => {
-        it('should complete a running task', () => {
-            const line = '- [/] 17:00 - Task A';
-            const result = transformTaskLine(line, mockNow, 'complete');
-            expect(result?.type).toBe('complete');
-            expect(result?.content).toBe('');
-        });
-
-        it('should return null if not running', () => {
-            const line = '- [ ] Task A';
-            expect(transformTaskLine(line, mockNow, 'complete')).toBeNull();
-
-            const line2 = '- [x] Done';
-            expect(transformTaskLine(line2, mockNow, 'complete')).toBeNull();
-        });
-    });
-
-    describe('Force: Interrupt', () => {
-        it('should interrupt a running task', () => {
-            const line = '- [/] 17:00 - Task A';
-            const result = transformTaskLine(line, mockNow, 'interrupt');
+    describe('start', () => {
+        it('starts an unchecked task by writing actual start at the tail', () => {
+            const result = transformTaskLine('- [ ] Task A', mockNow, 'start');
             expect(result).toEqual({
-                type: 'interrupt',
-                content: '- [x] 17:00 - 17:30 (30m) Task A',
-                extraContent: '- [ ] Task A'
+                type: 'update',
+                content: '- [/] Task A 17:30 -',
             });
         });
 
-        it('should return null if not running', () => {
-            const line = '- [ ] Task A';
-            expect(transformTaskLine(line, mockNow, 'interrupt')).toBeNull();
+        it('starts a plain task after taskify normalization', () => {
+            const result = transformTaskLine('- Task A', mockNow, 'start');
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [/] Task A 17:30 -',
+            });
+        });
+
+        it('keeps the planned start token in the body and uses now as actual start', () => {
+            const result = transformTaskLine('- [ ] 12:00 Task A (15m)', mockNow, 'start');
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [/] 12:00 Task A 17:30 - (15m)',
+            });
+        });
+
+        it('restarts a completed task as a new running line', () => {
+            const result = transformTaskLine('- [x] 12:00 Task A 12:00 - 13:00 (60m)', mockNow, 'start');
+            expect(result).toEqual({
+                type: 'insert',
+                content: '- [/] 12:00 Task A 17:30 -',
+            });
         });
     });
 
-    describe('Force: Duplicate', () => {
-        it('should always clone without starting', () => {
-            const line1 = '- [ ] Task A';
-            const res1 = transformTaskLine(line1, mockNow, 'duplicate');
-            expect(res1?.type).toBe('insert');
-            expect(res1?.content).toBe('- [ ] Task A');
+    describe('complete', () => {
+        it('completes a running task', () => {
+            const result = transformTaskLine('- [/] Task A 17:00 -', mockNow, 'complete');
+            expect(result).toEqual({
+                type: 'complete',
+                content: '',
+            });
+        });
 
-            const line2 = '- [x] 10:00 - 11:00 (60m) Task B';
-            const res2 = transformTaskLine(line2, mockNow, 'duplicate');
-            expect(res2?.type).toBe('insert');
-            expect(res2?.content).toBe('- [ ] Task B');
+        it('returns null for non-running lines', () => {
+            expect(transformTaskLine('- [ ] Task A', mockNow, 'complete')).toBeNull();
+            expect(transformTaskLine('- [x] Task A 17:00 - 17:20 (20m)', mockNow, 'complete')).toBeNull();
+        });
+    });
+
+    describe('interrupt', () => {
+        it('interrupts a running task and carries remaining estimate into a followup task', () => {
+            const result = transformTaskLine('- [/] 12:00 Task A 17:00 - (45m)', mockNow, 'interrupt');
+            expect(result).toEqual({
+                type: 'interrupt',
+                content: '- [x] 12:00 Task A 17:00 - 17:30 (45m > 30m)',
+                extraContent: '- [ ] 12:00 Task A (15m)',
+            });
+        });
+
+        it('returns null for non-running lines', () => {
+            expect(transformTaskLine('- [ ] Task A', mockNow, 'interrupt')).toBeNull();
+        });
+    });
+
+    describe('duplicate', () => {
+        it('duplicates an unchecked line as another unchecked line', () => {
+            const result = transformTaskLine('- [ ] Task A', mockNow, 'duplicate');
+            expect(result).toEqual({
+                type: 'insert',
+                content: '- [ ] Task A',
+            });
+        });
+
+        it('duplicates a completed line with remaining estimate', () => {
+            const result = transformTaskLine('- [x] Task B 10:00 - 10:20 (45m > 20m)', mockNow, 'duplicate');
+            expect(result).toEqual({
+                type: 'insert',
+                content: '- [ ] Task B (25m)',
+            });
         });
     });
 });

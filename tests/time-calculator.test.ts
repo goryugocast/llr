@@ -95,6 +95,14 @@ describe('TimeCalculator', () => {
             expect(extractCompletionEndTime('- [x] 09:45 Review PR')).toBe('09:45');
         });
 
+        it('extracts end time from v2 format (times at tail, no planned start)', () => {
+            expect(extractCompletionEndTime('- [x] Review PR 09:00 - 09:45 (30m)')).toBe('09:45');
+        });
+
+        it('extracts actual end time from v2 format with planned start', () => {
+            expect(extractCompletionEndTime('- [x] 07:00 Review PR 16:40 - 17:10 (30m)')).toBe('17:10');
+        });
+
         it('returns the latest completion time across all completed tasks', () => {
             const lines = [
                 '- [x] 09:00 - 09:20 First',
@@ -115,13 +123,32 @@ describe('TimeCalculator', () => {
             expect(findLatestCompletionEndTime(lines, '00:15')).toBe('00:10');
         });
 
-        it('falls back to the absolute latest completion when all times are after the reference', () => {
+        it('returns the most recently completed task across midnight when all times precede reference', () => {
+            // reference 00:15: 23:30 is 45 min ago, 23:40 is 35 min ago → 23:40 wins
             const lines = [
                 '- [x] 22:00 - 22:30 First',
                 '- [x] 23:00 - 23:40 Second',
             ];
 
             expect(findLatestCompletionEndTime(lines, '00:15')).toBe('23:40');
+        });
+
+        it('considers running task start time as the latest activity anchor', () => {
+            const lines = [
+                '- [x] 13:00 [[✍️Substack会議]] 12:45 - 13:51 (66m)',
+                '- [/] [[🏔️KS動画]] 16:06 -',
+                '- [ ] [[🍳晩ごはんを作る]] (60m)',
+            ];
+
+            expect(findLatestCompletionEndTime(lines, '17:00')).toBe('16:06');
+        });
+
+        it('extractCompletionEndTime returns start time of running task', () => {
+            expect(extractCompletionEndTime('- [/] [[Task]] 16:06 -')).toBe('16:06');
+        });
+
+        it('extractCompletionEndTime returns null for running task with no actual start', () => {
+            expect(extractCompletionEndTime('- [/] [[Task]] (30m)')).toBeNull();
         });
     });
 

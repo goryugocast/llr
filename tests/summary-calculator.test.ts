@@ -5,7 +5,7 @@ import { calculateDuration } from '../src/service/time-calculator';
 describe('computeSummaryData', () => {
     it('完了済みのタスクはファイル内の時刻を維持する', () => {
         const lines = [
-            '- [x] 09:00 - 09:30 (30m) 完了済みタスク'
+            '- [x] 完了済みタスク 09:00 - 09:30 (30m)'
         ];
         const nowTime = '10:00';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -17,7 +17,7 @@ describe('computeSummaryData', () => {
 
     it('実行中のタスクは開始時刻を維持し、見積に基づいて終了予定を計算する', () => {
         const lines = [
-            '- [/] 10:00 (30m) 実行中タスク'
+            '- [/] 実行中タスク 10:00 - (30m)'
         ];
         const nowTime = '10:15';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -29,9 +29,9 @@ describe('computeSummaryData', () => {
 
     it('未開始タスクは完了済みではなく現在の計画アンカーから開始される', () => {
         const lines = [
-            '- [x] 09:00 - 09:30 (30m) 完了済み',
-            '- [ ] (30m) 未開始1',
-            '- [ ] (15m) 未開始2'
+            '- [x] 完了済み 09:00 - 09:30 (30m)',
+            '- [ ] 未開始1 (30m)',
+            '- [ ] 未開始2 (15m)'
         ];
         const nowTime = '09:45';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -45,8 +45,8 @@ describe('computeSummaryData', () => {
 
     it('実行中タスクが見積を超過した場合、次のタスクは現在時刻から開始される', () => {
         const lines = [
-            '- [/] 09:00 (30m) 超過タスク',
-            '- [ ] (15m) 次のタスク'
+            '- [/] 超過タスク 09:00 - (30m)',
+            '- [ ] 次のタスク (15m)'
         ];
         const nowTime = '10:00'; // すでに見積の09:30を過ぎている
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -58,7 +58,7 @@ describe('computeSummaryData', () => {
 
     it('見積がない未開始タスクは現在の計画アンカー時刻を維持する', () => {
         const lines = [
-            '- [x] 09:00 - 09:30 完了済み',
+            '- [x] 完了済み 09:00 - 09:30',
             '- [ ] 未開始'
         ];
         const nowTime = '09:45';
@@ -70,8 +70,8 @@ describe('computeSummaryData', () => {
 
     it('見積なしの実行中タスクは終了表示を現在時刻にし、後続タスクもそこから積み上げる', () => {
         const lines = [
-            '- [/] 10:00 - 実行中（見積なし）',
-            '- [ ] (15m) 次のタスク'
+            '- [/] 実行中（見積なし） 10:00 -',
+            '- [ ] 次のタスク (15m)'
         ];
         const nowTime = '10:40';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -85,7 +85,7 @@ describe('computeSummaryData', () => {
     it('チェックボックスのない skip ログ行は集計しない', () => {
         const lines = [
             '- skip: [[朝のルーチン]]',
-            '- [ ] (15m) 次のタスク',
+            '- [ ] 次のタスク (15m)',
         ];
         const nowTime = '10:00';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -98,9 +98,9 @@ describe('computeSummaryData', () => {
 
     it('表示後はステータスではなく表示開始時刻順に並ぶ', () => {
         const lines = [
-            '- [ ] (15m) 未開始',
-            '- [x] 09:00 - 09:30 (30m) 朝の完了',
-            '- [/] 10:00 (20m) 実行中',
+            '- [ ] 未開始 (15m)',
+            '- [x] 朝の完了 09:00 - 09:30 (30m)',
+            '- [/] 実行中 10:00 - (20m)',
         ];
         const nowTime = '10:05';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -119,9 +119,9 @@ describe('computeSummaryData', () => {
 
     it('24時をまたいだ表示時刻は翌日扱いで末尾側に並ぶ', () => {
         const lines = [
-            '- [x] 23:40 - 23:55 (15m) 夜の完了',
-            '- [/] 23:55 (20m) 進行中',
-            '- [ ] (30m) 深夜タスク',
+            '- [x] 夜の完了 23:40 - 23:55 (15m)',
+            '- [/] 進行中 23:55 - (20m)',
+            '- [ ] 深夜タスク (30m)',
         ];
         const nowTime = '23:58';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -140,9 +140,9 @@ describe('computeSummaryData', () => {
 
     it('完了済みタスクも日付境界前の時刻を末尾側として並べる', () => {
         const lines = [
-            '- [x] 23:40 - 23:55 (15m) 夜の完了',
-            '- [x] 00:30 - 06:30 (6h) sleep',
-            '- [x] 08:00 - 08:15 (15m) 朝の支度',
+            '- [x] 夜の完了 23:40 - 23:55 (15m)',
+            '- [x] sleep 00:30 - 06:30 (6h)',
+            '- [x] 朝の支度 08:00 - 08:15 (15m)',
         ];
         const nowTime = '08:30';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -161,11 +161,11 @@ describe('computeSummaryData', () => {
 
     it('presentationでは過去と未来を分け、sleepより下の未完は隠す', () => {
         const lines = [
-            '- [ ] (10m) 取り残し',
-            '- [/] 20:00 (20m) 実行中',
-            '- [ ] (15m) これから',
-            '- [ ] (30m) sleep',
-            '- [ ] (5m) 後回し',
+            '- [ ] 取り残し (10m)',
+            '- [/] 実行中 20:00 - (20m)',
+            '- [ ] これから (15m)',
+            '- [ ] sleep (30m)',
+            '- [ ] 後回し (5m)',
         ];
         const nowTime = '20:00';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
@@ -200,12 +200,12 @@ describe('computeSummaryData', () => {
 
     it('完了済みsleepがある日は未完タスク全体を未来計算から外す', () => {
         const lines = [
-            '- [ ] (15m) 寝る前の片付け',
-            '- [x] 22:30 - 00:27 (117m) お酒',
-            '- [x] 00:27 - 11:03 (480m) sleep',
-            '- [ ] (5m) トイレのブラーバ',
-            '- [ ] (60m) review',
-            '- [ ] (15m) Analyticsからの改善',
+            '- [ ] 寝る前の片付け (15m)',
+            '- [x] お酒 22:30 - 00:27 (117m)',
+            '- [x] sleep 00:27 - 11:03 (480m)',
+            '- [ ] トイレのブラーバ (5m)',
+            '- [ ] review (60m)',
+            '- [ ] Analyticsからの改善 (15m)',
         ];
         const nowTime = '15:11';
         const data = computeSummaryData(lines, nowTime, calculateDuration);
