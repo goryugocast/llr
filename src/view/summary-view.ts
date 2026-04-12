@@ -47,7 +47,7 @@ export class SummaryView extends ItemView {
         SummaryView.routineFolder = normalized || 'routine';
     }
 
-    async onOpen() {
+    onOpen() {
         const container = this.contentEl;
         container.empty();
         container.addClass('llr-summary-container');
@@ -235,7 +235,8 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
+        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
             const options = dailyNotesPlugin.instance?.options ?? {};
             const format = options.format || 'YYYY-MM-DD';
@@ -245,7 +246,8 @@ export class SummaryView extends ItemView {
         }
 
         // Legacy custom setting fallback (if available)
-        const workoutFolder = ((this.app as any).plugins?.plugins?.['llr']?.settings?.workoutFolder || '').trim();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
+        const workoutFolder = ((this.app as Record<string, any>).plugins?.plugins?.['llr']?.settings?.workoutFolder || '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -352,7 +354,8 @@ export class SummaryView extends ItemView {
     }
 
     private getRoutineSectionDefinitions(): Array<{ value: number; label: string }> {
-        const raw = ((this.app as any).plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? []) as any[];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
+        const raw: unknown[] = (this.app as Record<string, any>).plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? [];
         if (!Array.isArray(raw)) return [];
 
         return raw
@@ -554,7 +557,8 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
+        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
         if (!dailyNotesPlugin?.enabled) {
             new Notice('Enable the core Daily Notes plugin to open or create daily notes.');
             return null;

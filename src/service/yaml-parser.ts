@@ -145,7 +145,7 @@ function normalizeWeekdaySeparatorText(text: string): string {
     return text
         .replace(/\u3000/g, ' ')
         // Common separators users are likely to type for weekday lists.
-        .replace(/[，、,:：\/／|｜;；・･]+/g, ',')
+        .replace(/[，、,:：/／|｜;；・･]+/g, ',')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -162,12 +162,12 @@ function normalizeMonthlyJapaneseRepeatShorthand(value: string): string | null {
         return `every month on last day -${Number(lastDayOffset[1])}`;
     }
 
-    const match = body.match(/^([0-9\s,，、\/／:：;；・･]+)日$/);
+    const match = body.match(/^([0-9\s,，、/／:：;；・･]+)日$/);
     if (!match) return null;
 
     const rawList = match[1]
         .replace(/\u3000/g, ' ')
-        .replace(/[，、\/／:：;；・･]+/g, ',')
+        .replace(/[，、/／:：;；・･]+/g, ',')
         .replace(/\s+/g, ',')
         .replace(/,+/g, ',')
         .replace(/^,|,$/g, '');

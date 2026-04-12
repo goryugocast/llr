@@ -423,10 +423,6 @@ function toUncheckedTaskLine(lineText: string): string {
     return `- [ ] ${normalized}`;
 }
 
-function extractStartableTaskBody(lineText: string): string {
-    return resolveStartableTask(lineText, formatTime(new Date(2000, 0, 1, 0, 0))).content;
-}
-
 function normalizeLooseUnstartedBody(body: string): string {
     const alreadyStructured = /^\d{2}:\d{2}\s*-/.test(body) || /\(\d+m\)\s*$/i.test(body);
     if (alreadyStructured) return body;

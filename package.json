@@ -1,6 +1,6 @@
 {
   "name": "obsidian-llr-plugin",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LLR: Live Life Recording system for Obsidian.",
   "main": "main.js",
   "scripts": {

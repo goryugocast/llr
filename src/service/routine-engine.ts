@@ -200,7 +200,7 @@ export class RoutineEngine {
     /**
      * Read routine metadata from a TFile's YAML frontmatter.
      */
-    async readRoutineNote(file: TFile): Promise<RoutineNote | null> {
+    readRoutineNote(file: TFile): RoutineNote | null {
         const cache = this.app.metadataCache.getFileCache(file);
         const fm = cache?.frontmatter || {};
 
@@ -233,7 +233,11 @@ export class RoutineEngine {
         if (typeof rawSchedule === 'string' && rawSchedule.trim().length > 0) {
             return { type: 'schedule', expression: rawSchedule };
         }
-        return rawFrequency as Frequency | undefined;
+        if (rawFrequency == null) return undefined;
+        if (typeof rawFrequency === 'object' && 'type' in rawFrequency) {
+            return rawFrequency as Frequency;
+        }
+        return undefined;
     }
 
     private defaultRollover(frequency: Frequency): boolean {
@@ -364,7 +368,6 @@ export class RoutineEngine {
             if (trimmedFirst === '---') {
                 // Potential malformed frontmatter (indented or unclosed)
                 let repairNeeded = false;
-                let newContent = content;
 
                 // Case 1: Indented "---" at the very start
                 if (firstLine.startsWith(' ') && firstLine.trim() === '---') {
@@ -495,7 +498,7 @@ export class RoutineEngine {
                 executeAt: executeAt.toISOString(),
                 delayMs: DEBOUNCE_DELAY_MS,
             });
-            const timer = setTimeout(async () => {
+            const timer = setTimeout(() => {
                 console.debug(`[LLR] Executing routine update for: ${routineFile.basename}`);
                 this.pendingTimers.delete(key);
                 this.emitDebugEvent('scheduleUpdate:timer-fired', {
@@ -504,9 +507,9 @@ export class RoutineEngine {
                     sourcePath,
                     firedAt: new Date().toISOString(),
                 });
-                const routineNote = await this.readRoutineNote(routineFile);
+                const routineNote = this.readRoutineNote(routineFile);
                 if (routineNote) {
-                    await this.processCompletion(routineNote, completionDate);
+                    void this.processCompletion(routineNote, completionDate);
                 } else {
                     this.emitDebugEvent('scheduleUpdate:missing-routine-note', {
                         key,
@@ -544,13 +547,13 @@ export class RoutineEngine {
             const file = this.app.vault.getAbstractFileByPath(routinePath);
 
             if (file instanceof TFile) {
-                const routineNote = await this.readRoutineNote(file);
+                const routineNote = this.readRoutineNote(file);
                 if (routineNote) {
                     this.emitDebugEvent('flushAll:process-pending', {
                         key,
                         routineFile: file.path,
                     });
-                    // During flushAll, we don't know the exact completion date easily, 
+                    // During flushAll, we don't know the exact completion date easily,
                     // so we use NOW, which is safe for most cases.
                     await this.processCompletion(routineNote, new Date());
                 }
@@ -573,7 +576,7 @@ export class RoutineEngine {
             if (!(child instanceof TFile)) continue;
             if (child.extension !== 'md') continue;
 
-            const note = await this.readRoutineNote(child);
+            const note = this.readRoutineNote(child);
             if (!note || !note.frequency) continue; // Must have a frequency to be a recurring routine
             if (!note.next_due) continue;
 
