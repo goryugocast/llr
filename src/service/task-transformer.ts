@@ -25,7 +25,7 @@ export function transformTaskLine(
 ): TaskTransformResult | null {
     if (lineText.match(/^\s+/)) return null;
 
-    const hasExplicitCheckbox = /^- \[( |\/|x)\]/.test(lineText);
+    const hasExplicitCheckbox = /^- \[[ /x]\]/.test(lineText);
     const timeStr = formatTime(now);
 
     if (forceAction) {
@@ -87,7 +87,7 @@ function applyForcedAction(
 }
 
 function buildRetroCompleteResult(lineText: string): TaskTransformResult | null {
-    const normalized = /^- \[( |\/|x)\]/.test(lineText) ? lineText : toUncheckedTaskLine(lineText);
+    const normalized = /^- \[[ /x]\]/.test(lineText) ? lineText : toUncheckedTaskLine(lineText);
     const parsed = TaskParser.parseLine(normalized);
     const estimateMinutes = getEstimateMinutes(parsed);
     const startTime = parsed.plannedStart;
@@ -118,7 +118,7 @@ export function transformCheckboxPress(
 ): TaskTransformResult | null {
     if (lineText.match(/^\s+/)) return null;
 
-    const hasExplicitCheckbox = /^- \[( |\/|x)\]/.test(lineText);
+    const hasExplicitCheckbox = /^- \[[ /x]\]/.test(lineText);
     const parsed = hasExplicitCheckbox ? TaskParser.parseLine(lineText) : TaskParser.parseLine(toUncheckedTaskLine(lineText));
     const timeStr = formatTime(now);
 
@@ -391,7 +391,7 @@ export function formatTime(date: Date): string {
     return `${h}:${m}`;
 }
 
-const TASK_STATUS_PREFIX_REGEX = /^- \[( |\/|x)\]\s*/;
+const TASK_STATUS_PREFIX_REGEX = /^- \[[ /x]\]\s*/;
 
 export function getChecklistContentStartCh(lineText: string): number {
     const match = lineText.match(TASK_STATUS_PREFIX_REGEX);

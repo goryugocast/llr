@@ -47,7 +47,7 @@ export class SummaryView extends ItemView {
         SummaryView.routineFolder = normalized || 'routine';
     }
 
-    async onOpen() {
+    onOpen(): Promise<void> {
         const container = this.contentEl;
         container.empty();
         container.addClass('llr-summary-container');
@@ -78,6 +78,8 @@ export class SummaryView extends ItemView {
                 void this.requestRefresh();
             }
         }));
+
+        return Promise.resolve();
     }
 
     private scheduleRefresh() {
@@ -235,17 +237,20 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        type DailyNotesPlugin = { enabled?: boolean; instance?: { options?: Record<string, unknown>; getDailyNote?: (date: unknown) => TFile | null } };
+        type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null }; plugins?: { plugins?: Record<string, { settings?: Record<string, unknown> }> } };
+        const appInternal = this.app as unknown as AppInternal;
+        const dailyNotesPlugin = appInternal.internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
-            const options = dailyNotesPlugin.instance?.options ?? {};
-            const format = options.format || 'YYYY-MM-DD';
-            const folder = (options.folder || '').trim();
+            const options = (dailyNotesPlugin.instance?.options ?? {}) as Record<string, unknown>;
+            const format = String(options.format || 'YYYY-MM-DD');
+            const folder = (String(options.folder || '')).trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
 
         // Legacy custom setting fallback (if available)
-        const workoutFolder = ((this.app as any).plugins?.plugins?.['llr']?.settings?.workoutFolder || '').trim();
+        const workoutFolder = (String(appInternal.plugins?.plugins?.['llr']?.settings?.workoutFolder || '')).trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -352,13 +357,16 @@ export class SummaryView extends ItemView {
     }
 
     private getRoutineSectionDefinitions(): Array<{ value: number; label: string }> {
-        const raw = ((this.app as any).plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? []) as any[];
+        type AppInternal = { plugins?: { plugins?: Record<string, { settings?: Record<string, unknown> }> } };
+        const appInternal = this.app as unknown as AppInternal;
+        const raw: unknown[] = (appInternal.plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? []) as unknown[];
         if (!Array.isArray(raw)) return [];
 
         return raw
             .map((x) => {
-                const time = String(x?.time ?? '');
-                const label = String(x?.label ?? '').trim();
+                const rec = (x && typeof x === 'object') ? x as Record<string, unknown> : {};
+                const time = String(rec.time ?? '');
+                const label = String(rec.label ?? '').trim();
                 if (!/^\d{4}$/.test(time) || !label) return null;
                 const hh = Number(time.slice(0, 2));
                 const mm = Number(time.slice(2, 4));
@@ -554,7 +562,9 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        type DailyNotesPlugin = { enabled?: boolean; instance?: { getDailyNote?: (date: unknown, createIfNotExists?: boolean) => Promise<TFile> | TFile | null } };
+        type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null } };
+        const dailyNotesPlugin = (this.app as unknown as AppInternal).internalPlugins?.getPluginById?.('daily-notes');
         if (!dailyNotesPlugin?.enabled) {
             new Notice('Enable the core Daily Notes plugin to open or create daily notes.');
             return null;

@@ -83,7 +83,6 @@ export function computeSummaryData(
         const parsed = TaskParser.parseLine(lineText);
         const isDone = parsed.status === 'x';
         const isRunning = parsed.status === '/';
-        const isUncompleted = parsed.status === ' ';
 
         // タスク行のみ表示（チェックボックス付き行のみ）
         const hasCheckbox = lineText.match(/^- \[.\]/);

@@ -63,7 +63,7 @@ export function extractCompletionEndTime(text: string): string | null {
     }
 
     // Running task: no end time yet, use its start time as the latest activity anchor
-    if (text.match(/^- \[\/\]/)) {
+    if (text.match(/^- \[[/]\]/)) {
         const parsed = TaskParser.parseLine(text);
         if (parsed.actualStart) return parsed.actualStart;
     }

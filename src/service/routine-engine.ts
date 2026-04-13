@@ -228,7 +228,7 @@ export class RoutineEngine {
     /**
      * Read routine metadata from a TFile's YAML frontmatter.
      */
-    async readRoutineNote(file: TFile): Promise<RoutineNote | null> {
+    readRoutineNote(file: TFile): RoutineNote | null {
         const cache = this.app.metadataCache.getFileCache(file);
         const fm = cache?.frontmatter || {};
 
@@ -395,7 +395,6 @@ export class RoutineEngine {
             if (trimmedFirst === '---') {
                 // Potential malformed frontmatter (indented or unclosed)
                 let repairNeeded = false;
-                let newContent = content;
 
                 // Case 1: Indented "---" at the very start
                 if (firstLine.startsWith(' ') && firstLine.trim() === '---') {
@@ -536,24 +535,26 @@ export class RoutineEngine {
                 delayMs: DEBOUNCE_DELAY_MS,
                 mode: request.mode ?? 'normal',
             });
-            const timer = setTimeout(async () => {
-                console.log(`[LLR] Executing routine update for: ${routineFile.basename}`);
-                this.pendingTimers.delete(key);
-                this.emitDebugEvent('scheduleUpdate:timer-fired', {
-                    key,
-                    routineFile: routineFile.path,
-                    sourcePath,
-                    firedAt: new Date().toISOString(),
-                });
-                const routineNote = await this.readRoutineNote(routineFile);
-                if (routineNote) {
-                    await this.processCompletion(routineNote, request.completionDate, { mode: request.mode });
-                } else {
-                    this.emitDebugEvent('scheduleUpdate:missing-routine-note', {
+            const timer = setTimeout(() => {
+                void (async () => {
+                    console.log(`[LLR] Executing routine update for: ${routineFile.basename}`);
+                    this.pendingTimers.delete(key);
+                    this.emitDebugEvent('scheduleUpdate:timer-fired', {
                         key,
                         routineFile: routineFile.path,
+                        sourcePath,
+                        firedAt: new Date().toISOString(),
                     });
-                }
+                    const routineNote = this.readRoutineNote(routineFile);
+                    if (routineNote) {
+                        await this.processCompletion(routineNote, request.completionDate, { mode: request.mode });
+                    } else {
+                        this.emitDebugEvent('scheduleUpdate:missing-routine-note', {
+                            key,
+                            routineFile: routineFile.path,
+                        });
+                    }
+                })();
             }, DEBOUNCE_DELAY_MS);
 
             this.pendingTimers.set(key, { timer, request });
@@ -585,7 +586,7 @@ export class RoutineEngine {
             const file = this.app.vault.getAbstractFileByPath(routinePath);
 
             if (file instanceof TFile) {
-                const routineNote = await this.readRoutineNote(file);
+                const routineNote = this.readRoutineNote(file);
                 if (routineNote) {
                     this.emitDebugEvent('flushAll:process-pending', {
                         key,
@@ -614,7 +615,7 @@ export class RoutineEngine {
             if (!(child instanceof TFile)) continue;
             if (child.extension !== 'md') continue;
 
-            const note = await this.readRoutineNote(child);
+            const note = this.readRoutineNote(child);
             if (!note) continue;
             if (!note.next_due) continue;
 
