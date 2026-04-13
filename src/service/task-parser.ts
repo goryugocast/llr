@@ -47,7 +47,7 @@ interface ActualTimeExtraction {
     remaining: string;
 }
 
-const STATUS_PATTERN = /^- \[[ /x]\]\s*/;
+const STATUS_PATTERN = /^- \[([ /x])\]\s*/;
 const PLAIN_DASH_PATTERN = /^-\s*/;
 const RUNNING_ACTUAL_TAIL_PATTERN = /(?:^|\s)(\d{2}:\d{2})\s*-\s*$/;
 const ACTUAL_RANGE_TAIL_PATTERN = /(?:^|\s)(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})\s*$/;
