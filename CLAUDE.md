@@ -68,6 +68,19 @@ When the request is about LLR plugin runtime logs or JSONL debugging:
 - After implementation changes, prefer `npm run build:sync` and then `obsidian plugin:reload id=llr`.
 - When behavior and docs disagree, confirm behavior from `src/` and then update the relevant doc in `docs/specs/`.
 
+## Obsidian Community Plugin Bot Review Workflow
+
+ユーザーが "ObsidianReviewBot" を含むテキストをペーストしたとき、それはObsidianコミュニティプラグインのレビューボットからの通知である。この場合、以下の手順で作業する：
+
+1. 現在のブランチ名を記憶する（通常 `trial/current`）
+2. `git checkout main && git pull` で main に切り替える
+3. 報告された全 Required 項目を `main` ブランチのソースに対して修正する
+4. `npm run build` でビルドが通ることを確認する
+5. コミットして `git push origin main` する
+6. `git checkout <元のブランチ>` で元に戻す
+
+**重要**: 修正は必ず `main` ブランチに対して行う。`trial/current` では作業しない。
+
 ## Local Product Notes
 
 - Non-public planning for AI companion / product strategy should be saved in ignored files under `docs/internal/`, not in `docs/specs/` or other public docs.
