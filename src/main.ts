@@ -240,14 +240,14 @@ export default class LlrPlugin extends Plugin {
             void this.activateView();
         });
         this.addRibbonIcon('alarm-clock-minus', this.t('ribbon.adjustTime1m'), () => {
-            void this.runCommandWithDebug('adjust-time-1m-ribbon', `${this.t('command.adjustTime1m')} [Ribbon]`, async () => {
+            void this.runCommandWithDebug('adjust-time-1m-ribbon', `${this.t('command.adjustTime1m')} [Ribbon]`, () => {
                 const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                 if (!view) {
                     this.showLlrNotice('LLR: Markdownノートを開いてください。');
                     return;
                 }
                 if (!this.ensureDailyNoteView(view, 'Adjust Time')) return;
-                await this.handleAdjustTime(view.editor, view, -1);
+                this.handleAdjustTime(view.editor, view, -1);
             });
         });
 
@@ -314,9 +314,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.toggleTask'),
             icon: 'step-forward',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('toggle-task', this.t('command.toggleTask'), async () => {
+                void this.runCommandWithDebug('toggle-task', this.t('command.toggleTask'), () => {
                     this.debugLog('Command: Toggle Task');
-                    await this.handleToggleTask(editor, view);
+                    this.handleToggleTask(editor, view);
                 });
             }
         });
@@ -326,9 +326,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.adjustTime1m'),
             icon: 'alarm-clock-minus',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('adjust-time-1m', this.t('command.adjustTime1m'), async () => {
+                void this.runCommandWithDebug('adjust-time-1m', this.t('command.adjustTime1m'), () => {
                     this.debugLog('Command: Adjust Time (1m)');
-                    await this.handleAdjustTime(editor, view, -1);
+                    this.handleAdjustTime(editor, view, -1);
                 });
             }
         });
@@ -338,9 +338,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.startTask'),
             icon: 'play',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('start-task', this.t('command.startTask'), async () => {
+                void this.runCommandWithDebug('start-task', this.t('command.startTask'), () => {
                     this.debugLog('Command: Start Task');
-                    await this.handleToggleTask(editor, view, 'start');
+                    this.handleToggleTask(editor, view, 'start');
                 });
             }
         });
@@ -350,9 +350,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.stopTask'),
             icon: 'circle-stop',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('stop-task', this.t('command.stopTask'), async () => {
+                void this.runCommandWithDebug('stop-task', this.t('command.stopTask'), () => {
                     this.debugLog('Command: Stop Task');
-                    await this.handleToggleTask(editor, view, 'complete');
+                    this.handleToggleTask(editor, view, 'complete');
                 });
             }
         });
@@ -362,9 +362,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.startTaskFromPrev'),
             icon: 'play-circle',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('start-task-from-previous-completion', this.t('command.startTaskFromPrev'), async () => {
+                void this.runCommandWithDebug('start-task-from-previous-completion', this.t('command.startTaskFromPrev'), () => {
                     this.debugLog('Command: Start Task (Align to Previous Completion)');
-                    await this.handleStartTaskFromPreviousCompletion(editor, view);
+                    this.handleStartTaskFromPreviousCompletion(editor, view);
                 });
             }
         });
@@ -374,9 +374,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.duplicateTask'),
             icon: 'copy',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('duplicate-task', this.t('command.duplicateTask'), async () => {
+                void this.runCommandWithDebug('duplicate-task', this.t('command.duplicateTask'), () => {
                     this.debugLog('Command: Duplicate Task');
-                    await this.handleToggleTask(editor, view, 'duplicate');
+                    this.handleToggleTask(editor, view, 'duplicate');
                 });
             }
         });
@@ -1089,11 +1089,11 @@ export default class LlrPlugin extends Plugin {
         return false;
     }
 
-    private async handleCheckboxPress(
+    private handleCheckboxPress(
         intent: CheckboxPressIntent,
         checkboxEl: HTMLElement,
         preResolvedLineIndex?: number
-    ): Promise<void> {
+    ): void {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || !view.editor) return;
 
@@ -1659,7 +1659,7 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    async handleToggleTask(editor: Editor, view: MarkdownView, forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify') {
+    handleToggleTask(editor: Editor, view: MarkdownView, forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify') {
         this.debugLog('handleToggleTask entry', { forceAction });
         if (!this.ensureDailyNoteView(view, 'Toggle Task')) return;
 
@@ -1735,7 +1735,7 @@ export default class LlrPlugin extends Plugin {
         return undefined;
     }
 
-    async handleStartTaskFromPreviousCompletion(editor: Editor, view: MarkdownView): Promise<void> {
+    handleStartTaskFromPreviousCompletion(editor: Editor, view: MarkdownView): void {
         if (!this.ensureDailyNoteView(view, 'Start Task (Align to Previous Completion)')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -1764,7 +1764,7 @@ export default class LlrPlugin extends Plugin {
         this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
+    handleResetTaskKeepTime(editor: Editor, view: MarkdownView): void {
         if (!this.ensureDailyNoteView(view, 'Reset Task')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -1780,7 +1780,7 @@ export default class LlrPlugin extends Plugin {
         this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    async handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): Promise<void> {
+    handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): void {
         if (!this.ensureDailyNoteView(view, 'Adjust Time')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
