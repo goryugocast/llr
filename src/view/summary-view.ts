@@ -156,7 +156,7 @@ export class SummaryView extends ItemView {
         requestAnimationFrame(() => {
             const newScrollEl = container.querySelector('.llr-list-container');
             if (newScrollEl) {
-                const runningEl = newScrollEl.querySelector('.llr-item-running') as HTMLElement | null;
+                const runningEl = newScrollEl.querySelector('.llr-item-running');
                 if (this.shouldAutoScrollToRunning()) {
                     if (runningEl) {
                         this.forceScrollRunningItemIntoView(newScrollEl, runningEl);
@@ -242,15 +242,16 @@ export class SummaryView extends ItemView {
         const appInternal = this.app as unknown as AppInternal;
         const dailyNotesPlugin = appInternal.internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
-            const options = (dailyNotesPlugin.instance?.options ?? {}) as Record<string, unknown>;
-            const format = String(options.format || 'YYYY-MM-DD');
-            const folder = (String(options.folder || '')).trim();
+            const options = (dailyNotesPlugin.instance?.options ?? {});
+            const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
+            const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
 
         // Legacy custom setting fallback (if available)
-        const workoutFolder = (String(appInternal.plugins?.plugins?.['llr']?.settings?.workoutFolder || '')).trim();
+        const rawWorkoutFolder = appInternal.plugins?.plugins?.['llr']?.settings?.workoutFolder;
+        const workoutFolder = (typeof rawWorkoutFolder === 'string' ? rawWorkoutFolder : '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -296,7 +297,7 @@ export class SummaryView extends ItemView {
             void this.requestRefresh();
         };
 
-        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'TODAY', attr: { 'aria-label': '今日へ移動' } });
+        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { 'aria-label': '今日へ移動' } });
         todayBtn.onclick = () => {
             this.currentDate = moment();
             this.updateTargetFile();
@@ -317,11 +318,11 @@ export class SummaryView extends ItemView {
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });
 
         const totalBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        totalBox.createEl('span', { text: 'EST. TOTAL', cls: 'llr-info-label' });
+        totalBox.createEl('span', { text: 'Est. total', cls: 'llr-info-label' });
         totalBox.createEl('span', { text: data.header.total, cls: 'llr-info-value' });
 
         const endBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        endBox.createEl('span', { text: 'EST. FINISH', cls: 'llr-info-label' });
+        endBox.createEl('span', { text: 'Est. finish', cls: 'llr-info-label' });
         if (data.header.wake) {
             const valueRow = endBox.createEl('span', { cls: 'llr-info-value llr-info-value-inline' });
             valueRow.createSpan({ text: data.header.end });
@@ -365,8 +366,8 @@ export class SummaryView extends ItemView {
         return raw
             .map((x) => {
                 const rec = (x && typeof x === 'object') ? x as Record<string, unknown> : {};
-                const time = String(rec.time ?? '');
-                const label = String(rec.label ?? '').trim();
+                const time = typeof rec.time === 'string' ? rec.time : '';
+                const label = (typeof rec.label === 'string' ? rec.label : '').trim();
                 if (!/^\d{4}$/.test(time) || !label) return null;
                 const hh = Number(time.slice(0, 2));
                 const mm = Number(time.slice(2, 4));

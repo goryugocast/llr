@@ -78,19 +78,19 @@ const DEFAULT_SETTINGS: LlrSettings = {
 
 const TRANSLATIONS = {
     en: {
-        'ribbon.openSummary': 'Open LLR Summary',
-        'ribbon.adjustTime1m': 'Adjust Time (1m)',
-        'command.openSummaryView': 'Open Summary View',
-        'command.toggleTask': 'Toggle Task',
-        'command.adjustTime1m': 'Adjust Time (1m)',
-        'command.startTask': 'Start Task',
-        'command.stopTask': 'Complete Task',
-        'command.startTaskFromPrev': 'Start Task at Previous Time',
-        'command.duplicateTask': 'Duplicate Task',
-        'command.skipTaskLogOnly': 'Skip Task',
-        'command.rescheduleRoutine': 'Reschedule Routine',
-        'command.insertRoutine': 'Insert Routine',
-        'settings.language.name': 'UI Language',
+        'ribbon.openSummary': 'Open LLR summary',
+        'ribbon.adjustTime1m': 'Adjust time (1m)',
+        'command.openSummaryView': 'Open summary view',
+        'command.toggleTask': 'Toggle task',
+        'command.adjustTime1m': 'Adjust time (1m)',
+        'command.startTask': 'Start task',
+        'command.stopTask': 'Complete task',
+        'command.startTaskFromPrev': 'Start task at previous time',
+        'command.duplicateTask': 'Duplicate task',
+        'command.skipTaskLogOnly': 'Skip task',
+        'command.rescheduleRoutine': 'Reschedule routine',
+        'command.insertRoutine': 'Insert routine',
+        'settings.language.name': 'UI language',
         'settings.language.desc': 'Choose language for settings and command labels.',
         'settings.language.option.auto': 'Auto (follow system locale)',
         'settings.language.option.ja': 'Japanese',
@@ -192,8 +192,8 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
     for (const item of input) {
         if (!item || typeof item !== 'object') continue;
         const rec = item as Record<string, unknown>;
-        const rawTime = String(rec.time ?? '').replace(/[^\d]/g, '').slice(0, 4);
-        const label = String(rec.label ?? '').trim();
+        const rawTime = (typeof rec.time === 'string' ? rec.time : '').replace(/[^\d]/g, '').slice(0, 4);
+        const label = (typeof rec.label === 'string' ? rec.label : '').trim();
         if (!label) continue;
         if (parseSectionTimeToInt(rawTime) === null) continue;
         normalized.push({ time: rawTime, label });
@@ -813,7 +813,7 @@ export default class LlrPlugin extends Plugin {
         }
 
         if (leaf) {
-            workspace.revealLeaf(leaf);
+            void workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
                 (this.app.workspace as unknown as { leftSplit?: { collapse?: () => void } }).leftSplit?.collapse?.(); // 左は閉じる（任意）
@@ -1346,11 +1346,11 @@ export default class LlrPlugin extends Plugin {
         type InternalPlugins = { getPluginById?: (id: string) => { enabled?: boolean; instance?: { options?: Record<string, unknown> } } | null };
         const internalPlugins = (this.app as unknown as { internalPlugins?: InternalPlugins }).internalPlugins;
         const dailyNotesPlugin = internalPlugins?.getPluginById?.('daily-notes');
-        const options = (dailyNotesPlugin?.instance?.options ?? {}) as Record<string, unknown>;
+        const options = (dailyNotesPlugin?.instance?.options ?? {});
         return {
             enabled: !!dailyNotesPlugin?.enabled,
-            format: String(options.format || 'YYYY-MM-DD'),
-            folder: String(options.folder || ''),
+            format: (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD',
+            folder: typeof options.folder === 'string' ? options.folder : '',
         };
     }
 
@@ -2293,7 +2293,7 @@ export default class LlrPlugin extends Plugin {
                 break;
             case 'complete':
                 this.debugLog('Action: Complete (via transformer signal)');
-                await this.completeTask(editor, view, lineIndex, lineText);
+                this.completeTask(editor, view, lineIndex, lineText);
                 break;
             case 'interrupt': {
                 editor.replaceRange(result.content, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });

@@ -234,7 +234,7 @@ function normalizeMonthlyJapaneseNthWeekdayShorthand(value: string): string | nu
     const dayToken = dayMap[match[2]];
     if (!dayToken) return null;
 
-    const entries = instances.map((n) => `${ordinalToEnglish(n!)} ${dayToken}`);
+    const entries = instances.map((n) => `${ordinalToEnglish(n)} ${dayToken}`);
     return `every month on ${entries.join(',')}`;
 }
 
@@ -427,9 +427,9 @@ function parseMonthlyOn(text: string): Omit<ParsedSchedule, 'anchor'> {
     const nthEntries = nthList.map((token) => token.match(/^(1st|2nd|3rd|4th|5th|last)\s+(mon|tue|wed|thu|fri|sat|sun)$/));
     if (nthList.length > 1 && nthEntries.every(Boolean)) {
         const entries = nthEntries.map((m) => {
-            const rawInstance = m![1];
+            const rawInstance = m[1];
             const instance = rawInstance === 'last' ? -1 : Number(rawInstance[0]);
-            const day = WEEKDAY_MAP[m![2] as WeekdayToken];
+            const day = WEEKDAY_MAP[m[2] as WeekdayToken];
             return { instance, day };
         });
         return { kind: 'monthly_nth_weekdays', interval: 1, entries };
