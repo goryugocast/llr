@@ -386,7 +386,7 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.skipTaskLogOnly'),
             icon: 'calendar-sync',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), async () => {
+                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), () => {
                     this.debugLog('Command: Skip Task (Log Only)');
                     this.handleDeferTaskToTomorrow(editor, view);
                 });
@@ -1139,7 +1139,7 @@ export default class LlrPlugin extends Plugin {
             resultPreview: result.content.slice(0, 120),
         });
 
-        await this.applyTaskResult(editor, view, targetLine, lineText, result);
+        this.applyTaskResult(editor, view, targetLine, lineText, result);
         this.scheduleUIUpdate();
     }
 
@@ -1719,7 +1719,7 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.applyTaskResult(editor, view, cursor.line, lineText, result);
         const driftFixCount = this.fixDurationDriftAcrossEditor(editor);
         if (driftFixCount > 0) {
             this.debugLog('Auto fixed duration drift after toggle', { driftFixCount });
@@ -1761,7 +1761,7 @@ export default class LlrPlugin extends Plugin {
             unstartedLongPressStartTime: startTime,
         });
         if (!result) return;
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
     async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
@@ -1777,7 +1777,7 @@ export default class LlrPlugin extends Plugin {
 
         const result = transformCheckboxPress(lineText, new Date(), 'long');
         if (!result) return;
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
     async handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): Promise<void> {
@@ -1796,7 +1796,7 @@ export default class LlrPlugin extends Plugin {
             before: lineText,
             after: result.content,
         });
-        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
     handleFixDurationDriftAll(editor: Editor, view: MarkdownView): void {
@@ -1880,13 +1880,13 @@ export default class LlrPlugin extends Plugin {
         editor.setCursor(previousLine, editor.getLine(previousLine).length);
     }
 
-    private async applyTaskResult(
+    private applyTaskResult(
         editor: Editor,
         view: MarkdownView,
         lineIndex: number,
         lineText: string,
         result: { type: 'update' | 'insert' | 'complete' | 'interrupt' | 'none'; content: string; extraContent?: string }
-    ): Promise<void> {
+    ): void {
         switch (result.type) {
             case 'update':
                 editor.replaceRange(result.content, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
