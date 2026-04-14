@@ -119,7 +119,8 @@ export function estimateFromText(text: string): number {
         const hasUnit = !!unit;
 
         // If it starts with a colon, it's probably part of a timestamp, skip it.
-        const prevChar = targetText[m.index! - 1];
+        const idx = m.index ?? 0;
+        const prevChar = targetText[idx - 1];
         if (prevChar === ':') return false;
 
         return isParens || hasUnit;

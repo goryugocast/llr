@@ -227,6 +227,7 @@ function normalizeMonthlyJapaneseNthWeekdayShorthand(value: string): string | nu
         .map((v) => parseJapaneseOrdinalToken(v));
     if (instances.length === 0) return null;
     if (instances.some((n) => n === null || n < 1 || n > 5)) return null;
+    const validInstances = instances.filter((n): n is number => n !== null);
 
     const dayMap: Record<string, string> = {
         '日': 'sun', '月': 'mon', '火': 'tue', '水': 'wed', '木': 'thu', '金': 'fri', '土': 'sat',
@@ -234,7 +235,7 @@ function normalizeMonthlyJapaneseNthWeekdayShorthand(value: string): string | nu
     const dayToken = dayMap[match[2]];
     if (!dayToken) return null;
 
-    const entries = instances.map((n) => `${ordinalToEnglish(n!)} ${dayToken}`);
+    const entries = validInstances.map((n) => `${ordinalToEnglish(n)} ${dayToken}`);
     return `every month on ${entries.join(',')}`;
 }
 
@@ -426,10 +427,11 @@ function parseMonthlyOn(text: string): Omit<ParsedSchedule, 'anchor'> {
     const nthList = text.split(',').map(v => v.trim()).filter(Boolean);
     const nthEntries = nthList.map((token) => token.match(/^(1st|2nd|3rd|4th|5th|last)\s+(mon|tue|wed|thu|fri|sat|sun)$/));
     if (nthList.length > 1 && nthEntries.every(Boolean)) {
-        const entries = nthEntries.map((m) => {
-            const rawInstance = m![1];
+        const validEntries = nthEntries.filter((m): m is RegExpMatchArray => m !== null);
+        const entries = validEntries.map((m) => {
+            const rawInstance = m[1];
             const instance = rawInstance === 'last' ? -1 : Number(rawInstance[0]);
-            const day = WEEKDAY_MAP[m![2] as WeekdayToken];
+            const day = WEEKDAY_MAP[m[2] as WeekdayToken];
             return { instance, day };
         });
         return { kind: 'monthly_nth_weekdays', interval: 1, entries };

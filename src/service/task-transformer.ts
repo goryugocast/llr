@@ -229,8 +229,6 @@ export function transformCheckboxPress(
 ): TaskTransformResult | null {
     if (lineText.match(/^\s+/)) return null; // Indented
 
-    const timePattern = /\d{2}:\d{2}/g;
-    const times = lineText.match(timePattern) || [];
     const timeStr = formatTime(now);
 
     const isRunning = lineText.startsWith('- [/]');

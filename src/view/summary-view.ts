@@ -35,7 +35,7 @@ export class SummaryView extends ItemView {
     }
 
     getDisplayText() {
-        return 'LLR Summary';
+        return 'LLR summary';
     }
 
     getIcon() {
@@ -154,7 +154,7 @@ export class SummaryView extends ItemView {
         requestAnimationFrame(() => {
             const newScrollEl = container.querySelector('.llr-list-container');
             if (newScrollEl) {
-                const runningEl = newScrollEl.querySelector('.llr-item-running') as HTMLElement | null;
+                const runningEl = newScrollEl.querySelector<HTMLElement>('.llr-item-running');
                 if (this.shouldAutoScrollToRunning()) {
                     if (runningEl) {
                         this.forceScrollRunningItemIntoView(newScrollEl, runningEl);
@@ -235,19 +235,26 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
+        const intPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getById = intPlugins?.getPluginById;
+        const dailyNotesPlugin = typeof getById === 'function'
+            ? (getById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
         if (dailyNotesPlugin?.enabled) {
-            const options = dailyNotesPlugin.instance?.options ?? {};
-            const format = options.format || 'YYYY-MM-DD';
-            const folder = (options.folder || '').trim();
+            const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
+            const options = (instance?.options ?? {}) as Record<string, unknown>;
+            const format = String(options.format || 'YYYY-MM-DD');
+            const folder = String(options.folder || '').trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
 
         // Legacy custom setting fallback (if available)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const workoutFolder = ((this.app as Record<string, any>).plugins?.plugins?.['llr']?.settings?.workoutFolder || '').trim();
+        const plugins = (this.app as Record<string, unknown>).plugins as Record<string, unknown> | undefined;
+        const pluginsMap = plugins?.plugins as Record<string, Record<string, unknown>> | undefined;
+        const llrPlugin = pluginsMap?.['llr'];
+        const llrSettings = llrPlugin?.settings as Record<string, unknown> | undefined;
+        const workoutFolder = String(llrSettings?.workoutFolder || '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -314,11 +321,11 @@ export class SummaryView extends ItemView {
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });
 
         const totalBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        totalBox.createEl('span', { text: 'EST. TOTAL', cls: 'llr-info-label' });
+        totalBox.createEl('span', { text: 'Est. total', cls: 'llr-info-label' });
         totalBox.createEl('span', { text: data.header.total, cls: 'llr-info-value' });
 
         const endBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        endBox.createEl('span', { text: 'EST. FINISH', cls: 'llr-info-label' });
+        endBox.createEl('span', { text: 'Est. finish', cls: 'llr-info-label' });
         if (data.header.wake) {
             const valueRow = endBox.createEl('span', { cls: 'llr-info-value llr-info-value-inline' });
             valueRow.createSpan({ text: data.header.end });
@@ -354,8 +361,10 @@ export class SummaryView extends ItemView {
     }
 
     private getRoutineSectionDefinitions(): Array<{ value: number; label: string }> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const raw: unknown[] = (this.app as Record<string, any>).plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? [];
+        const appPlugins = (this.app as Record<string, unknown>).plugins as Record<string, unknown> | undefined;
+        const plugMap = appPlugins?.plugins as Record<string, Record<string, unknown>> | undefined;
+        const llrSettings = plugMap?.['llr']?.settings as Record<string, unknown> | undefined;
+        const raw: unknown[] = (llrSettings?.sectionDefinitions ?? []) as unknown[];
         if (!Array.isArray(raw)) return [];
 
         return raw
@@ -557,15 +566,19 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
+        const intPlugins2 = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getById2 = intPlugins2?.getPluginById;
+        const dailyNotesPlugin = typeof getById2 === 'function'
+            ? (getById2 as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
         if (!dailyNotesPlugin?.enabled) {
-            new Notice('Enable the core Daily Notes plugin to open or create daily notes.');
+            new Notice('Enable the core daily notes plugin to open or create daily notes.');
             return null;
         }
 
-        if (typeof dailyNotesPlugin.instance?.getDailyNote !== 'function') {
-            new Notice('Daily Notes API is unavailable. Reload Obsidian and try again.');
+        const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
+        if (typeof instance?.getDailyNote !== 'function') {
+            new Notice('Daily notes API is unavailable. Reload Obsidian and try again.');
             return null;
         }
 
@@ -580,7 +593,8 @@ export class SummaryView extends ItemView {
         }
 
         try {
-            const dailyNote = await dailyNotesPlugin.instance.getDailyNote(this.currentDate.clone());
+            const getDailyNote = instance.getDailyNote as (date: moment.Moment) => Promise<unknown>;
+            const dailyNote = await getDailyNote(this.currentDate.clone());
             if (dailyNote instanceof TFile) {
                 this.targetFile = dailyNote;
                 return dailyNote;

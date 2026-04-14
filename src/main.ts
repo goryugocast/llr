@@ -160,8 +160,10 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
     for (const item of input) {
         if (!item || typeof item !== 'object') continue;
         const rec = item as Record<string, unknown>;
-        const rawTime = String(rec.time ?? '').replace(/[^\d]/g, '').slice(0, 4);
-        const label = String(rec.label ?? '').trim();
+        const rawTimeVal = rec.time;
+        const rawTime = String(typeof rawTimeVal === 'string' || typeof rawTimeVal === 'number' ? rawTimeVal : '').replace(/[^\d]/g, '').slice(0, 4);
+        const labelVal = rec.label;
+        const label = String(typeof labelVal === 'string' || typeof labelVal === 'number' ? labelVal : '').trim();
         if (!label) continue;
         if (parseSectionTimeToInt(rawTime) === null) continue;
         normalized.push({ time: rawTime, label });
@@ -386,7 +388,7 @@ export default class LlrPlugin extends Plugin {
             editorCallback: (editor: Editor, view: MarkdownView) => {
                 void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), async () => {
                     this.debugLog('Command: Skip Task (Log Only)');
-                    await this.handleDeferTaskToTomorrow(editor, view);
+                    this.handleDeferTaskToTomorrow(editor, view);
                 });
             }
         });
@@ -407,27 +409,29 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const hotkeyManager = (this.app as Record<string, any>)?.hotkeyManager;
+        const hotkeyManager = (this.app as Record<string, unknown>).hotkeyManager as Record<string, unknown> | undefined;
         if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
-        if (typeof hotkeyManager.setHotkeys !== 'function' || typeof hotkeyManager.removeHotkeys !== 'function') return;
+        const setHotkeys = hotkeyManager.setHotkeys;
+        const removeHotkeys = hotkeyManager.removeHotkeys;
+        if (typeof setHotkeys !== 'function' || typeof removeHotkeys !== 'function') return;
 
         const oldCommandId = `${this.manifest.id}:${LEGACY_SKIP_COMMAND_ID}`;
         const newCommandId = `${this.manifest.id}:${SKIP_COMMAND_ID}`;
-        const customKeys: Record<string, unknown> | undefined = hotkeyManager.customKeys;
+        const customKeys = hotkeyManager.customKeys as Record<string, unknown> | undefined;
         const oldKeys = customKeys?.[oldCommandId];
         const newKeys = customKeys?.[newCommandId];
         const oldHasKeys = Array.isArray(oldKeys) && oldKeys.length > 0;
         const newHasKeys = Array.isArray(newKeys) && newKeys.length > 0;
 
         if (oldHasKeys && !newHasKeys) {
-            hotkeyManager.setHotkeys(newCommandId, oldKeys);
+            (setHotkeys as (id: string, keys: unknown) => void)(newCommandId, oldKeys);
         }
         if (oldHasKeys || customKeys?.[oldCommandId] != null) {
-            hotkeyManager.removeHotkeys(oldCommandId);
+            (removeHotkeys as (id: string) => void)(oldCommandId);
         }
-        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof hotkeyManager.save === 'function') {
-            hotkeyManager.save();
+        const save = hotkeyManager.save;
+        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof save === 'function') {
+            (save as () => void)();
             this.debugLog('Migrated legacy command hotkeys', {
                 from: oldCommandId,
                 to: newCommandId,
@@ -759,13 +763,18 @@ export default class LlrPlugin extends Plugin {
         }
 
         if (leaf) {
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-                (this.app.workspace as Record<string, any>).leftSplit?.collapse?.();
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-                (this.app.workspace as Record<string, any>).rightSplit?.expand?.();
+                const ws = this.app.workspace as Record<string, unknown>;
+                const leftSplit = ws.leftSplit;
+                if (leftSplit && typeof leftSplit === 'object' && typeof (leftSplit as Record<string, unknown>).collapse === 'function') {
+                    ((leftSplit as Record<string, unknown>).collapse as () => void)();
+                }
+                const rightSplit = ws.rightSplit;
+                if (rightSplit && typeof rightSplit === 'object' && typeof (rightSplit as Record<string, unknown>).expand === 'function') {
+                    ((rightSplit as Record<string, unknown>).expand as () => void)();
+                }
             }
         }
     }
@@ -1205,16 +1214,16 @@ export default class LlrPlugin extends Plugin {
 
         // Strategy 2: CodeMirror 6 API
         const cmView = this.getCM6View(editor);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const offsetToPos = (editor as Record<string, any>)?.offsetToPos;
+        const offsetToPos = (editor as Record<string, unknown>).offsetToPos;
 
         if (cmView && typeof offsetToPos === 'function') {
             // a) Coordinate-based
-            if (pointer && typeof cmView.posAtCoords === 'function') {
+            const posAtCoords = cmView.posAtCoords;
+            if (pointer && typeof posAtCoords === 'function') {
                 try {
-                    const offset = cmView.posAtCoords({ x: pointer.x, y: pointer.y });
+                    const offset = (posAtCoords as (coords: { x: number; y: number }) => number | null)({ x: pointer.x, y: pointer.y });
                     if (offset !== null) {
-                        const pos = offsetToPos.call(editor, offset);
+                        const pos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, offset);
                         if (pos && typeof pos.line === 'number') return pos.line;
                     }
                 } catch (e) {
@@ -1222,10 +1231,11 @@ export default class LlrPlugin extends Plugin {
                 }
             }
             // b) Element-based
-            if (typeof cmView.posAtDOM === 'function') {
+            const posAtDOM = cmView.posAtDOM;
+            if (typeof posAtDOM === 'function') {
                 try {
-                    const offset = cmView.posAtDOM(checkboxEl, 0);
-                    const pos = offsetToPos.call(editor, offset);
+                    const offset = (posAtDOM as (node: Node, offset: number) => number)(checkboxEl, 0);
+                    const pos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, offset);
                     if (pos && typeof pos.line === 'number') return pos.line;
                 } catch (e) {
                     this.debugLog('CM6 posAtDOM failed', e);
@@ -1289,9 +1299,13 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getDailyNoteSettings(): DailyNoteSettingsSpec {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
-        const options = dailyNotesPlugin?.instance?.options ?? {};
+        const internalPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getPluginById = internalPlugins?.getPluginById;
+        const dailyNotesPlugin = typeof getPluginById === 'function'
+            ? (getPluginById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
+        const instance = dailyNotesPlugin?.instance as Record<string, unknown> | undefined;
+        const options = (instance?.options ?? {}) as Record<string, unknown>;
         return {
             enabled: !!dailyNotesPlugin?.enabled,
             format: String(options.format || 'YYYY-MM-DD'),
@@ -1464,11 +1478,20 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-    private getCM6View(editor: Editor): Record<string, any> | null {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const raw = editor as Record<string, any>;
-        return raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
+    private getCM6View(editor: Editor): Record<string, unknown> | null {
+        const raw = editor as Record<string, unknown>;
+        const cm = raw.cm as Record<string, unknown> | undefined;
+        const cmCm = cm?.cm as Record<string, unknown> | undefined;
+        if (cmCm) return cmCm;
+        if (cm) return cm;
+        const cmEditor = raw.cmEditor as Record<string, unknown> | undefined;
+        if (cmEditor) return cmEditor;
+        const editorObj = raw.editor as Record<string, unknown> | undefined;
+        const editorCm = editorObj?.cm as Record<string, unknown> | undefined;
+        const editorCmCmView = (editorCm?.cm as Record<string, unknown> | undefined)?.view as Record<string, unknown> | undefined;
+        if (editorCmCmView) return editorCmCmView;
+        if (editorCm) return editorCm;
+        return null;
     }
 
     private triggerHaptic(isLongPress: boolean): void {
@@ -1878,7 +1901,7 @@ export default class LlrPlugin extends Plugin {
                 break;
             case 'complete':
                 this.debugLog('Action: Complete (via transformer signal)');
-                await this.completeTask(editor, view, lineIndex, lineText);
+                this.completeTask(editor, view, lineIndex, lineText);
                 break;
             case 'interrupt': {
                 editor.replaceRange(result.content, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
@@ -1950,8 +1973,9 @@ export default class LlrPlugin extends Plugin {
         // Force CM6 widget re-render (needed when triggered from click handler)
         requestAnimationFrame(() => {
             const cmView = this.getCM6View(editor);
-            if (cmView && typeof cmView.dispatch === 'function') {
-                cmView.dispatch({});
+            const dispatch = cmView?.dispatch;
+            if (typeof dispatch === 'function') {
+                (dispatch as (tr: Record<string, unknown>) => void)({});
             }
         });
         this.debugLog('completeTask result:', { newLine });

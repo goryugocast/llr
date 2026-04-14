@@ -1,7 +1,7 @@
 {
     "id": "llr",
     "name": "LLR",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "minAppVersion": "1.4.0",
     "description": "Live Life Recording — operate tasks directly in Markdown with start/finish records, routine insertion, and a lightweight daily summary.",
     "author": "goryugo",
