@@ -9,6 +9,7 @@
     "build": "node esbuild.config.mjs production",
     "build:sync": "OBSIDIAN_SYNC_ON_BUILD=1 node esbuild.config.mjs production",
     "test": "vitest",
+    "lint": "eslint src/**/*.ts",
     "changelog:update": "bash scripts/update_changelog.sh"
   },
   "keywords": [
@@ -20,7 +21,11 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
     "esbuild": "^0.23.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-obsidianmd": "^0.1.9",
     "obsidian": "^1.7.0",
     "tslib": "^2.6.0",
     "typescript": "^5.5.0",
