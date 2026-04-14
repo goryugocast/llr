@@ -49,18 +49,18 @@ const DEFAULT_SETTINGS: LlrSettings = {
 
 const TRANSLATIONS = {
     en: {
-        'ribbon.openSummary': 'Open LLR Summary',
-        'ribbon.adjustTime1m': 'Adjust Time (1m)',
-        'command.openSummaryView': 'Open Summary View',
-        'command.toggleTask': 'Toggle Task',
-        'command.adjustTime1m': 'Adjust Time (1m)',
-        'command.startTask': 'Start Task',
-        'command.stopTask': 'Complete Task',
-        'command.startTaskFromPrev': 'Start Task at Previous Time',
-        'command.duplicateTask': 'Duplicate Task',
-        'command.skipTaskLogOnly': 'Skip Task',
-        'command.insertRoutine': 'Insert Routine',
-        'settings.language.name': 'UI Language',
+        'ribbon.openSummary': 'Open LLR summary',
+        'ribbon.adjustTime1m': 'Adjust time (1m)',
+        'command.openSummaryView': 'Open summary view',
+        'command.toggleTask': 'Toggle task',
+        'command.adjustTime1m': 'Adjust time (1m)',
+        'command.startTask': 'Start task',
+        'command.stopTask': 'Complete task',
+        'command.startTaskFromPrev': 'Start task at previous time',
+        'command.duplicateTask': 'Duplicate task',
+        'command.skipTaskLogOnly': 'Skip task',
+        'command.insertRoutine': 'Insert routine',
+        'settings.language.name': 'UI language',
         'settings.language.desc': 'Choose language for settings and command labels.',
         'settings.language.option.auto': 'Auto (follow system locale)',
         'settings.language.option.ja': 'Japanese',
@@ -1308,8 +1308,8 @@ export default class LlrPlugin extends Plugin {
         const options = (instance?.options ?? {}) as Record<string, unknown>;
         return {
             enabled: !!dailyNotesPlugin?.enabled,
-            format: String(options.format || 'YYYY-MM-DD'),
-            folder: String(options.folder || ''),
+            format: (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD',
+            folder: typeof options.folder === 'string' ? options.folder : '',
         };
     }
 

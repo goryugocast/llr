@@ -243,8 +243,8 @@ export class SummaryView extends ItemView {
         if (dailyNotesPlugin?.enabled) {
             const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
             const options = (instance?.options ?? {}) as Record<string, unknown>;
-            const format = String(options.format || 'YYYY-MM-DD');
-            const folder = String(options.folder || '').trim();
+            const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
+            const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
@@ -254,7 +254,8 @@ export class SummaryView extends ItemView {
         const pluginsMap = plugins?.plugins as Record<string, Record<string, unknown>> | undefined;
         const llrPlugin = pluginsMap?.['llr'];
         const llrSettings = llrPlugin?.settings as Record<string, unknown> | undefined;
-        const workoutFolder = String(llrSettings?.workoutFolder || '').trim();
+        const rawWorkoutFolder = llrSettings?.workoutFolder;
+        const workoutFolder = (typeof rawWorkoutFolder === 'string' ? rawWorkoutFolder : '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -300,7 +301,7 @@ export class SummaryView extends ItemView {
             void this.requestRefresh();
         };
 
-        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'TODAY', attr: { 'aria-label': '今日へ移動' } });
+        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { 'aria-label': '今日へ移動' } });
         todayBtn.onclick = () => {
             this.currentDate = moment();
             this.updateTargetFile();
