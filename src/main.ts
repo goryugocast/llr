@@ -1997,6 +1997,13 @@ export default class LlrPlugin extends Plugin {
         editor.replaceRange(newLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
         editor.setCursor(lineIndex, newLine.length);
 
+        // Force immediate disk write to prevent iCloud from reverting the completion
+        // (without this, the debounced CM6 save races against iCloud sync on iOS)
+        if (view.file) {
+            await this.app.vault.modify(view.file, editor.getValue());
+            this.debugLog('completeTask: forced disk write', { file: view.file.path });
+        }
+
         // Force CM6 widget re-render (needed when triggered from click handler)
         requestAnimationFrame(() => {
             const cmView = this.getCM6View(editor);

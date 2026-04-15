@@ -47,7 +47,7 @@ export class SummaryView extends ItemView {
         SummaryView.routineFolder = normalized || 'routine';
     }
 
-    async onOpen() {
+    onOpen() {
         const container = this.contentEl;
         container.empty();
         container.addClass('llr-summary-container');
