@@ -1242,24 +1242,25 @@ export default class LlrPlugin extends Plugin {
             }
         }
 
-        // Strategy 3: cm-line index + visibleRanges (coordinate-free, works on mobile)
-        if (cmView && typeof offsetToPos === 'function') {
-            const cmContent = (cmView.dom as HTMLElement | undefined)?.querySelector?.('.cm-content');
-            if (cmContent) {
-                const cmLines = Array.from(cmContent.querySelectorAll('.cm-line'));
-                const targetCmLine = checkboxEl.closest('.cm-line');
-                const idx = targetCmLine ? cmLines.indexOf(targetCmLine as HTMLElement) : -1;
-                if (idx >= 0) {
-                    const visibleRanges = cmView.visibleRanges as Array<{ from: number; to: number }> | undefined;
-                    if (Array.isArray(visibleRanges) && visibleRanges.length > 0) {
-                        const startOffset = visibleRanges[0].from;
-                        const startPos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, startOffset);
-                        if (startPos && typeof startPos.line === 'number') {
-                            this.debugLog('CM6 line index fallback', { idx, startLine: startPos.line });
-                            return startPos.line + idx;
+        // Strategy 3: elementAtHeight (CM6 internal layout, handles folds, works on mobile)
+        if (cmView && typeof offsetToPos === 'function' && pointer) {
+            try {
+                const domEl = cmView.dom as HTMLElement | undefined;
+                const scrollEl = cmView.scrollDOM as HTMLElement | undefined;
+                if (domEl && scrollEl && typeof cmView.elementAtHeight === 'function') {
+                    const rect = domEl.getBoundingClientRect();
+                    const docHeight = pointer.y - rect.top + scrollEl.scrollTop;
+                    const blockInfo = (cmView.elementAtHeight as (height: number) => { from: number } | null)(docHeight);
+                    if (blockInfo) {
+                        const pos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, blockInfo.from);
+                        if (pos && typeof pos.line === 'number') {
+                            this.debugLog('CM6 elementAtHeight fallback', { docHeight, line: pos.line });
+                            return pos.line;
                         }
                     }
                 }
+            } catch (e) {
+                this.debugLog('CM6 elementAtHeight failed', e);
             }
         }
 
