@@ -75,7 +75,7 @@ describe.skipIf(!hasRequiredLlrFixtures)('llr completion expectations (real vaul
             { file: '⛩️週次レビュー.md', completion: '2026-02-26', expected: '2026-03-02' },    // 毎週月曜
             { file: '🧺シーツを洗う.md', completion: '2026-02-26', expected: '2026-02-28' },      // 毎週土曜
             { file: '🖥️iPadセミナー当日サポート.md', completion: '2026-02-26', expected: '2026-03-21' }, // 第3土曜日
-            { file: '📚図書館へ行く.md', completion: '2026-02-26', expected: null },            // none (former 0)
+            { file: '📚図書館へ行く.md', completion: '2026-02-26', expected: null as string | null },            // none (former 0)
         ] as const;
 
         for (const c of cases) {

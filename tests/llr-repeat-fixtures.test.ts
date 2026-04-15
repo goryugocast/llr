@@ -83,7 +83,7 @@ describe('llr repeat fixtures (real vault data)', () => {
             try {
                 const normalized = normalizeRepeatExpression(fx.repeat);
                 const parsed = parseScheduleExpression(normalized);
-                if ((parsed as any).type === 'none') continue;
+                if (parsed.kind === 'none') continue;
                 const next = calculateNextDue({ type: 'schedule', expression: normalized }, baseDate);
                 if (next !== null && !/^\d{4}-\d{2}-\d{2}$/.test(next)) {
                     failures.push(`${fx.file}: invalid next_due format => ${next}`);

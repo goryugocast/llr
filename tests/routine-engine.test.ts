@@ -127,7 +127,7 @@ describe('RoutineEngine', () => {
 
         it('should update next_due to tomorrow if frequency is missing', async () => {
             const mockFile = { path: 'routine/no-freq.md' } as TFile;
-            const routineNote = { file: mockFile, frequency: undefined };
+            const routineNote: { file: TFile; frequency: undefined } = { file: mockFile, frequency: undefined };
 
             const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
             await engine.processCompletion(routineNote as any, new Date('2026-02-22'));
@@ -350,7 +350,7 @@ describe('RoutineEngine', () => {
 
         it('should append repeat: 1 when frequency is missing', async () => {
             const mockFile = { path: 'routine/new.md' } as any;
-            const routineNote = { file: mockFile, frequency: undefined };
+            const routineNote: { file: any; frequency: undefined } = { file: mockFile, frequency: undefined };
 
             const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
             await engine.processCompletion(routineNote as any, new Date('2026-02-22'));

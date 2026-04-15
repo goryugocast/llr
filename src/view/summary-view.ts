@@ -35,8 +35,7 @@ export class SummaryView extends ItemView {
     }
 
     getDisplayText() {
-        // eslint-disable-next-line obsidianmd/ui/sentence-case
-        return 'LLR Summary';
+        return 'Daily summary';
     }
 
     getIcon() {
@@ -48,7 +47,8 @@ export class SummaryView extends ItemView {
         SummaryView.routineFolder = normalized || 'routine';
     }
 
-    onOpen() {
+    // eslint-disable-next-line @typescript-eslint/require-await -- ItemView.onOpen contract requires Promise<void>
+    async onOpen(): Promise<void> {
         const container = this.contentEl;
         container.empty();
         container.addClass('llr-summary-container');
@@ -153,9 +153,9 @@ export class SummaryView extends ItemView {
 
         // スクロール位置の復元
         requestAnimationFrame(() => {
-            const newScrollEl = container.querySelector('.llr-list-container');
+            const newScrollEl = container.querySelector<HTMLElement>('.llr-list-container');
             if (newScrollEl) {
-                const runningEl = newScrollEl.querySelector('.llr-item-running') as HTMLElement | null;
+                const runningEl = newScrollEl.querySelector<HTMLElement>('.llr-item-running');
                 if (this.shouldAutoScrollToRunning()) {
                     if (runningEl) {
                         this.forceScrollRunningItemIntoView(newScrollEl, runningEl);
@@ -236,7 +236,13 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        type DailyNotesPlugin = { enabled?: boolean; instance?: { options?: Record<string, unknown> } };
+        type AppInternal = {
+            internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | undefined };
+            plugins?: { plugins?: { llr?: { settings?: { workoutFolder?: unknown } } } };
+        };
+        const appInternal = this.app as unknown as AppInternal;
+        const dailyNotesPlugin = appInternal.internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
             const options = dailyNotesPlugin.instance?.options ?? {};
             const format = typeof options.format === 'string' ? options.format : 'YYYY-MM-DD';
@@ -246,7 +252,8 @@ export class SummaryView extends ItemView {
         }
 
         // Legacy custom setting fallback (if available)
-        const workoutFolder = ((this.app as any).plugins?.plugins?.['llr']?.settings?.workoutFolder || '').trim();
+        const rawWorkoutFolder = appInternal.plugins?.plugins?.llr?.settings?.workoutFolder;
+        const workoutFolder = (typeof rawWorkoutFolder === 'string' ? rawWorkoutFolder : '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -353,7 +360,8 @@ export class SummaryView extends ItemView {
     }
 
     private getRoutineSectionDefinitions(): Array<{ value: number; label: string }> {
-        const raw = ((this.app as any).plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? []) as any[];
+        type AppPluginsInternal = { plugins?: { plugins?: { llr?: { settings?: { sectionDefinitions?: unknown } } } } };
+        const raw = (this.app as unknown as AppPluginsInternal).plugins?.plugins?.llr?.settings?.sectionDefinitions ?? [];
         if (!Array.isArray(raw)) return [];
 
         return raw
@@ -555,16 +563,19 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        type DailyNotesPlugin = {
+            enabled?: boolean;
+            instance?: { getDailyNote?: (date: unknown) => Promise<TFile> };
+        };
+        type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | undefined } };
+        const dailyNotesPlugin = (this.app as unknown as AppInternal).internalPlugins?.getPluginById?.('daily-notes');
         if (!dailyNotesPlugin?.enabled) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
-            new Notice('Enable the core Daily Notes plugin to open or create daily notes.');
+            new Notice('Enable the core daily notes plugin to open or create daily notes.');
             return null;
         }
 
         if (typeof dailyNotesPlugin.instance?.getDailyNote !== 'function') {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
-            new Notice('Daily Notes API is unavailable. Reload Obsidian and try again.');
+            new Notice('Daily notes API is unavailable. Reload Obsidian and try again.');
             return null;
         }
 

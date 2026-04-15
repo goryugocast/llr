@@ -22,6 +22,7 @@ export type ScheduleFrequency = {
 export type Frequency = LegacyFrequency | ScheduleFrequency | { type: 'none' };
 
 type ParsedSchedule =
+    | { kind: 'none'; anchor: 'due' | 'completion' }
     | { kind: 'interval_days'; days: number; anchor: 'due' | 'completion' }
     | { kind: 'weekday'; anchor: 'due' | 'completion' }
     | { kind: 'weekend'; anchor: 'due' | 'completion' }
@@ -33,6 +34,12 @@ type ParsedSchedule =
     | { kind: 'interval_years'; years: number; anchor: 'due' | 'completion' }
     | { kind: 'yearly_dates'; interval: number; dates: Array<{ month: number; day: number }>; anchor: 'due' | 'completion' }
     | { kind: 'yearly_month_last_day'; interval: number; month: number; offset: number; anchor: 'due' | 'completion' };
+
+// Distributive Omit so each union member keeps its own properties when 'anchor' is removed.
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+type ParsedScheduleWithoutAnchor = DistributiveOmit<ParsedSchedule, 'anchor'>;
+type MonthlyParsedWithoutAnchor = Extract<ParsedScheduleWithoutAnchor, { kind: 'monthly_days' | 'monthly_nth_weekday' | 'monthly_nth_weekdays' }>;
+type YearlyParsedWithoutAnchor = Extract<ParsedScheduleWithoutAnchor, { kind: 'yearly_dates' | 'yearly_month_last_day' }>;
 
 const LEGACY_DAY_MAP: Record<DayOfWeek, number> = {
     Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
@@ -391,7 +398,7 @@ function parseWeekdayList(text: string): number[] {
     return Array.from(new Set(mapped));
 }
 
-function parseMonthlyOn(text: string): Omit<ParsedSchedule, 'anchor'> {
+function parseMonthlyOn(text: string): MonthlyParsedWithoutAnchor {
     const dayMatch = text.match(/^day\s+(-?\d+)$/);
     if (dayMatch) {
         return { kind: 'monthly_days', interval: 1, dates: [Number(dayMatch[1])] };
@@ -448,7 +455,7 @@ function parseMonthlyOn(text: string): Omit<ParsedSchedule, 'anchor'> {
     throw new Error(`Unsupported monthly schedule: "${text}"`);
 }
 
-function parseYearlyOn(text: string): Omit<ParsedSchedule, 'anchor'> {
+function parseYearlyOn(text: string): YearlyParsedWithoutAnchor {
     const normalized = text.trim().replace(/，/g, ',');
     const listTokens = normalized.includes(',')
         ? normalized.split(',').map(v => v.trim()).filter(Boolean)
@@ -519,7 +526,7 @@ function parseYearlyDateToken(token: string): { month: number; day: number } | n
 export function parseScheduleExpression(expression: string): ParsedSchedule {
     const normalized = normalize(expression);
     if (normalized === 'none' || normalized === 'no') {
-        return { type: 'none' };
+        return { kind: 'none', anchor: 'due' };
     }
     if (!normalized.startsWith('every ')) {
         throw new Error(`Schedule must start with "every": "${expression}"`);
@@ -593,6 +600,11 @@ export function usesDueAnchor(frequency: Frequency): boolean {
 
 function calculateNextDueFromSchedule(parsed: ParsedSchedule, baseDate: Date): string {
     switch (parsed.kind) {
+        case 'none':
+            // 'none' should be filtered upstream (frequency.type === 'none' check). If we reach here,
+            // the caller passed an invalid expression and we surface it rather than silently returning ''.
+            throw new Error('Cannot calculate next due for "none" schedule');
+
         case 'interval_days':
             return toDateString(addDays(baseDate, parsed.days));
 

@@ -2,10 +2,9 @@ import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
 import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
 import { RoutineEngine, type RoutineEngineDebugEvent } from './service/routine-engine';
-import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
+import { computeStatusBarMetrics } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
-import { computeSummaryData } from './service/summary-calculator';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 
 interface LlrSettings {
@@ -144,6 +143,29 @@ const TRANSLATIONS = {
 } as const;
 
 type TranslationKey = keyof typeof TRANSLATIONS.en;
+
+// Structural types for Obsidian internal APIs not covered by the public types.
+// Used at cast boundaries instead of `as any` to keep `no-explicit-any` happy.
+type DailyNotesPlugin = {
+    enabled?: boolean;
+    instance?: {
+        options?: Record<string, unknown>;
+        getDailyNote?: (...args: unknown[]) => unknown;
+    };
+};
+type LlrSettingsBag = { workoutFolder?: unknown; sectionDefinitions?: unknown };
+type AppInternal = {
+    internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | undefined };
+    plugins?: { plugins?: { llr?: { settings?: LlrSettingsBag } } };
+    hotkeyManager?: unknown;
+};
+type WorkspaceInternal = { leftSplit?: { collapse?: () => void }; rightSplit?: { expand?: () => void } };
+type CM6View = {
+    dispatch?: (transaction: Record<string, unknown>) => void;
+    posAtCoords?: (coords: { x: number; y: number }) => number | null;
+    posAtDOM?: (node: Node, offset: number) => number;
+};
+type EditorInternal = { offsetToPos?: (offset: number) => { line: number } | null; cm?: unknown; cmEditor?: unknown; editor?: unknown };
 const DAILY_ROUTINE_TEMPLATE_MARKERS = [
     '{{llr-today}}',
     '{{llr-routines}}',
@@ -168,8 +190,8 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
     const normalized: SectionDefinition[] = [];
     for (const item of input) {
         if (!item || typeof item !== 'object') continue;
-        const rawTime = String((item as any).time ?? '').replace(/[^\d]/g, '').slice(0, 4);
-        const label = String((item as any).label ?? '').trim();
+        const rawTime = String((item).time ?? '').replace(/[^\d]/g, '').slice(0, 4);
+        const label = String((item).label ?? '').trim();
         if (!label) continue;
         if (parseSectionTimeToInt(rawTime) === null) continue;
         normalized.push({ time: rawTime, label });
@@ -290,10 +312,10 @@ export default class LlrPlugin extends Plugin {
         });
         // Cursor movement tracking (click or key navigation)
         this.registerDomEvent(document, 'click', (ev) => this.handleDocumentClick(ev), true);
-        this.registerDomEvent(document, 'beforeinput', (ev) => this.handleDocumentBeforeInput(ev as InputEvent), true);
+        this.registerDomEvent(document, 'beforeinput', (ev) => this.handleDocumentBeforeInput(ev), true);
         this.registerDomEvent(document, 'input', (ev) => this.handleDocumentInput(ev as InputEvent), true);
-        this.registerDomEvent(document, 'compositionstart', (ev) => this.handleDocumentCompositionEvent('compositionstart', ev as CompositionEvent), true);
-        this.registerDomEvent(document, 'compositionend', (ev) => this.handleDocumentCompositionEvent('compositionend', ev as CompositionEvent), true);
+        this.registerDomEvent(document, 'compositionstart', (ev) => this.handleDocumentCompositionEvent('compositionstart', ev), true);
+        this.registerDomEvent(document, 'compositionend', (ev) => this.handleDocumentCompositionEvent('compositionend', ev), true);
         this.registerDomEvent(document, 'keyup', () => this.updateUI());
         // Initial update
         this.scheduleUIUpdate();
@@ -344,9 +366,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.fixDurationDriftAll'),
             icon: 'wrench',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('fix-duration-drift-all', this.t('command.fixDurationDriftAll'), async () => {
+                void this.runCommandWithDebug('fix-duration-drift-all', this.t('command.fixDurationDriftAll'), () => {
                     this.debugLog('Command: Fix Duration Drift (All Completed Tasks)');
-                    await this.handleFixDurationDriftAll(editor, view);
+                    this.handleFixDurationDriftAll(editor, view);
                 });
             }
         });
@@ -440,9 +462,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.skipTaskLogOnly'),
             icon: 'calendar-sync',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), async () => {
+                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), () => {
                     this.debugLog('Command: Skip Task (Log Only)');
-                    await this.handleDeferTaskToTomorrow(editor, view);
+                    this.handleDeferTaskToTomorrow(editor, view);
                 });
             }
         });
@@ -463,7 +485,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        const hotkeyManager = (this.app as any)?.hotkeyManager;
+        const hotkeyManager = (this.app as unknown as AppInternal)?.hotkeyManager as Record<string, unknown> | undefined;
         if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
         if (typeof hotkeyManager.setHotkeys !== 'function' || typeof hotkeyManager.removeHotkeys !== 'function') return;
 
@@ -491,24 +513,24 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    private debugLog(message: string, data?: any) {
+    private debugLog(message: string, data?: unknown) {
         const timestamp = new Date().toISOString();
         const logMsg = `[LLR Debug ${timestamp}] ${message}`;
-        console.log(logMsg);
-        if (data) console.log(data);
+        console.debug(logMsg);
+        if (data) console.debug(data);
         this.emitDebugRecord('plugin', message, data);
     }
 
     async loadSettings(): Promise<void> {
         const loaded = await this.loadData();
         const merged = { ...DEFAULT_SETTINGS, ...(loaded ?? {}) } as LlrSettings;
-        merged.checkboxOverrideEnabled = Boolean((loaded as any)?.checkboxOverrideEnabled ?? merged.checkboxOverrideEnabled);
-        merged.mobileLargeCheckboxEnabled = Boolean((loaded as any)?.mobileLargeCheckboxEnabled ?? merged.mobileLargeCheckboxEnabled);
-        merged.uiLanguage = ((loaded as any)?.uiLanguage === 'ja' || (loaded as any)?.uiLanguage === 'en')
-            ? (loaded as any).uiLanguage
+        merged.checkboxOverrideEnabled = Boolean((loaded)?.checkboxOverrideEnabled ?? merged.checkboxOverrideEnabled);
+        merged.mobileLargeCheckboxEnabled = Boolean((loaded)?.mobileLargeCheckboxEnabled ?? merged.mobileLargeCheckboxEnabled);
+        merged.uiLanguage = ((loaded)?.uiLanguage === 'ja' || (loaded)?.uiLanguage === 'en')
+            ? (loaded).uiLanguage
             : 'auto';
-        merged.routineFolder = normalizeRoutineFolder((loaded as any)?.routineFolder ?? merged.routineFolder);
-        merged.sectionDefinitions = normalizeSectionDefinitions((loaded as any)?.sectionDefinitions ?? merged.sectionDefinitions);
+        merged.routineFolder = normalizeRoutineFolder((loaded)?.routineFolder ?? merged.routineFolder);
+        merged.sectionDefinitions = normalizeSectionDefinitions((loaded)?.sectionDefinitions ?? merged.sectionDefinitions);
         this.settings = merged;
     }
 
@@ -815,11 +837,12 @@ export default class LlrPlugin extends Plugin {
         }
 
         if (leaf) {
-            workspace.revealLeaf(leaf);
+            void workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
-                (this.app as any).workspace.leftSplit?.collapse?.(); // 左は閉じる（任意）
-                (this.app as any).workspace.rightSplit?.expand?.();
+                const ws = this.app.workspace as unknown as WorkspaceInternal;
+                ws.leftSplit?.collapse?.(); // 左は閉じる（任意）
+                ws.rightSplit?.expand?.();
             }
         }
     }
@@ -845,7 +868,7 @@ export default class LlrPlugin extends Plugin {
         const nowTime = this.formatTime(now);
 
         // 1. Status Bar update
-        const { totalMin, remainMin, cursorMin } = computeStatusBarMetrics(
+        const { remainMin, cursorMin } = computeStatusBarMetrics(
             lines,
             cursorLine,
             nowTime,
@@ -1259,7 +1282,7 @@ export default class LlrPlugin extends Plugin {
 
         // Strategy 2: CodeMirror 6 API
         const cmView = this.getCM6View(editor);
-        const offsetToPos = (editor as any)?.offsetToPos;
+        const offsetToPos = (editor as unknown as EditorInternal)?.offsetToPos;
 
         if (cmView && typeof offsetToPos === 'function') {
             // a) Coordinate-based
@@ -1342,12 +1365,14 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getDailyNoteSettings(): DailyNoteSettingsSpec {
-        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
+        const dailyNotesPlugin = (this.app as unknown as AppInternal).internalPlugins?.getPluginById?.('daily-notes');
         const options = dailyNotesPlugin?.instance?.options ?? {};
+        const format = typeof options.format === 'string' && options.format ? options.format : 'YYYY-MM-DD';
+        const folder = typeof options.folder === 'string' ? options.folder : '';
         return {
             enabled: !!dailyNotesPlugin?.enabled,
-            format: String(options.format || 'YYYY-MM-DD'),
-            folder: String(options.folder || ''),
+            format,
+            folder,
         };
     }
 
@@ -1516,9 +1541,19 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    private getCM6View(editor: Editor): any {
-        const raw = editor as any;
-        return raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
+    private getCM6View(editor: Editor): CM6View | null {
+        const raw = editor as unknown as Record<string, unknown>;
+        const cm = raw.cm as Record<string, unknown> | undefined;
+        const editorChain = raw.editor as Record<string, unknown> | undefined;
+        const editorCm = editorChain?.cm as Record<string, unknown> | undefined;
+        return (
+            (cm?.cm as CM6View | undefined) ??
+            (cm as CM6View | undefined) ??
+            (raw.cmEditor as CM6View | undefined) ??
+            ((editorCm?.cm as Record<string, unknown> | undefined)?.view as CM6View | undefined) ??
+            (editorCm as CM6View | undefined) ??
+            null
+        );
     }
 
     private triggerHaptic(isLongPress: boolean): void {
@@ -1535,7 +1570,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     onunload() {
-        console.log('Unloading Llr Plugin...');
+        console.debug('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
         if (this.statusBarDebounce) clearTimeout(this.statusBarDebounce);
         if (this.refreshTimer) clearInterval(this.refreshTimer);
@@ -1950,7 +1985,8 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string) {
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so applyTaskResult's await chain stays valid; body has no awaits today but logical Promise contract preserved
+    async completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string): Promise<void> {
         const now = new Date();
         const endTimeStr = this.formatTime(now);
 
