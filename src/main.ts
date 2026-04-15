@@ -1233,7 +1233,29 @@ export default class LlrPlugin extends Plugin {
             }
         }
 
-        // Strategy 3: Visual Proximity (Force fallback for widgets in mobile)
+        // Strategy 3: elementAtHeight (handles headings/decorations shifting posAtCoords)
+        if (cmView && typeof offsetToPos === 'function' && pointer) {
+            try {
+                const domEl = cmView.dom as HTMLElement | undefined;
+                const scrollEl = cmView.scrollDOM as HTMLElement | undefined;
+                if (domEl && scrollEl && typeof cmView.elementAtHeight === 'function') {
+                    const rect = domEl.getBoundingClientRect();
+                    const docHeight = pointer.y - rect.top + scrollEl.scrollTop;
+                    const blockInfo = (cmView.elementAtHeight as (height: number) => { from: number } | null)(docHeight);
+                    if (blockInfo) {
+                        const pos = offsetToPos.call(editor, blockInfo.from);
+                        if (pos && typeof pos.line === 'number') {
+                            this.debugLog('CM6 elementAtHeight fallback', { docHeight, line: pos.line });
+                            return pos.line;
+                        }
+                    }
+                }
+            } catch (e) {
+                this.debugLog('CM6 elementAtHeight failed', e);
+            }
+        }
+
+        // Strategy 4: Visual Proximity (Force fallback for widgets in mobile)
         if (pointer) {
             return this.resolveLineByProximity(checkboxEl, pointer.y);
         }
