@@ -16,7 +16,7 @@ export default [
             '@typescript-eslint': tsPlugin,
         },
         rules: {
-            ...obsidianPlugin.configs.recommended.rules,
+            ...obsidianPlugin.configs.recommended,
             '@typescript-eslint/require-await': 'error',
             '@typescript-eslint/no-base-to-string': 'error',
         },
