@@ -2,9 +2,10 @@ import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
 import { CheckboxPressIntent, adjustTaskTimeByMinutes, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
 import { RoutineEngine, type RoutineEngineDebugEvent } from './service/routine-engine';
-import { computeStatusBarMetrics } from './service/status-bar-calculator';
+import { computeStatusBarMetrics, DurationCalculator } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { computeSummaryData } from './service/summary-calculator';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 
 interface LlrSettings {
@@ -68,24 +69,24 @@ const TRANSLATIONS = {
         'settings.language.notice': 'LLR: Language updated. Reload plugin to refresh command names.',
         'settings.debugMode.name': 'Debug mode',
         'settings.debugMode.desc': 'Show command/internal delay timestamps in Notice and log them to llrlog/debug.jsonl. Intended for debugging and troubleshooting.',
-        'settings.estimateWarning.name': 'Estimate warning',
+        'settings.estimateWarning.name': 'Estimate Warning',
         'settings.estimateWarning.desc': 'Show schedule warning cues based on estimated remaining time.',
-        'settings.checkboxOverride.name': 'Editor checkbox override',
+        'settings.checkboxOverride.name': 'Editor Checkbox Override',
         'settings.checkboxOverride.desc': 'Use LLR short-press/long-press behavior for checkboxes in the editor. When off, checkbox clicks use Obsidian default behavior while commands and hotkeys stay available.',
-        'settings.routineFolder.name': 'Routine folder',
+        'settings.routineFolder.name': 'Routine Folder',
         'settings.routineFolder.desc': 'Folder for repeat-task routine notes. You can pick from suggestions. Only direct child .md files are targeted.',
-        'settings.routineSections.heading': 'Routine sections',
+        'settings.routineSections.heading': 'Routine Sections',
         'settings.routineSections.desc': 'Configure heading boundaries for Insert Routine / template auto-insert. A task goes into the latest section whose HHmm boundary is <= task time. Tasks without section stay at the top (no heading).',
         'settings.routineSections.empty': 'No section definitions. All routines are inserted without headings.',
         'settings.routineSections.itemName': 'Section {index}',
         'settings.routineSections.itemDesc': 'Boundary time (HHmm) and heading label',
-        'settings.routineSections.newName': 'New section',
+        'settings.routineSections.newName': 'New Section',
         'settings.routineSections.newDesc': 'Enter HHmm and heading label. When both are set, it is committed and sorted by time.',
         'settings.routineSections.deleteTooltip': 'Delete section',
         'settings.routineSections.addTooltip': 'Add section (when both fields are filled)',
         'settings.routineSections.labelPlaceholder': 'Morning',
         'settings.routineSections.timePlaceholder': '0700',
-        'settings.advanced.heading': 'Advanced / compatibility',
+        'settings.advanced.heading': 'Advanced / Compatibility',
         'settings.advanced.desc': 'Settings for exceptional cases. Most users can leave these as-is.',
         'notice.invalidTime': 'LLR: Please enter time in HHmm format (example: 0700).',
         'notice.emptySectionLabel': 'LLR: Please enter a section label.',
@@ -159,9 +160,8 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
     const normalized: SectionDefinition[] = [];
     for (const item of input) {
         if (!item || typeof item !== 'object') continue;
-        const rec = item as Record<string, unknown>;
-        const rawTime = String(rec.time ?? '').replace(/[^\d]/g, '').slice(0, 4);
-        const label = String(rec.label ?? '').trim();
+        const rawTime = String((item as any).time ?? '').replace(/[^\d]/g, '').slice(0, 4);
+        const label = String((item as any).label ?? '').trim();
         if (!label) continue;
         if (parseSectionTimeToInt(rawTime) === null) continue;
         normalized.push({ time: rawTime, label });
@@ -177,7 +177,7 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
 }
 
 function normalizeRoutineFolder(value: unknown): string {
-    const asText = typeof value === 'string' ? value : '';
+    const asText = typeof value === 'string' ? value : String(value ?? '');
     const normalizedPath = normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
     return normalizedPath || DEFAULT_ROUTINE_FOLDER;
 }
@@ -282,10 +282,10 @@ export default class LlrPlugin extends Plugin {
         });
         // Cursor movement tracking (click or key navigation)
         this.registerDomEvent(document, 'click', (ev) => this.handleDocumentClick(ev), true);
-        this.registerDomEvent(document, 'beforeinput', (ev) => { if (ev instanceof InputEvent) this.handleDocumentBeforeInput(ev); }, true);
-        this.registerDomEvent(document, 'input', (ev) => { if (ev instanceof InputEvent) this.handleDocumentInput(ev); }, true);
-        this.registerDomEvent(document, 'compositionstart', (ev) => { if (ev instanceof CompositionEvent) this.handleDocumentCompositionEvent('compositionstart', ev); }, true);
-        this.registerDomEvent(document, 'compositionend', (ev) => { if (ev instanceof CompositionEvent) this.handleDocumentCompositionEvent('compositionend', ev); }, true);
+        this.registerDomEvent(document, 'beforeinput', (ev) => this.handleDocumentBeforeInput(ev as InputEvent), true);
+        this.registerDomEvent(document, 'input', (ev) => this.handleDocumentInput(ev as InputEvent), true);
+        this.registerDomEvent(document, 'compositionstart', (ev) => this.handleDocumentCompositionEvent('compositionstart', ev as CompositionEvent), true);
+        this.registerDomEvent(document, 'compositionend', (ev) => this.handleDocumentCompositionEvent('compositionend', ev as CompositionEvent), true);
         this.registerDomEvent(document, 'keyup', () => this.updateUI());
         // Initial update
         this.scheduleUIUpdate();
@@ -407,14 +407,13 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const hotkeyManager = (this.app as Record<string, any>)?.hotkeyManager;
+        const hotkeyManager = (this.app as any)?.hotkeyManager;
         if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
         if (typeof hotkeyManager.setHotkeys !== 'function' || typeof hotkeyManager.removeHotkeys !== 'function') return;
 
         const oldCommandId = `${this.manifest.id}:${LEGACY_SKIP_COMMAND_ID}`;
         const newCommandId = `${this.manifest.id}:${SKIP_COMMAND_ID}`;
-        const customKeys: Record<string, unknown> | undefined = hotkeyManager.customKeys;
+        const customKeys = hotkeyManager.customKeys as Record<string, unknown> | undefined;
         const oldKeys = customKeys?.[oldCommandId];
         const newKeys = customKeys?.[newCommandId];
         const oldHasKeys = Array.isArray(oldKeys) && oldKeys.length > 0;
@@ -436,7 +435,7 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    private debugLog(message: string, data?: unknown) {
+    private debugLog(message: string, data?: any) {
         const timestamp = new Date().toISOString();
         const logMsg = `[LLR Debug ${timestamp}] ${message}`;
         console.debug(logMsg);
@@ -445,15 +444,15 @@ export default class LlrPlugin extends Plugin {
     }
 
     async loadSettings(): Promise<void> {
-        const loaded: Record<string, unknown> | null = await this.loadData();
-        const merged: LlrSettings = { ...DEFAULT_SETTINGS, ...(loaded ?? {}) };
-        merged.checkboxOverrideEnabled = Boolean(loaded?.checkboxOverrideEnabled ?? merged.checkboxOverrideEnabled);
-        merged.mobileLargeCheckboxEnabled = Boolean(loaded?.mobileLargeCheckboxEnabled ?? merged.mobileLargeCheckboxEnabled);
-        merged.uiLanguage = (loaded?.uiLanguage === 'ja' || loaded?.uiLanguage === 'en')
-            ? loaded.uiLanguage
+        const loaded = await this.loadData();
+        const merged = { ...DEFAULT_SETTINGS, ...(loaded ?? {}) } as LlrSettings;
+        merged.checkboxOverrideEnabled = Boolean((loaded as any)?.checkboxOverrideEnabled ?? merged.checkboxOverrideEnabled);
+        merged.mobileLargeCheckboxEnabled = Boolean((loaded as any)?.mobileLargeCheckboxEnabled ?? merged.mobileLargeCheckboxEnabled);
+        merged.uiLanguage = ((loaded as any)?.uiLanguage === 'ja' || (loaded as any)?.uiLanguage === 'en')
+            ? (loaded as any).uiLanguage
             : 'auto';
-        merged.routineFolder = normalizeRoutineFolder(loaded?.routineFolder ?? merged.routineFolder);
-        merged.sectionDefinitions = normalizeSectionDefinitions(loaded?.sectionDefinitions ?? merged.sectionDefinitions);
+        merged.routineFolder = normalizeRoutineFolder((loaded as any)?.routineFolder ?? merged.routineFolder);
+        merged.sectionDefinitions = normalizeSectionDefinitions((loaded as any)?.sectionDefinitions ?? merged.sectionDefinitions);
         this.settings = merged;
     }
 
@@ -762,10 +761,8 @@ export default class LlrPlugin extends Plugin {
             workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-                (this.app.workspace as Record<string, any>).leftSplit?.collapse?.();
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-                (this.app.workspace as Record<string, any>).rightSplit?.expand?.();
+                (this.app as any).workspace.leftSplit?.collapse?.(); // 左は閉じる（任意）
+                (this.app as any).workspace.rightSplit?.expand?.();
             }
         }
     }
@@ -791,7 +788,7 @@ export default class LlrPlugin extends Plugin {
         const nowTime = this.formatTime(now);
 
         // 1. Status Bar update
-        const { remainMin, cursorMin } = computeStatusBarMetrics(
+        const { totalMin, remainMin, cursorMin } = computeStatusBarMetrics(
             lines,
             cursorLine,
             nowTime,
@@ -1205,8 +1202,7 @@ export default class LlrPlugin extends Plugin {
 
         // Strategy 2: CodeMirror 6 API
         const cmView = this.getCM6View(editor);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const offsetToPos = (editor as Record<string, any>)?.offsetToPos;
+        const offsetToPos = (editor as any)?.offsetToPos;
 
         if (cmView && typeof offsetToPos === 'function') {
             // a) Coordinate-based
@@ -1233,29 +1229,7 @@ export default class LlrPlugin extends Plugin {
             }
         }
 
-        // Strategy 3: elementAtHeight (handles headings/decorations shifting posAtCoords)
-        if (cmView && typeof offsetToPos === 'function' && pointer) {
-            try {
-                const domEl = cmView.dom as HTMLElement | undefined;
-                const scrollEl = cmView.scrollDOM as HTMLElement | undefined;
-                if (domEl && scrollEl && typeof cmView.elementAtHeight === 'function') {
-                    const rect = domEl.getBoundingClientRect();
-                    const docHeight = pointer.y - rect.top + scrollEl.scrollTop;
-                    const blockInfo = (cmView.elementAtHeight as (height: number) => { from: number } | null)(docHeight);
-                    if (blockInfo) {
-                        const pos = offsetToPos.call(editor, blockInfo.from);
-                        if (pos && typeof pos.line === 'number') {
-                            this.debugLog('CM6 elementAtHeight fallback', { docHeight, line: pos.line });
-                            return pos.line;
-                        }
-                    }
-                }
-            } catch (e) {
-                this.debugLog('CM6 elementAtHeight failed', e);
-            }
-        }
-
-        // Strategy 4: Visual Proximity (Force fallback for widgets in mobile)
+        // Strategy 3: Visual Proximity (Force fallback for widgets in mobile)
         if (pointer) {
             return this.resolveLineByProximity(checkboxEl, pointer.y);
         }
@@ -1311,8 +1285,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getDailyNoteSettings(): DailyNoteSettingsSpec {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const dailyNotesPlugin = (this.app as Record<string, any>).internalPlugins?.getPluginById?.('daily-notes');
+        const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
         const options = dailyNotesPlugin?.instance?.options ?? {};
         return {
             enabled: !!dailyNotesPlugin?.enabled,
@@ -1486,10 +1459,8 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-    private getCM6View(editor: Editor): Record<string, any> | null {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal API
-        const raw = editor as Record<string, any>;
+    private getCM6View(editor: Editor): any {
+        const raw = editor as any;
         return raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
     }
 
@@ -1545,7 +1516,7 @@ export default class LlrPlugin extends Plugin {
         this.metadataChangedTimers.set(file.path, timer);
     }
 
-    private onMetadataChanged(file: TFile): void {
+    private async onMetadataChanged(file: TFile): Promise<void> {
         if (file.extension !== 'md') return;
         if (!this.isDailyNoteFile(file)) {
             this.routineCompletionSnapshotByFile.delete(file.path);
@@ -1798,7 +1769,7 @@ export default class LlrPlugin extends Plugin {
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    handleFixDurationDriftAll(editor: Editor, view: MarkdownView): void {
+    async handleFixDurationDriftAll(editor: Editor, view: MarkdownView): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Fix Duration Drift (All Completed Tasks)')) return;
 
         const changedCount = this.fixDurationDriftAcrossEditor(editor);
@@ -1820,7 +1791,7 @@ export default class LlrPlugin extends Plugin {
         return changedCount;
     }
 
-    handleDeferTaskToTomorrow(editor: Editor, view: MarkdownView): void {
+    async handleDeferTaskToTomorrow(editor: Editor, view: MarkdownView): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Skip Task (Log Only)')) return;
 
         const cursor = editor.getCursor();
@@ -1921,7 +1892,7 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    completeTask(editor: Editor, _view: MarkdownView, lineIndex: number, lineText: string) {
+    async completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string) {
         const now = new Date();
         const endTimeStr = this.formatTime(now);
 
@@ -2207,10 +2178,11 @@ class LlrSettingTab extends PluginSettingTab {
                 });
             });
 
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.routineSections.heading'))
-            .setDesc(this.plugin.t('settings.routineSections.desc'))
-            .setHeading();
+        containerEl.createEl('h3', { text: this.plugin.t('settings.routineSections.heading') });
+        containerEl.createEl('p', {
+            text: this.plugin.t('settings.routineSections.desc'),
+            cls: 'setting-item-description',
+        });
 
         const listContainer = containerEl.createDiv('llr-section-settings-list');
         this.renderSectionDefinitionSettings(listContainer);
@@ -2348,10 +2320,11 @@ class LlrSettingTab extends PluginSettingTab {
     }
 
     private renderAdvancedSettings(containerEl: HTMLElement): void {
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.advanced.heading'))
-            .setDesc(this.plugin.t('settings.advanced.desc'))
-            .setHeading();
+        containerEl.createEl('h3', { text: this.plugin.t('settings.advanced.heading') });
+        containerEl.createEl('p', {
+            text: this.plugin.t('settings.advanced.desc'),
+            cls: 'setting-item-description',
+        });
 
         new Setting(containerEl)
             .setName(this.plugin.t('settings.debugMode.name'))
