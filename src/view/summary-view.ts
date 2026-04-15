@@ -572,7 +572,8 @@ export class SummaryView extends ItemView {
             return null;
         }
 
-        const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
+        type PluginInstance = { getDailyNote?: (date: moment.Moment) => Promise<unknown> };
+        const instance = dailyNotesPlugin.instance as PluginInstance | undefined;
         if (typeof instance?.getDailyNote !== 'function') {
             new Notice('Daily notes API is unavailable. Reload Obsidian and try again.');
             return null;
@@ -589,8 +590,7 @@ export class SummaryView extends ItemView {
         }
 
         try {
-            const getDailyNote = instance.getDailyNote as (date: moment.Moment) => Promise<unknown>;
-            const dailyNote = await getDailyNote(this.currentDate.clone());
+            const dailyNote = await instance.getDailyNote(this.currentDate.clone());
             if (dailyNote instanceof TFile) {
                 this.targetFile = dailyNote;
                 return dailyNote;

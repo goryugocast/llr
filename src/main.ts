@@ -409,29 +409,32 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        const hotkeyManager = (this.app as Record<string, unknown>).hotkeyManager as Record<string, unknown> | undefined;
-        if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
-        const setHotkeys = hotkeyManager.setHotkeys;
-        const removeHotkeys = hotkeyManager.removeHotkeys;
-        if (typeof setHotkeys !== 'function' || typeof removeHotkeys !== 'function') return;
+        type HotkeyManager = {
+            setHotkeys?: (id: string, keys: unknown) => void;
+            removeHotkeys?: (id: string) => void;
+            save?: () => void;
+            customKeys?: Record<string, unknown>;
+        };
+        const hotkeyManager = (this.app as unknown as { hotkeyManager?: HotkeyManager }).hotkeyManager;
+        if (!hotkeyManager) return;
+        if (typeof hotkeyManager.setHotkeys !== 'function' || typeof hotkeyManager.removeHotkeys !== 'function') return;
 
         const oldCommandId = `${this.manifest.id}:${LEGACY_SKIP_COMMAND_ID}`;
         const newCommandId = `${this.manifest.id}:${SKIP_COMMAND_ID}`;
-        const customKeys = hotkeyManager.customKeys as Record<string, unknown> | undefined;
+        const customKeys = hotkeyManager.customKeys;
         const oldKeys = customKeys?.[oldCommandId];
         const newKeys = customKeys?.[newCommandId];
         const oldHasKeys = Array.isArray(oldKeys) && oldKeys.length > 0;
         const newHasKeys = Array.isArray(newKeys) && newKeys.length > 0;
 
         if (oldHasKeys && !newHasKeys) {
-            (setHotkeys as (id: string, keys: unknown) => void)(newCommandId, oldKeys);
+            hotkeyManager.setHotkeys(newCommandId, oldKeys);
         }
         if (oldHasKeys || customKeys?.[oldCommandId] != null) {
-            (removeHotkeys as (id: string) => void)(oldCommandId);
+            hotkeyManager.removeHotkeys(oldCommandId);
         }
-        const save = hotkeyManager.save;
-        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof save === 'function') {
-            (save as () => void)();
+        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof hotkeyManager.save === 'function') {
+            hotkeyManager.save();
             this.debugLog('Migrated legacy command hotkeys', {
                 from: oldCommandId,
                 to: newCommandId,
@@ -766,15 +769,11 @@ export default class LlrPlugin extends Plugin {
             await workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
-                const ws = this.app.workspace as Record<string, unknown>;
-                const leftSplit = ws.leftSplit;
-                if (leftSplit && typeof leftSplit === 'object' && typeof (leftSplit as Record<string, unknown>).collapse === 'function') {
-                    ((leftSplit as Record<string, unknown>).collapse as () => void)();
-                }
-                const rightSplit = ws.rightSplit;
-                if (rightSplit && typeof rightSplit === 'object' && typeof (rightSplit as Record<string, unknown>).expand === 'function') {
-                    ((rightSplit as Record<string, unknown>).expand as () => void)();
-                }
+                type WorkspaceSplit = { collapse?: () => void; expand?: () => void };
+                type WorkspaceInternal = { leftSplit?: WorkspaceSplit; rightSplit?: WorkspaceSplit };
+                const ws = this.app.workspace as unknown as WorkspaceInternal;
+                ws.leftSplit?.collapse?.();
+                ws.rightSplit?.expand?.();
             }
         }
     }
