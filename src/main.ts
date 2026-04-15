@@ -1299,12 +1299,10 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getDailyNoteSettings(): DailyNoteSettingsSpec {
-        const internalPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
-        const getPluginById = internalPlugins?.getPluginById;
-        const dailyNotesPlugin = typeof getPluginById === 'function'
-            ? (getPluginById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
-            : undefined;
-        const instance = dailyNotesPlugin?.instance as Record<string, unknown> | undefined;
+        type InternalPlugins = { getPluginById?: (id: string) => { enabled?: boolean; instance?: { options?: Record<string, unknown> } } | null };
+        const internalPlugins = (this.app as unknown as { internalPlugins?: InternalPlugins }).internalPlugins;
+        const dailyNotesPlugin = internalPlugins?.getPluginById?.('daily-notes');
+        const instance = dailyNotesPlugin?.instance;
         const options = (instance?.options ?? {}) as Record<string, unknown>;
         return {
             enabled: !!dailyNotesPlugin?.enabled,

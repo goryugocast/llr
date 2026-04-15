@@ -235,14 +235,11 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        const intPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
-        const getById = intPlugins?.getPluginById;
-        const dailyNotesPlugin = typeof getById === 'function'
-            ? (getById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
-            : undefined;
+        type DailyNotesPlugin = { enabled?: boolean; instance?: { options?: Record<string, unknown> } };
+        type AppWithPlugins = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null } };
+        const dailyNotesPlugin = (this.app as unknown as AppWithPlugins).internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
-            const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
-            const options = (instance?.options ?? {}) as Record<string, unknown>;
+            const options = (dailyNotesPlugin.instance?.options ?? {}) as Record<string, unknown>;
             const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
             const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
             const fileName = `${date.format(format)}.md`;
@@ -567,11 +564,9 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        const intPlugins2 = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
-        const getById2 = intPlugins2?.getPluginById;
-        const dailyNotesPlugin = typeof getById2 === 'function'
-            ? (getById2 as (id: string) => Record<string, unknown> | undefined)('daily-notes')
-            : undefined;
+        type DailyNotesPlugin2 = { enabled?: boolean; instance?: { getDailyNote?: (date: unknown) => TFile | null } };
+        type AppWithPlugins2 = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin2 | null } };
+        const dailyNotesPlugin = (this.app as unknown as AppWithPlugins2).internalPlugins?.getPluginById?.('daily-notes');
         if (!dailyNotesPlugin?.enabled) {
             new Notice('Enable the core daily notes plugin to open or create daily notes.');
             return null;
