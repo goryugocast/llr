@@ -55,11 +55,15 @@ const TRANSLATIONS = {
         'command.openSummaryView': 'Open Summary View',
         'command.toggleTask': 'Toggle Task',
         'command.adjustTime1m': 'Adjust Time (1m)',
-        'command.startTask': 'Start Task',
-        'command.stopTask': 'Complete Task',
-        'command.startTaskFromPrev': 'Start Task at Previous Time',
+        'command.fixDurationDriftAll': 'Fix Duration Drift (All Completed Tasks)',
+        'command.retroCompleteTask': 'Retro Complete Task',
+        'command.startTask': 'Start Task (Force)',
+        'command.stopTask': 'Stop Task (Force)',
+        'command.startTaskFromPrev': 'Start Task (Align to Previous Completion)',
+        'command.interruptTask': 'Interrupt Task',
+        'command.resetTaskKeepTime': 'Reset Task (Keep Estimate)',
         'command.duplicateTask': 'Duplicate Task',
-        'command.skipTaskLogOnly': 'Skip Task',
+        'command.skipTaskLogOnly': 'Skip Task (Log Only)',
         'command.insertRoutine': 'Insert Routine',
         'settings.language.name': 'UI Language',
         'settings.language.desc': 'Choose language for settings and command labels.',
@@ -95,13 +99,17 @@ const TRANSLATIONS = {
         'ribbon.openSummary': 'LLR サマリーを開く',
         'ribbon.adjustTime1m': '時間調整（1分）',
         'command.openSummaryView': 'サマリービューを開く',
-        'command.toggleTask': 'タスクをトグル',
+        'command.toggleTask': 'タスク切り替え',
         'command.adjustTime1m': '時間調整（1分）',
-        'command.startTask': 'タスク開始',
-        'command.stopTask': 'タスク完了',
-        'command.startTaskFromPrev': '前の時刻で開始',
+        'command.fixDurationDriftAll': '実績時間のずれを補正（完了タスク全体）',
+        'command.retroCompleteTask': '後追いで完了',
+        'command.startTask': 'タスク開始（強制）',
+        'command.stopTask': 'タスク停止（強制）',
+        'command.startTaskFromPrev': 'タスク開始（直前完了に合わせる）',
+        'command.interruptTask': 'タスク中断',
+        'command.resetTaskKeepTime': 'タスクをリセット（見積維持）',
         'command.duplicateTask': 'タスク複製',
-        'command.skipTaskLogOnly': 'タスクをスキップ',
+        'command.skipTaskLogOnly': 'タスクをスキップ（ログのみ）',
         'command.insertRoutine': 'ルーチンを挿入',
         'settings.language.name': 'UI言語',
         'settings.language.desc': '設定画面とコマンド名の表示言語を選びます。',
@@ -332,6 +340,30 @@ export default class LlrPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: 'fix-duration-drift-all',
+            name: this.t('command.fixDurationDriftAll'),
+            icon: 'wrench',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('fix-duration-drift-all', this.t('command.fixDurationDriftAll'), async () => {
+                    this.debugLog('Command: Fix Duration Drift (All Completed Tasks)');
+                    await this.handleFixDurationDriftAll(editor, view);
+                });
+            }
+        });
+
+        this.addCommand({
+            id: 'retro-complete-task',
+            name: this.t('command.retroCompleteTask'),
+            icon: 'stamp',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('retro-complete-task', this.t('command.retroCompleteTask'), async () => {
+                    this.debugLog('Command: Retro Complete Task');
+                    await this.handleToggleTask(editor, view, 'retroComplete');
+                });
+            }
+        });
+
+        this.addCommand({
             id: 'start-task',
             name: this.t('command.startTask'),
             icon: 'play',
@@ -363,6 +395,30 @@ export default class LlrPlugin extends Plugin {
                 void this.runCommandWithDebug('start-task-from-previous-completion', this.t('command.startTaskFromPrev'), async () => {
                     this.debugLog('Command: Start Task (Align to Previous Completion)');
                     await this.handleStartTaskFromPreviousCompletion(editor, view);
+                });
+            }
+        });
+
+        this.addCommand({
+            id: 'interrupt-task',
+            name: this.t('command.interruptTask'),
+            icon: 'pause',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('interrupt-task', this.t('command.interruptTask'), async () => {
+                    this.debugLog('Command: Interrupt Task');
+                    await this.handleToggleTask(editor, view, 'interrupt');
+                });
+            }
+        });
+
+        this.addCommand({
+            id: 'reset-task-keep-time',
+            name: this.t('command.resetTaskKeepTime'),
+            icon: 'undo-2',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('reset-task-keep-time', this.t('command.resetTaskKeepTime'), async () => {
+                    this.debugLog('Command: Reset Task (Keep Estimate)');
+                    await this.handleResetTaskKeepTime(editor, view);
                 });
             }
         });
@@ -438,8 +494,8 @@ export default class LlrPlugin extends Plugin {
     private debugLog(message: string, data?: any) {
         const timestamp = new Date().toISOString();
         const logMsg = `[LLR Debug ${timestamp}] ${message}`;
-        console.debug(logMsg);
-        if (data) console.debug(data);
+        console.log(logMsg);
+        if (data) console.log(data);
         this.emitDebugRecord('plugin', message, data);
     }
 
@@ -1478,6 +1534,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     onunload() {
+        console.log('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
         if (this.statusBarDebounce) clearTimeout(this.statusBarDebounce);
         if (this.refreshTimer) clearInterval(this.refreshTimer);
