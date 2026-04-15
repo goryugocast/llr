@@ -239,8 +239,8 @@ export class SummaryView extends ItemView {
         const dailyNotesPlugin = (this.app as any).internalPlugins?.getPluginById?.('daily-notes');
         if (dailyNotesPlugin?.enabled) {
             const options = dailyNotesPlugin.instance?.options ?? {};
-            const format = options.format || 'YYYY-MM-DD';
-            const folder = (options.folder || '').trim();
+            const format = typeof options.format === 'string' ? options.format : 'YYYY-MM-DD';
+            const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
