@@ -679,7 +679,8 @@ export default class LlrPlugin extends Plugin {
 
         if (options?.notice !== false) {
             const noticeText = `[Debug ${record.localTime}] ${source} ${message}${this.summarizeDebugData(data)}`;
-            this.showDebugNotice(noticeText, 5000);
+            // Defer Notice to avoid DOM change during pointerdown suppressing iOS click event
+            setTimeout(() => { this.showDebugNotice(noticeText, 5000); }, 0);
         }
         void this.appendDebugLog(record);
     }
