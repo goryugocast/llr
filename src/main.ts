@@ -185,7 +185,7 @@ function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
 }
 
 function normalizeRoutineFolder(value: unknown): string {
-    const asText = typeof value === 'string' ? value : String(value ?? '');
+    const asText = typeof value === 'string' ? value : '';
     const normalizedPath = normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
     return normalizedPath || DEFAULT_ROUTINE_FOLDER;
 }
@@ -1574,7 +1574,7 @@ export default class LlrPlugin extends Plugin {
         this.metadataChangedTimers.set(file.path, timer);
     }
 
-    private async onMetadataChanged(file: TFile): Promise<void> {
+    private onMetadataChanged(file: TFile): void {
         if (file.extension !== 'md') return;
         if (!this.isDailyNoteFile(file)) {
             this.routineCompletionSnapshotByFile.delete(file.path);
@@ -1827,7 +1827,7 @@ export default class LlrPlugin extends Plugin {
         await this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    async handleFixDurationDriftAll(editor: Editor, view: MarkdownView): Promise<void> {
+    handleFixDurationDriftAll(editor: Editor, view: MarkdownView): void {
         if (!this.ensureDailyNoteView(view, 'Fix Duration Drift (All Completed Tasks)')) return;
 
         const changedCount = this.fixDurationDriftAcrossEditor(editor);
@@ -1849,7 +1849,7 @@ export default class LlrPlugin extends Plugin {
         return changedCount;
     }
 
-    async handleDeferTaskToTomorrow(editor: Editor, view: MarkdownView): Promise<void> {
+    handleDeferTaskToTomorrow(editor: Editor, view: MarkdownView): void {
         if (!this.ensureDailyNoteView(view, 'Skip Task (Log Only)')) return;
 
         const cursor = editor.getCursor();
@@ -1950,7 +1950,7 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    async completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string) {
+    completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string) {
         const now = new Date();
         const endTimeStr = this.formatTime(now);
 
@@ -2236,11 +2236,10 @@ class LlrSettingTab extends PluginSettingTab {
                 });
             });
 
-        containerEl.createEl('h3', { text: this.plugin.t('settings.routineSections.heading') });
-        containerEl.createEl('p', {
-            text: this.plugin.t('settings.routineSections.desc'),
-            cls: 'setting-item-description',
-        });
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.routineSections.heading'))
+            .setDesc(this.plugin.t('settings.routineSections.desc'))
+            .setHeading();
 
         const listContainer = containerEl.createDiv('llr-section-settings-list');
         this.renderSectionDefinitionSettings(listContainer);
@@ -2378,11 +2377,10 @@ class LlrSettingTab extends PluginSettingTab {
     }
 
     private renderAdvancedSettings(containerEl: HTMLElement): void {
-        containerEl.createEl('h3', { text: this.plugin.t('settings.advanced.heading') });
-        containerEl.createEl('p', {
-            text: this.plugin.t('settings.advanced.desc'),
-            cls: 'setting-item-description',
-        });
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.advanced.heading'))
+            .setDesc(this.plugin.t('settings.advanced.desc'))
+            .setHeading();
 
         new Setting(containerEl)
             .setName(this.plugin.t('settings.debugMode.name'))
