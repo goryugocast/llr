@@ -35,7 +35,7 @@ export class SummaryView extends ItemView {
     }
 
     getDisplayText() {
-        return 'Summary';
+        return 'LLR summary';
     }
 
     getIcon() {
@@ -235,13 +235,16 @@ export class SummaryView extends ItemView {
         const candidates: string[] = [];
 
         // Core Daily Notes plugin settings (preferred source)
-        type DailyNotesPlugin = { enabled?: boolean; instance?: { options?: Record<string, unknown> } };
-        type AppWithPlugins = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null } };
-        const dailyNotesPlugin = (this.app as unknown as AppWithPlugins).internalPlugins?.getPluginById?.('daily-notes');
+        const intPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getById = intPlugins?.getPluginById;
+        const dailyNotesPlugin = typeof getById === 'function'
+            ? (getById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
         if (dailyNotesPlugin?.enabled) {
-            const options = (dailyNotesPlugin.instance?.options ?? {}) as Record<string, unknown>;
-            const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
-            const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
+            const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
+            const options = (instance?.options ?? {}) as Record<string, unknown>;
+            const format = String(options.format || 'YYYY-MM-DD');
+            const folder = String(options.folder || '').trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
@@ -251,8 +254,7 @@ export class SummaryView extends ItemView {
         const pluginsMap = plugins?.plugins as Record<string, Record<string, unknown>> | undefined;
         const llrPlugin = pluginsMap?.['llr'];
         const llrSettings = llrPlugin?.settings as Record<string, unknown> | undefined;
-        const rawWorkoutFolder = llrSettings?.workoutFolder;
-        const workoutFolder = (typeof rawWorkoutFolder === 'string' ? rawWorkoutFolder : '').trim();
+        const workoutFolder = String(llrSettings?.workoutFolder || '').trim();
         if (workoutFolder) {
             candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
         }
@@ -298,7 +300,7 @@ export class SummaryView extends ItemView {
             void this.requestRefresh();
         };
 
-        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { 'aria-label': '今日へ移動' } });
+        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'TODAY', attr: { 'aria-label': '今日へ移動' } });
         todayBtn.onclick = () => {
             this.currentDate = moment();
             this.updateTargetFile();
@@ -319,11 +321,11 @@ export class SummaryView extends ItemView {
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });
 
         const totalBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        totalBox.createEl('span', { text: 'Est. Total', cls: 'llr-info-label' });
+        totalBox.createEl('span', { text: 'Est. total', cls: 'llr-info-label' });
         totalBox.createEl('span', { text: data.header.total, cls: 'llr-info-value' });
 
         const endBox = infoRow.createEl('div', { cls: 'llr-info-box' });
-        endBox.createEl('span', { text: 'Est. Finish', cls: 'llr-info-label' });
+        endBox.createEl('span', { text: 'Est. finish', cls: 'llr-info-label' });
         if (data.header.wake) {
             const valueRow = endBox.createEl('span', { cls: 'llr-info-value llr-info-value-inline' });
             valueRow.createSpan({ text: data.header.end });
@@ -564,16 +566,17 @@ export class SummaryView extends ItemView {
     }
 
     private async ensureCurrentDateNote(): Promise<TFile | null> {
-        type DailyNotesPlugin2 = { enabled?: boolean; instance?: { getDailyNote?: (date: unknown) => TFile | null } };
-        type AppWithPlugins2 = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin2 | null } };
-        const dailyNotesPlugin = (this.app as unknown as AppWithPlugins2).internalPlugins?.getPluginById?.('daily-notes');
+        const intPlugins2 = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getById2 = intPlugins2?.getPluginById;
+        const dailyNotesPlugin = typeof getById2 === 'function'
+            ? (getById2 as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
         if (!dailyNotesPlugin?.enabled) {
             new Notice('Enable the core daily notes plugin to open or create daily notes.');
             return null;
         }
 
-        type PluginInstance = { getDailyNote?: (date: moment.Moment) => Promise<unknown> };
-        const instance = dailyNotesPlugin.instance as PluginInstance | undefined;
+        const instance = dailyNotesPlugin.instance as Record<string, unknown> | undefined;
         if (typeof instance?.getDailyNote !== 'function') {
             new Notice('Daily notes API is unavailable. Reload Obsidian and try again.');
             return null;
@@ -590,7 +593,8 @@ export class SummaryView extends ItemView {
         }
 
         try {
-            const dailyNote = await instance.getDailyNote(this.currentDate.clone());
+            const getDailyNote = instance.getDailyNote as (date: moment.Moment) => Promise<unknown>;
+            const dailyNote = await getDailyNote(this.currentDate.clone());
             if (dailyNote instanceof TFile) {
                 this.targetFile = dailyNote;
                 return dailyNote;

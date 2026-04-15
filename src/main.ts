@@ -49,18 +49,18 @@ const DEFAULT_SETTINGS: LlrSettings = {
 
 const TRANSLATIONS = {
     en: {
-        'ribbon.openSummary': 'Open LLR summary',
-        'ribbon.adjustTime1m': 'Adjust time (1m)',
-        'command.openSummaryView': 'Open summary view',
-        'command.toggleTask': 'Toggle task',
-        'command.adjustTime1m': 'Adjust time (1m)',
-        'command.startTask': 'Start task',
-        'command.stopTask': 'Complete task',
-        'command.startTaskFromPrev': 'Start task at previous time',
-        'command.duplicateTask': 'Duplicate task',
-        'command.skipTaskLogOnly': 'Skip task',
-        'command.insertRoutine': 'Insert routine',
-        'settings.language.name': 'UI language',
+        'ribbon.openSummary': 'Open LLR Summary',
+        'ribbon.adjustTime1m': 'Adjust Time (1m)',
+        'command.openSummaryView': 'Open Summary View',
+        'command.toggleTask': 'Toggle Task',
+        'command.adjustTime1m': 'Adjust Time (1m)',
+        'command.startTask': 'Start Task',
+        'command.stopTask': 'Complete Task',
+        'command.startTaskFromPrev': 'Start Task at Previous Time',
+        'command.duplicateTask': 'Duplicate Task',
+        'command.skipTaskLogOnly': 'Skip Task',
+        'command.insertRoutine': 'Insert Routine',
+        'settings.language.name': 'UI Language',
         'settings.language.desc': 'Choose language for settings and command labels.',
         'settings.language.option.auto': 'Auto (follow system locale)',
         'settings.language.option.ja': 'Japanese',
@@ -240,14 +240,14 @@ export default class LlrPlugin extends Plugin {
             void this.activateView();
         });
         this.addRibbonIcon('alarm-clock-minus', this.t('ribbon.adjustTime1m'), () => {
-            void this.runCommandWithDebug('adjust-time-1m-ribbon', `${this.t('command.adjustTime1m')} [Ribbon]`, () => {
+            void this.runCommandWithDebug('adjust-time-1m-ribbon', `${this.t('command.adjustTime1m')} [Ribbon]`, async () => {
                 const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                 if (!view) {
                     this.showLlrNotice('LLR: Markdownノートを開いてください。');
                     return;
                 }
                 if (!this.ensureDailyNoteView(view, 'Adjust Time')) return;
-                this.handleAdjustTime(view.editor, view, -1);
+                await this.handleAdjustTime(view.editor, view, -1);
             });
         });
 
@@ -314,9 +314,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.toggleTask'),
             icon: 'step-forward',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('toggle-task', this.t('command.toggleTask'), () => {
+                void this.runCommandWithDebug('toggle-task', this.t('command.toggleTask'), async () => {
                     this.debugLog('Command: Toggle Task');
-                    this.handleToggleTask(editor, view);
+                    await this.handleToggleTask(editor, view);
                 });
             }
         });
@@ -326,9 +326,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.adjustTime1m'),
             icon: 'alarm-clock-minus',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('adjust-time-1m', this.t('command.adjustTime1m'), () => {
+                void this.runCommandWithDebug('adjust-time-1m', this.t('command.adjustTime1m'), async () => {
                     this.debugLog('Command: Adjust Time (1m)');
-                    this.handleAdjustTime(editor, view, -1);
+                    await this.handleAdjustTime(editor, view, -1);
                 });
             }
         });
@@ -338,9 +338,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.startTask'),
             icon: 'play',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('start-task', this.t('command.startTask'), () => {
+                void this.runCommandWithDebug('start-task', this.t('command.startTask'), async () => {
                     this.debugLog('Command: Start Task');
-                    this.handleToggleTask(editor, view, 'start');
+                    await this.handleToggleTask(editor, view, 'start');
                 });
             }
         });
@@ -350,9 +350,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.stopTask'),
             icon: 'circle-stop',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('stop-task', this.t('command.stopTask'), () => {
+                void this.runCommandWithDebug('stop-task', this.t('command.stopTask'), async () => {
                     this.debugLog('Command: Stop Task');
-                    this.handleToggleTask(editor, view, 'complete');
+                    await this.handleToggleTask(editor, view, 'complete');
                 });
             }
         });
@@ -362,9 +362,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.startTaskFromPrev'),
             icon: 'play-circle',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('start-task-from-previous-completion', this.t('command.startTaskFromPrev'), () => {
+                void this.runCommandWithDebug('start-task-from-previous-completion', this.t('command.startTaskFromPrev'), async () => {
                     this.debugLog('Command: Start Task (Align to Previous Completion)');
-                    this.handleStartTaskFromPreviousCompletion(editor, view);
+                    await this.handleStartTaskFromPreviousCompletion(editor, view);
                 });
             }
         });
@@ -374,9 +374,9 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.duplicateTask'),
             icon: 'copy',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug('duplicate-task', this.t('command.duplicateTask'), () => {
+                void this.runCommandWithDebug('duplicate-task', this.t('command.duplicateTask'), async () => {
                     this.debugLog('Command: Duplicate Task');
-                    this.handleToggleTask(editor, view, 'duplicate');
+                    await this.handleToggleTask(editor, view, 'duplicate');
                 });
             }
         });
@@ -386,7 +386,7 @@ export default class LlrPlugin extends Plugin {
             name: this.t('command.skipTaskLogOnly'),
             icon: 'calendar-sync',
             editorCallback: (editor: Editor, view: MarkdownView) => {
-                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), () => {
+                void this.runCommandWithDebug(SKIP_COMMAND_ID, this.t('command.skipTaskLogOnly'), async () => {
                     this.debugLog('Command: Skip Task (Log Only)');
                     this.handleDeferTaskToTomorrow(editor, view);
                 });
@@ -409,32 +409,29 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        type HotkeyManager = {
-            setHotkeys?: (id: string, keys: unknown) => void;
-            removeHotkeys?: (id: string) => void;
-            save?: () => void;
-            customKeys?: Record<string, unknown>;
-        };
-        const hotkeyManager = (this.app as unknown as { hotkeyManager?: HotkeyManager }).hotkeyManager;
-        if (!hotkeyManager) return;
-        if (typeof hotkeyManager.setHotkeys !== 'function' || typeof hotkeyManager.removeHotkeys !== 'function') return;
+        const hotkeyManager = (this.app as Record<string, unknown>).hotkeyManager as Record<string, unknown> | undefined;
+        if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
+        const setHotkeys = hotkeyManager.setHotkeys;
+        const removeHotkeys = hotkeyManager.removeHotkeys;
+        if (typeof setHotkeys !== 'function' || typeof removeHotkeys !== 'function') return;
 
         const oldCommandId = `${this.manifest.id}:${LEGACY_SKIP_COMMAND_ID}`;
         const newCommandId = `${this.manifest.id}:${SKIP_COMMAND_ID}`;
-        const customKeys = hotkeyManager.customKeys;
+        const customKeys = hotkeyManager.customKeys as Record<string, unknown> | undefined;
         const oldKeys = customKeys?.[oldCommandId];
         const newKeys = customKeys?.[newCommandId];
         const oldHasKeys = Array.isArray(oldKeys) && oldKeys.length > 0;
         const newHasKeys = Array.isArray(newKeys) && newKeys.length > 0;
 
         if (oldHasKeys && !newHasKeys) {
-            hotkeyManager.setHotkeys(newCommandId, oldKeys);
+            (setHotkeys as (id: string, keys: unknown) => void)(newCommandId, oldKeys);
         }
         if (oldHasKeys || customKeys?.[oldCommandId] != null) {
-            hotkeyManager.removeHotkeys(oldCommandId);
+            (removeHotkeys as (id: string) => void)(oldCommandId);
         }
-        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof hotkeyManager.save === 'function') {
-            hotkeyManager.save();
+        const save = hotkeyManager.save;
+        if ((oldHasKeys || customKeys?.[oldCommandId] != null) && typeof save === 'function') {
+            (save as () => void)();
             this.debugLog('Migrated legacy command hotkeys', {
                 from: oldCommandId,
                 to: newCommandId,
@@ -769,11 +766,15 @@ export default class LlrPlugin extends Plugin {
             await workspace.revealLeaf(leaf);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
-                type WorkspaceSplit = { collapse?: () => void; expand?: () => void };
-                type WorkspaceInternal = { leftSplit?: WorkspaceSplit; rightSplit?: WorkspaceSplit };
-                const ws = this.app.workspace as unknown as WorkspaceInternal;
-                ws.leftSplit?.collapse?.();
-                ws.rightSplit?.expand?.();
+                const ws = this.app.workspace as Record<string, unknown>;
+                const leftSplit = ws.leftSplit;
+                if (leftSplit && typeof leftSplit === 'object' && typeof (leftSplit as Record<string, unknown>).collapse === 'function') {
+                    ((leftSplit as Record<string, unknown>).collapse as () => void)();
+                }
+                const rightSplit = ws.rightSplit;
+                if (rightSplit && typeof rightSplit === 'object' && typeof (rightSplit as Record<string, unknown>).expand === 'function') {
+                    ((rightSplit as Record<string, unknown>).expand as () => void)();
+                }
             }
         }
     }
@@ -1088,11 +1089,11 @@ export default class LlrPlugin extends Plugin {
         return false;
     }
 
-    private handleCheckboxPress(
+    private async handleCheckboxPress(
         intent: CheckboxPressIntent,
         checkboxEl: HTMLElement,
         preResolvedLineIndex?: number
-    ): void {
+    ): Promise<void> {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || !view.editor) return;
 
@@ -1138,7 +1139,7 @@ export default class LlrPlugin extends Plugin {
             resultPreview: result.content.slice(0, 120),
         });
 
-        this.applyTaskResult(editor, view, targetLine, lineText, result);
+        await this.applyTaskResult(editor, view, targetLine, lineText, result);
         this.scheduleUIUpdate();
     }
 
@@ -1242,29 +1243,36 @@ export default class LlrPlugin extends Plugin {
             }
         }
 
-        // Strategy 3: elementAtHeight (CM6 internal layout, handles folds, works on mobile)
-        if (cmView && typeof offsetToPos === 'function' && pointer) {
-            try {
-                const domEl = cmView.dom as HTMLElement | undefined;
-                const scrollEl = cmView.scrollDOM as HTMLElement | undefined;
-                if (domEl && scrollEl && typeof cmView.elementAtHeight === 'function') {
-                    const rect = domEl.getBoundingClientRect();
-                    const docHeight = pointer.y - rect.top + scrollEl.scrollTop;
-                    const blockInfo = (cmView.elementAtHeight as (height: number) => { from: number } | null)(docHeight);
-                    if (blockInfo) {
-                        const pos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, blockInfo.from);
-                        if (pos && typeof pos.line === 'number') {
-                            this.debugLog('CM6 elementAtHeight fallback', { docHeight, line: pos.line });
-                            return pos.line;
-                        }
-                    }
-                }
-            } catch (e) {
-                this.debugLog('CM6 elementAtHeight failed', e);
-            }
+        // Strategy 3: Visual Proximity (Force fallback for widgets in mobile)
+        if (pointer) {
+            return this.resolveLineByProximity(checkboxEl, pointer.y);
         }
 
         return null;
+    }
+
+    private resolveLineByProximity(el: HTMLElement, y: number): number | null {
+        const container = el.closest('.cm-content, .markdown-source-view');
+        if (!container) return null;
+
+        const lines = container.querySelectorAll('.cm-line, [data-line]');
+        let bestLine: number | null = null;
+        let minDist = Infinity;
+
+        for (let i = 0; i < lines.length; i++) {
+            const rect = lines[i].getBoundingClientRect();
+            if (y >= rect.top - 2 && y <= rect.bottom + 2) {
+                const dl = lines[i].getAttribute('data-line');
+                if (dl) return parseInt(dl, 10);
+            }
+            const dist = Math.abs(y - (rect.top + rect.bottom) / 2);
+            if (dist < minDist) {
+                minDist = dist;
+                const dl = lines[i].getAttribute('data-line');
+                if (dl) bestLine = parseInt(dl, 10);
+            }
+        }
+        return minDist < 20 ? bestLine : null;
     }
 
     private isRootRoutineNotePath(filePath: string): boolean {
@@ -1291,15 +1299,17 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getDailyNoteSettings(): DailyNoteSettingsSpec {
-        type InternalPlugins = { getPluginById?: (id: string) => { enabled?: boolean; instance?: { options?: Record<string, unknown> } } | null };
-        const internalPlugins = (this.app as unknown as { internalPlugins?: InternalPlugins }).internalPlugins;
-        const dailyNotesPlugin = internalPlugins?.getPluginById?.('daily-notes');
-        const instance = dailyNotesPlugin?.instance;
+        const internalPlugins = (this.app as Record<string, unknown>).internalPlugins as Record<string, unknown> | undefined;
+        const getPluginById = internalPlugins?.getPluginById;
+        const dailyNotesPlugin = typeof getPluginById === 'function'
+            ? (getPluginById as (id: string) => Record<string, unknown> | undefined)('daily-notes')
+            : undefined;
+        const instance = dailyNotesPlugin?.instance as Record<string, unknown> | undefined;
         const options = (instance?.options ?? {}) as Record<string, unknown>;
         return {
             enabled: !!dailyNotesPlugin?.enabled,
-            format: (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD',
-            folder: typeof options.folder === 'string' ? options.folder : '',
+            format: String(options.format || 'YYYY-MM-DD'),
+            folder: String(options.folder || ''),
         };
     }
 
@@ -1649,7 +1659,7 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    handleToggleTask(editor: Editor, view: MarkdownView, forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify') {
+    async handleToggleTask(editor: Editor, view: MarkdownView, forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify') {
         this.debugLog('handleToggleTask entry', { forceAction });
         if (!this.ensureDailyNoteView(view, 'Toggle Task')) return;
 
@@ -1709,7 +1719,7 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
-        this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
         const driftFixCount = this.fixDurationDriftAcrossEditor(editor);
         if (driftFixCount > 0) {
             this.debugLog('Auto fixed duration drift after toggle', { driftFixCount });
@@ -1725,7 +1735,7 @@ export default class LlrPlugin extends Plugin {
         return undefined;
     }
 
-    handleStartTaskFromPreviousCompletion(editor: Editor, view: MarkdownView): void {
+    async handleStartTaskFromPreviousCompletion(editor: Editor, view: MarkdownView): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Start Task (Align to Previous Completion)')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -1751,10 +1761,10 @@ export default class LlrPlugin extends Plugin {
             unstartedLongPressStartTime: startTime,
         });
         if (!result) return;
-        this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    handleResetTaskKeepTime(editor: Editor, view: MarkdownView): void {
+    async handleResetTaskKeepTime(editor: Editor, view: MarkdownView): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Reset Task')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -1767,10 +1777,10 @@ export default class LlrPlugin extends Plugin {
 
         const result = transformCheckboxPress(lineText, new Date(), 'long');
         if (!result) return;
-        this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
-    handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): void {
+    async handleAdjustTime(editor: Editor, view: MarkdownView, deltaMinutes: number): Promise<void> {
         if (!this.ensureDailyNoteView(view, 'Adjust Time')) return;
         const cursor = editor.getCursor();
         const lineText = editor.getLine(cursor.line);
@@ -1786,7 +1796,7 @@ export default class LlrPlugin extends Plugin {
             before: lineText,
             after: result.content,
         });
-        this.applyTaskResult(editor, view, cursor.line, lineText, result);
+        await this.applyTaskResult(editor, view, cursor.line, lineText, result);
     }
 
     handleFixDurationDriftAll(editor: Editor, view: MarkdownView): void {
@@ -1870,13 +1880,13 @@ export default class LlrPlugin extends Plugin {
         editor.setCursor(previousLine, editor.getLine(previousLine).length);
     }
 
-    private applyTaskResult(
+    private async applyTaskResult(
         editor: Editor,
         view: MarkdownView,
         lineIndex: number,
         lineText: string,
         result: { type: 'update' | 'insert' | 'complete' | 'interrupt' | 'none'; content: string; extraContent?: string }
-    ): void {
+    ): Promise<void> {
         switch (result.type) {
             case 'update':
                 editor.replaceRange(result.content, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
