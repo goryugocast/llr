@@ -1243,36 +1243,28 @@ export default class LlrPlugin extends Plugin {
             }
         }
 
-        // Strategy 3: Visual Proximity (Force fallback for widgets in mobile)
-        if (pointer) {
-            return this.resolveLineByProximity(checkboxEl, pointer.y);
+        // Strategy 3: cm-line index + visibleRanges (coordinate-free, works on mobile)
+        if (cmView && typeof offsetToPos === 'function') {
+            const cmContent = (cmView.dom as HTMLElement | undefined)?.querySelector?.('.cm-content');
+            if (cmContent) {
+                const cmLines = Array.from(cmContent.querySelectorAll('.cm-line'));
+                const targetCmLine = checkboxEl.closest('.cm-line');
+                const idx = targetCmLine ? cmLines.indexOf(targetCmLine as HTMLElement) : -1;
+                if (idx >= 0) {
+                    const visibleRanges = cmView.visibleRanges as Array<{ from: number; to: number }> | undefined;
+                    if (Array.isArray(visibleRanges) && visibleRanges.length > 0) {
+                        const startOffset = visibleRanges[0].from;
+                        const startPos = (offsetToPos as (offset: number) => { line: number } | null).call(editor, startOffset);
+                        if (startPos && typeof startPos.line === 'number') {
+                            this.debugLog('CM6 line index fallback', { idx, startLine: startPos.line });
+                            return startPos.line + idx;
+                        }
+                    }
+                }
+            }
         }
 
         return null;
-    }
-
-    private resolveLineByProximity(el: HTMLElement, y: number): number | null {
-        const container = el.closest('.cm-content, .markdown-source-view');
-        if (!container) return null;
-
-        const lines = container.querySelectorAll('.cm-line, [data-line]');
-        let bestLine: number | null = null;
-        let minDist = Infinity;
-
-        for (let i = 0; i < lines.length; i++) {
-            const rect = lines[i].getBoundingClientRect();
-            if (y >= rect.top - 2 && y <= rect.bottom + 2) {
-                const dl = lines[i].getAttribute('data-line');
-                if (dl) return parseInt(dl, 10);
-            }
-            const dist = Math.abs(y - (rect.top + rect.bottom) / 2);
-            if (dist < minDist) {
-                minDist = dist;
-                const dl = lines[i].getAttribute('data-line');
-                if (dl) bestLine = parseInt(dl, 10);
-            }
-        }
-        return minDist < 20 ? bestLine : null;
     }
 
     private isRootRoutineNotePath(filePath: string): boolean {
