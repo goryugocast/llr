@@ -11,6 +11,7 @@ import { CheckboxInteractionController } from './view/checkbox-interaction-contr
 import { getCM6View } from './view/editor-internal';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
+import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
 import { TaskParser } from './service/task-parser';
 
 interface LlrSettings {
@@ -32,12 +33,6 @@ interface SectionDefinition {
 type UILanguage = 'auto' | 'ja' | 'en';
 type ResolvedLanguage = 'ja' | 'en';
 
-interface RoutineCompletionSnapshotEntry {
-    totalCount: number;
-    completedCount: number;
-    completedSignatures: Set<string>;
-    atDoneCompletedSignatures: Set<string>;
-}
 
 interface LlrPostActionContext {
     editor: Editor;
@@ -233,7 +228,7 @@ export default class LlrPlugin extends Plugin {
     private scheduleValidationTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private lastScheduleValidationError: Map<string, string> = new Map();
     private metadataChangedTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-    private routineCompletionSnapshotByFile: Map<string, Map<string, RoutineCompletionSnapshotEntry>> = new Map();
+    private snapshots!: RoutineCompletionSnapshotStore;
     private dailyNoteAutoInsertTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private lastDebugNoticeAtMs = 0;
@@ -265,6 +260,10 @@ export default class LlrPlugin extends Plugin {
             routineFolder: this.settings.routineFolder,
             onDebugEvent: (event) => this.handleRoutineEngineDebugEvent(event),
             onNotice: (message, timeout) => this.showLlrNotice(message, timeout),
+        });
+        this.snapshots = new RoutineCompletionSnapshotStore(this.app, {
+            isDailyNoteFile: (file) => this.isDailyNoteFile(file),
+            resolveRoutineFile: (link, sourcePath) => this.routineEngine.resolveRoutineFile(link, sourcePath),
         });
         this.debugLog('Loading LLR plugin...');
 
@@ -744,7 +743,7 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
-        this.primeRoutineCompletionSnapshot(view.file);
+        this.snapshots.prime(view.file);
 
         const content = view.editor.getValue();
         const lines = content.split('\n');
@@ -1010,55 +1009,6 @@ export default class LlrPlugin extends Plugin {
         return parsed.isValid() ? parsed.toDate() : null;
     }
 
-    private primeRoutineCompletionSnapshot(file: TFile): void {
-        if (!this.isDailyNoteFile(file)) return;
-        if (this.routineCompletionSnapshotByFile.has(file.path)) return;
-
-        void this.primeRoutineCompletionSnapshotAsync(file);
-    }
-
-    private primeRoutineCompletionSnapshotAsync(file: TFile): void {
-        const snapshot = this.buildRoutineCompletionSnapshot(file);
-        if (!snapshot) return;
-        this.routineCompletionSnapshotByFile.set(file.path, snapshot);
-    }
-
-    private getActiveEditorContentForFile(file: TFile): string | null {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.file || view.file.path !== file.path) return null;
-        return view.editor.getValue();
-    }
-
-    private hasPendingAtDoneMarker(lineText: string): boolean {
-        return hasPendingRoutineAtDoneMarker(lineText);
-    }
-
-    private createEmptyRoutineCompletionSnapshotEntry(): RoutineCompletionSnapshotEntry {
-        return {
-            totalCount: 0,
-            completedCount: 0,
-            completedSignatures: new Set<string>(),
-            atDoneCompletedSignatures: new Set<string>(),
-        };
-    }
-
-    private buildRoutineCompletionSignature(lineNumber: number, lineText: string): string {
-        const normalized = lineText.trim();
-        return normalized ? `${lineNumber}:${normalized}` : `${lineNumber}:__completed__`;
-    }
-
-    private wasLinePreviouslyCompletedForRoutine(file: TFile, routinePath: string, lineIndex: number): boolean {
-        const snapshot = this.routineCompletionSnapshotByFile.get(file.path);
-        const entry = snapshot?.get(routinePath);
-        if (!entry) return false;
-
-        const prefix = `${lineIndex}:`;
-        for (const signature of entry.completedSignatures) {
-            if (signature.startsWith(prefix)) return true;
-        }
-        return false;
-    }
-
     private shouldApplyAtDoneToRoutine(routineNote: RoutineNote | null, completionDate: Date): routineNote is RoutineNote {
         if (!routineNote?.next_due) return false;
 
@@ -1068,85 +1018,6 @@ export default class LlrPlugin extends Plugin {
         const completionDay = moment(completionDate).format('YYYY-MM-DD');
         const visibleFrom = moment(routineNote.next_due).subtract(leadDays, 'days').format('YYYY-MM-DD');
         return completionDay >= visibleFrom && completionDay <= routineNote.next_due;
-    }
-
-    private buildRoutineCompletionSnapshot(file: TFile): Map<string, RoutineCompletionSnapshotEntry> | null {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache || !cache.listItems) {
-            return null;
-        }
-
-        const currentSnapshot = new Map<string, RoutineCompletionSnapshotEntry>();
-        const listItems = [...cache.listItems]
-            .filter((item) => typeof item.task === 'string')
-            .sort((a, b) =>
-                a.position.start.offset - b.position.start.offset ||
-                a.position.end.offset - b.position.end.offset
-            );
-        const links = [...(cache.links ?? [])].sort((a, b) =>
-            a.position.start.offset - b.position.start.offset ||
-            a.position.end.offset - b.position.end.offset
-        );
-
-        if (listItems.length === 0 || links.length === 0) {
-            return currentSnapshot;
-        }
-
-        const activeContent = this.getActiveEditorContentForFile(file);
-        const lines = activeContent?.split('\n') ?? null;
-
-        let linkCursor = 0;
-        const resolvedRoutineCache = new Map<string, TFile | null>();
-
-        for (const item of listItems) {
-            const start = item.position.start.offset;
-            const end = item.position.end.offset;
-
-            while (linkCursor < links.length && links[linkCursor].position.end.offset < start) {
-                linkCursor++;
-            }
-
-            let scanIndex = linkCursor;
-            const seenRoutinePathsInItem = new Set<string>();
-
-            for (; scanIndex < links.length; scanIndex++) {
-                const link = links[scanIndex];
-                const linkStart = link.position.start.offset;
-                const linkEnd = link.position.end.offset;
-
-                if (linkStart > end) break;
-                if (linkStart < start || linkEnd > end) continue;
-
-                let routineFile = resolvedRoutineCache.get(link.link);
-                if (routineFile === undefined) {
-                    routineFile = this.routineEngine.resolveRoutineFile(link.link, file.path);
-                    resolvedRoutineCache.set(link.link, routineFile);
-                }
-                if (!routineFile) continue;
-                if (seenRoutinePathsInItem.has(routineFile.path)) continue;
-                seenRoutinePathsInItem.add(routineFile.path);
-
-                const isComplete = item.task === 'x';
-                const lineNumber = item.position.start.line;
-                const lineText = lines?.[lineNumber] ?? '';
-                const signature = isComplete ? this.buildRoutineCompletionSignature(lineNumber, lineText) : null;
-                const hasAtDone = isComplete && lineText.length > 0 && this.hasPendingAtDoneMarker(lineText);
-                const entry = currentSnapshot.get(routineFile.path) ?? this.createEmptyRoutineCompletionSnapshotEntry();
-                entry.totalCount += 1;
-                if (isComplete) {
-                    entry.completedCount += 1;
-                    if (signature) {
-                        entry.completedSignatures.add(signature);
-                    }
-                    if (hasAtDone && signature) {
-                        entry.atDoneCompletedSignatures.add(signature);
-                    }
-                }
-                currentSnapshot.set(routineFile.path, entry);
-            }
-        }
-
-        return currentSnapshot;
     }
 
     private getSortedSectionBoundaries(): Array<{ value: number; label: string }> {
@@ -1295,7 +1166,7 @@ export default class LlrPlugin extends Plugin {
         this.metadataChangedTimers.clear();
         this.scheduleValidationTimers.clear();
         this.lastScheduleValidationError.clear();
-        this.routineCompletionSnapshotByFile.clear();
+        this.snapshots.clear();
         // Flush any pending routine updates immediately before unload
         this.routineEngine.flushAll().catch(e => console.error('[LLR] flushAll error:', e));
     }
@@ -1319,7 +1190,7 @@ export default class LlrPlugin extends Plugin {
     private async onMetadataChanged(file: TFile): Promise<void> {
         if (file.extension !== 'md') return;
         if (!this.isDailyNoteFile(file)) {
-            this.routineCompletionSnapshotByFile.delete(file.path);
+            this.snapshots.delete(file.path);
             return;
         }
 
@@ -1335,14 +1206,14 @@ export default class LlrPlugin extends Plugin {
             });
         }
 
-        const currentSnapshot = this.buildRoutineCompletionSnapshot(file);
+        const currentSnapshot = this.snapshots.build(file);
         if (!currentSnapshot) {
-            this.routineCompletionSnapshotByFile.delete(file.path);
+            this.snapshots.delete(file.path);
             return;
         }
 
-        const previousSnapshot = this.routineCompletionSnapshotByFile.get(file.path);
-        this.routineCompletionSnapshotByFile.set(file.path, currentSnapshot);
+        const previousSnapshot = this.snapshots.get(file.path);
+        this.snapshots.set(file.path, currentSnapshot);
 
         // First observation for this file becomes the baseline to avoid replaying
         // all already-completed routine tasks.
@@ -1362,8 +1233,8 @@ export default class LlrPlugin extends Plugin {
         ]);
 
         for (const routinePath of routinePaths) {
-            const current = currentSnapshot.get(routinePath) ?? this.createEmptyRoutineCompletionSnapshotEntry();
-            const prev = previousSnapshot.get(routinePath) ?? this.createEmptyRoutineCompletionSnapshotEntry();
+            const current = currentSnapshot.get(routinePath) ?? this.snapshots.createEmptyEntry();
+            const prev = previousSnapshot.get(routinePath) ?? this.snapshots.createEmptyEntry();
 
             if (prev.completedCount === current.completedCount) {
                 continue;
@@ -1763,7 +1634,7 @@ export default class LlrPlugin extends Plugin {
             await this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' });
 
             if (context.processedAtDoneCompletions && TaskParser.parseLine(lineText).status === 'x') {
-                const signature = this.buildRoutineCompletionSignature(lineIndex, updatedLine);
+                const signature = buildRoutineCompletionSignature(lineIndex, updatedLine);
                 const signatures = context.processedAtDoneCompletions.get(routineFile.path) ?? new Set<string>();
                 signatures.add(signature);
                 context.processedAtDoneCompletions.set(routineFile.path, signatures);
