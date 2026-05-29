@@ -497,7 +497,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
-        const hotkeyManager = (this.app as Record<string, unknown>)?.hotkeyManager;
+        const hotkeyManager = (this.app as unknown as Record<string, unknown>)?.hotkeyManager;
         if (!hotkeyManager || typeof hotkeyManager !== 'object') return;
         const hm = hotkeyManager as Record<string, unknown>;
         if (typeof hm.setHotkeys !== 'function' || typeof hm.removeHotkeys !== 'function') return;
@@ -1676,8 +1676,11 @@ export default class LlrPlugin extends Plugin {
     }
 
     private getCM6View(editor: Editor): Record<string, unknown> | null {
-        const raw = editor as unknown as Record<string, Record<string, unknown>>;
-        return raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
+        // Obsidian/CM6 の内部構造はバージョンで揺れるため、自己再帰の緩い型で深いアクセスを許容する。
+        type CmNode = { cm?: CmNode; view?: unknown; cmEditor?: unknown; editor?: CmNode };
+        const raw = editor as unknown as CmNode;
+        const candidate = raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
+        return (candidate as Record<string, unknown> | null) ?? null;
     }
 
     private triggerHaptic(isLongPress: boolean): void {

@@ -9,7 +9,7 @@
  */
 
 import { App, TFile } from 'obsidian';
-import { calculateNextDue, fromDateString, normalizeRepeatExpression, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
+import { addDays, calculateNextDue, fromDateString, normalizeAsciiDigits, normalizeRepeatExpression, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
@@ -104,16 +104,6 @@ export class RoutineEngine {
         return fromDateString(toDateString(date));
     }
 
-    private addDays(date: Date, days: number): Date {
-        const result = new Date(date);
-        result.setDate(result.getDate() + days);
-        return result;
-    }
-
-    private normalizeAsciiDigits(text: string): string {
-        return text.replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xFF10));
-    }
-
     private parseStartValue(raw: unknown): number | undefined {
         if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
         const value = Math.trunc(raw);
@@ -130,7 +120,7 @@ export class RoutineEngine {
         }
         if (typeof raw !== 'string') return undefined;
 
-        const normalized = this.normalizeAsciiDigits(raw)
+        const normalized = normalizeAsciiDigits(raw)
             .replace(/\u3000/g, ' ')
             .trim()
             .toLowerCase();
@@ -193,7 +183,7 @@ export class RoutineEngine {
         if (leadDays <= 0) return false;
 
         const completionDay = toDateString(this.normalizeToDateOnly(completionDate));
-        const visibleFrom = toDateString(this.addDays(fromDateString(note.next_due), -leadDays));
+        const visibleFrom = toDateString(addDays(fromDateString(note.next_due), -leadDays));
         return completionDay >= visibleFrom && completionDay <= note.next_due;
     }
 
@@ -334,7 +324,7 @@ export class RoutineEngine {
             return displayDue === targetStr;
         }
 
-        const visibleFrom = toDateString(this.addDays(fromDateString(displayDue), -leadDays));
+        const visibleFrom = toDateString(addDays(fromDateString(displayDue), -leadDays));
         return targetStr >= visibleFrom && targetStr <= displayDue;
     }
 

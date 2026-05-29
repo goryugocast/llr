@@ -123,7 +123,7 @@ export function transformCheckboxPress(
     const timeStr = formatTime(now);
 
     if (intent === 'short') {
-        if (parsed.status === ' ' || (!hasExplicitCheckbox && parsed.status === ' ')) {
+        if (parsed.status === ' ') {
             return { type: 'update', content: buildRunningLine(parsed, timeStr) };
         }
         if (parsed.status === '/') return { type: 'complete', content: '' };
@@ -131,7 +131,7 @@ export function transformCheckboxPress(
         return null;
     }
 
-    if (parsed.status === ' ' || (!hasExplicitCheckbox && parsed.status === ' ')) {
+    if (parsed.status === ' ') {
         return {
             type: 'update',
             content: buildRunningLine(parsed, options.unstartedLongPressStartTime ?? timeStr),

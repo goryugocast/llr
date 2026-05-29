@@ -157,7 +157,7 @@ export class SummaryView extends ItemView {
         requestAnimationFrame(() => {
             const newScrollEl = container.querySelector<HTMLElement>('.llr-list-container');
             if (newScrollEl) {
-                const runningEl = newScrollEl.querySelector('.llr-item-running');
+                const runningEl = newScrollEl.querySelector<HTMLElement>('.llr-item-running');
                 if (this.shouldAutoScrollToRunning()) {
                     if (runningEl) {
                         this.forceScrollRunningItemIntoView(newScrollEl, runningEl);

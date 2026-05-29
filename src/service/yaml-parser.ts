@@ -74,7 +74,7 @@ export function fromDateString(str: string): Date {
     return new Date(y, m - 1, d);
 }
 
-function addDays(date: Date, n: number): Date {
+export function addDays(date: Date, n: number): Date {
     const result = new Date(date);
     result.setDate(result.getDate() + n);
     return result;
@@ -131,7 +131,7 @@ function repeatNumberToExpression(value: number): string {
     return value === 1 ? 'every day' : `every ${value} days`;
 }
 
-function normalizeAsciiDigits(text: string): string {
+export function normalizeAsciiDigits(text: string): string {
     return text.replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xFF10));
 }
 
