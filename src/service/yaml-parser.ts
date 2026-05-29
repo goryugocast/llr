@@ -234,7 +234,6 @@ function normalizeMonthlyJapaneseNthWeekdayShorthand(value: string): string | nu
         .map((v) => parseJapaneseOrdinalToken(v));
     if (instances.length === 0) return null;
     if (instances.some((n) => n === null || n < 1 || n > 5)) return null;
-    const validInstances = instances.filter((n): n is number => n !== null);
 
     const dayMap: Record<string, string> = {
         '日': 'sun', '月': 'mon', '火': 'tue', '水': 'wed', '木': 'thu', '金': 'fri', '土': 'sat',

@@ -165,28 +165,6 @@ const TRANSLATIONS = {
 
 type TranslationKey = keyof typeof TRANSLATIONS.en;
 
-// Structural types for Obsidian internal APIs not covered by the public types.
-// Used at cast boundaries instead of `as any` to keep `no-explicit-any` happy.
-type DailyNotesPlugin = {
-    enabled?: boolean;
-    instance?: {
-        options?: Record<string, unknown>;
-        getDailyNote?: (...args: unknown[]) => unknown;
-    };
-};
-type LlrSettingsBag = { workoutFolder?: unknown; sectionDefinitions?: unknown };
-type AppInternal = {
-    internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | undefined };
-    plugins?: { plugins?: { llr?: { settings?: LlrSettingsBag } } };
-    hotkeyManager?: unknown;
-};
-type WorkspaceInternal = { leftSplit?: { collapse?: () => void }; rightSplit?: { expand?: () => void } };
-type CM6View = {
-    dispatch?: (transaction: Record<string, unknown>) => void;
-    posAtCoords?: (coords: { x: number; y: number }) => number | null;
-    posAtDOM?: (node: Node, offset: number) => number;
-};
-type EditorInternal = { offsetToPos?: (offset: number) => { line: number } | null; cm?: unknown; cmEditor?: unknown; editor?: unknown };
 const DAILY_ROUTINE_TEMPLATE_MARKERS = [
     '{{llr-today}}',
     '{{llr-routines}}',
