@@ -7,6 +7,8 @@ import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-p
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
+import { getCM6View } from './view/editor-internal';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
 import { TaskParser } from './service/task-parser';
@@ -226,15 +228,8 @@ export default class LlrPlugin extends Plugin {
     private settings: LlrSettings = DEFAULT_SETTINGS;
     private statusBar: HTMLElement;
     private statusBarDebounce: ReturnType<typeof setTimeout> | null = null;
-    private readonly checkboxLongPressMsTouch = 450;
-    private readonly checkboxLongPressMsDesktop = 900;
-    private checkboxLongPressTimer: ReturnType<typeof setTimeout> | null = null;
-    private suppressNextCheckboxClick = false;
-    private suppressResetTimer: ReturnType<typeof setTimeout> | null = null;
-    private pendingCheckboxLineIndex: number | null = null;
-    private checkboxPointerDownAtMs: number | null = null;
-    private checkboxPointerDownPointerType: string | null = null;
-    private checkboxPointerDownLineIndex: number | null = null;
+    // Checkbox tap/long-press gesture handling is delegated to CheckboxInteractionController.
+    private checkbox!: CheckboxInteractionController;
     private scheduleValidationTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private lastScheduleValidationError: Map<string, string> = new Map();
     private metadataChangedTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -253,6 +248,14 @@ export default class LlrPlugin extends Plugin {
             () => this.settings.debugModeEnabled,
             (message, timeout) => this.showLlrNotice(message, timeout),
         );
+        this.checkbox = new CheckboxInteractionController(this.app, {
+            isOverrideEnabled: () => this.settings.checkboxOverrideEnabled,
+            isEditableMarkdownView: () => this.isEditableMarkdownView(),
+            getLineStateLabel: (lineIndex) => this.getTaskLineState(this.getLineTextAt(lineIndex)),
+            onCheckboxPress: (intent, lineIndex) => this.handleCheckboxPress(intent, lineIndex),
+            debugLog: (message, data) => this.debugLog(message, data),
+            updateUI: () => this.updateUI(),
+        });
         await this.loadSettings();
         this.syncMobileLargeCheckboxClass();
         SummaryView.setRoutineFolder(this.settings.routineFolder);
@@ -324,14 +327,11 @@ export default class LlrPlugin extends Plugin {
             void this.tryAutoInsertTodayDailyNoteOnStartup();
         });
         // Checkbox override + long-press support
-        this.registerDomEvent(document, 'pointerdown', (ev) => this.handlePointerDown(ev));
-        this.registerDomEvent(document, 'pointerup', (ev) => this.handlePointerUp(ev));
-        this.registerDomEvent(document, 'pointercancel', () => {
-            this.clearLongPressTimer();
-            this.pendingCheckboxLineIndex = null;
-        });
+        this.registerDomEvent(document, 'pointerdown', (ev) => this.checkbox.onPointerDown(ev));
+        this.registerDomEvent(document, 'pointerup', (ev) => this.checkbox.onPointerUp(ev));
+        this.registerDomEvent(document, 'pointercancel', () => this.checkbox.onPointerCancel());
         // Cursor movement tracking (click or key navigation)
-        this.registerDomEvent(document, 'click', (ev) => this.handleDocumentClick(ev), true);
+        this.registerDomEvent(document, 'click', (ev) => this.checkbox.onDocumentClick(ev), true);
         this.registerDomEvent(document, 'beforeinput', (ev) => { if (ev instanceof InputEvent) this.handleDocumentBeforeInput(ev); }, true);
         this.registerDomEvent(document, 'input', (ev) => { if (ev instanceof InputEvent) this.handleDocumentInput(ev); }, true);
         this.registerDomEvent(document, 'compositionstart', (ev) => { if (ev instanceof CompositionEvent) this.handleDocumentCompositionEvent('compositionstart', ev); }, true);
@@ -601,7 +601,7 @@ export default class LlrPlugin extends Plugin {
     async setCheckboxOverrideEnabled(enabled: boolean): Promise<void> {
         this.settings.checkboxOverrideEnabled = enabled;
         if (!enabled) {
-            this.resetCheckboxInteractionState();
+            this.checkbox.reset();
         }
         await this.saveSettings();
         this.debugLog(`Checkbox override ${enabled ? 'enabled' : 'disabled'}`);
@@ -794,112 +794,6 @@ export default class LlrPlugin extends Plugin {
         // Note: SummaryView tracks its own target daily note based on the view's current date state.
     }
 
-    private handlePointerDown(ev: PointerEvent): void {
-        if (!this.settings.checkboxOverrideEnabled) return;
-        const target = this.getCheckboxAtPoint(ev.clientX, ev.clientY);
-        if (!target || !this.isEditableMarkdownView()) return;
-        if (ev.button !== 0 || ev.isPrimary === false) return;
-
-        const { checkbox, lineIndex } = target;
-        this.pendingCheckboxLineIndex = lineIndex;
-        this.checkboxPointerDownAtMs = Date.now();
-        this.checkboxPointerDownPointerType = ev.pointerType || 'unknown';
-        this.checkboxPointerDownLineIndex = lineIndex;
-
-        this.clearLongPressTimer();
-        const isTouchLike = Platform.isMobile || ev.pointerType === 'touch' || ev.pointerType === 'pen';
-        const longPressMs = isTouchLike
-            ? this.checkboxLongPressMsTouch
-            : this.checkboxLongPressMsDesktop;
-        this.debugLog('Checkbox pointerdown', {
-            pointerType: ev.pointerType || 'unknown',
-            button: ev.button,
-            isPrimary: ev.isPrimary,
-            lineIndex,
-            lineState: this.getTaskLineState(this.getLineTextAt(lineIndex)),
-            longPressMs,
-        });
-
-        this.checkboxLongPressTimer = setTimeout(() => {
-            const elapsedMs = this.checkboxPointerDownAtMs ? Date.now() - this.checkboxPointerDownAtMs : null;
-            this.debugLog('Checkbox long press timeout fired', {
-                pointerType: this.checkboxPointerDownPointerType,
-                lineIndex: this.checkboxPointerDownLineIndex,
-                elapsedMs,
-            });
-            this.suppressNextCheckboxClick = true;
-            if (this.suppressResetTimer) clearTimeout(this.suppressResetTimer);
-            this.suppressResetTimer = setTimeout(() => {
-                this.suppressNextCheckboxClick = false;
-                this.suppressResetTimer = null;
-            }, 800);
-            this.triggerHaptic(true);
-            void this.handleCheckboxPress('long', checkbox);
-        }, longPressMs);
-    }
-
-    private handlePointerUp(ev: PointerEvent): void {
-        if (!this.settings.checkboxOverrideEnabled) return;
-        // Simple cleanup, no coordinate check needed
-        const elapsedMs = this.checkboxPointerDownAtMs ? Date.now() - this.checkboxPointerDownAtMs : null;
-        if (this.checkboxPointerDownAtMs !== null) {
-            this.debugLog('Checkbox pointerup', {
-                pointerType: ev.pointerType || 'unknown',
-                elapsedMs,
-                lineIndex: this.checkboxPointerDownLineIndex,
-            });
-        }
-        this.clearLongPressTimer();
-        this.pendingCheckboxLineIndex = null;
-        this.checkboxPointerDownAtMs = null;
-        this.checkboxPointerDownPointerType = null;
-        this.checkboxPointerDownLineIndex = null;
-    }
-
-    private handleDocumentClick(ev: MouseEvent): void {
-        if (!this.settings.checkboxOverrideEnabled) return;
-        // モーダル（設定画面など）の中で発生したクリックには干渉しない
-        if (ev.target instanceof Element && ev.target.closest('.modal-container')) return;
-
-        const target = this.getCheckboxAtPoint(ev.clientX, ev.clientY);
-        if (!target) {
-            this.updateUI();
-            return;
-        }
-
-        const { checkbox, lineIndex } = target;
-        const elapsedSincePointerDownMs = this.checkboxPointerDownAtMs ? Date.now() - this.checkboxPointerDownAtMs : null;
-
-        // Hijack the event
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        this.debugLog('Checkbox click intercepted', {
-            lineIndex,
-            suppressNextCheckboxClick: this.suppressNextCheckboxClick,
-            elapsedSincePointerDownMs,
-        });
-
-        if (this.suppressNextCheckboxClick) {
-            this.suppressNextCheckboxClick = false;
-            this.debugLog('Checkbox click suppressed after long press', {
-                lineIndex,
-                elapsedSincePointerDownMs,
-            });
-            this.updateUI();
-            return;
-        }
-
-        this.triggerHaptic(false);
-        if (checkbox instanceof HTMLElement && Platform.isMobile) {
-            checkbox.blur();
-        }
-
-        // Defer to next tick so CM6 finishes click processing before document modification
-        setTimeout(() => {
-            void this.handleCheckboxPress('short', checkbox, lineIndex);
-        }, 0);
-    }
-
     private handleDocumentBeforeInput(ev: InputEvent): void {
         this.logEditorInputEvent('beforeinput', ev);
     }
@@ -915,7 +809,7 @@ export default class LlrPlugin extends Plugin {
         if (!context) return;
 
         this.debug.emit('plugin', `Editor ${phase}`, {
-            pointerType: this.checkboxPointerDownPointerType,
+            pointerType: this.checkbox.lastPointerDownType,
             line: context.cursor.line,
             ch: context.cursor.ch,
             currentLinePreview: context.lineText.slice(0, 120),
@@ -930,7 +824,7 @@ export default class LlrPlugin extends Plugin {
         if (!context) return;
 
         this.debug.emit('plugin', `Editor ${phase}`, {
-            pointerType: this.checkboxPointerDownPointerType,
+            pointerType: this.checkbox.lastPointerDownType,
             line: context.cursor.line,
             ch: context.cursor.ch,
             currentLinePreview: context.lineText.slice(0, 120),
@@ -954,81 +848,6 @@ export default class LlrPlugin extends Plugin {
         };
     }
 
-    /**
-     * 指定された座標にあるチェックボックスとその行番号を特定する
-     */
-    private getCheckboxAtPoint(x: number, y: number): { checkbox: HTMLElement; lineIndex: number } | null {
-        const element = document.elementFromPoint(x, y);
-        const checkbox = this.getCheckboxElement(element, x, y);
-        if (!checkbox) return null;
-
-        const padding = Platform.isMobile ? 6 : 3;
-        if (!this.isCoordInsideElement(x, y, checkbox, padding)) return null;
-
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.editor) return null;
-
-        // チェックボックスが現在のアクティブなエディタのDOM階層内にあるか確認
-        // これにより設定画面・サイドバー・モーダル上の要素を完全に除外する
-        if (!view.contentEl.contains(checkbox)) return null;
-
-        const lineIndex = this.resolveLineIndex(view.editor, checkbox, { x, y });
-        if (lineIndex === null) return null;
-
-        return { checkbox, lineIndex };
-    }
-
-    private isCoordInsideElement(x: number, y: number, el: HTMLElement, padding = 0): boolean {
-        const rect = el.getBoundingClientRect();
-        return (
-            x >= rect.left - padding &&
-            x <= rect.right + padding &&
-            y >= rect.top - padding &&
-            y <= rect.bottom + padding
-        );
-    }
-
-    private clearLongPressTimer(): void {
-        if (!this.checkboxLongPressTimer) return;
-        clearTimeout(this.checkboxLongPressTimer);
-        this.checkboxLongPressTimer = null;
-    }
-
-    private resetCheckboxInteractionState(): void {
-        this.clearLongPressTimer();
-        if (this.suppressResetTimer) {
-            clearTimeout(this.suppressResetTimer);
-            this.suppressResetTimer = null;
-        }
-        this.suppressNextCheckboxClick = false;
-        this.pendingCheckboxLineIndex = null;
-        this.checkboxPointerDownAtMs = null;
-        this.checkboxPointerDownPointerType = null;
-        this.checkboxPointerDownLineIndex = null;
-    }
-
-    private getCheckboxElement(target: EventTarget | null, x?: number, y?: number): HTMLElement | null {
-        if (!(target instanceof Element)) return null;
-
-        // 1. 直接的なヒット（エディタ内に限定）
-        const direct = target.closest('.markdown-source-view .task-list-item-checkbox, .markdown-source-view input[type="checkbox"]');
-        if (direct instanceof HTMLElement) return direct;
-
-        // 2. 行内フォールバックは、チェックボックス近傍だけに限定する
-        const line = target.closest('.HyperMD-task-line, .cm-line, .task-list-item');
-        if (line instanceof HTMLElement) {
-            const nested = line.querySelector('.task-list-item-checkbox, input[type="checkbox"]');
-            if (nested instanceof HTMLElement && typeof x === 'number' && typeof y === 'number') {
-                const fallbackPadding = Platform.isMobile ? 6 : 3;
-                if (this.isCoordInsideElement(x, y, nested, fallbackPadding)) {
-                    return nested;
-                }
-            }
-        }
-
-        return null;
-    }
-
     private isEditableMarkdownView(): boolean {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file) return false;
@@ -1044,18 +863,12 @@ export default class LlrPlugin extends Plugin {
 
     private async handleCheckboxPress(
         intent: CheckboxPressIntent,
-        checkboxEl: HTMLElement,
-        preResolvedLineIndex?: number
+        lineIndex: number | null
     ): Promise<void> {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || !view.editor) return;
 
         const editor = view.editor;
-        const lineIndex = preResolvedLineIndex
-            ?? this.pendingCheckboxLineIndex
-            ?? this.resolveLineIndex(editor, checkboxEl);
-        this.pendingCheckboxLineIndex = null;
-
         if (lineIndex === null) {
             this.debugLog('Could not identify tapped line. Operation aborted.');
             return;
@@ -1154,79 +967,6 @@ export default class LlrPlugin extends Plugin {
         }
 
         return findLatestCompletionEndTime(lines, this.formatTime(new Date()));
-    }
-
-    private resolveLineIndex(
-        editor: Editor,
-        checkboxEl: HTMLElement,
-        pointer?: { x: number; y: number }
-    ): number | null {
-        // Strategy 1: Data Attribute (Most reliable when available)
-        const dataLine = checkboxEl.closest('.cm-line, [data-line]')?.getAttribute('data-line');
-        if (dataLine) {
-            const parsed = parseInt(dataLine, 10);
-            if (!isNaN(parsed) && parsed >= 0) return parsed;
-        }
-
-        // Strategy 2: CodeMirror 6 API
-        const cmView = this.getCM6View(editor);
-        const offsetToPos = (editor as unknown as Record<string, unknown>)?.offsetToPos;
-
-        if (cmView && typeof offsetToPos === 'function') {
-            // a) Coordinate-based
-            if (pointer && typeof cmView.posAtCoords === 'function') {
-                try {
-                    const offset = cmView.posAtCoords({ x: pointer.x, y: pointer.y });
-                    if (offset !== null) {
-                        const pos = offsetToPos.call(editor, offset);
-                        if (pos && typeof pos.line === 'number') return pos.line;
-                    }
-                } catch (e) {
-                    this.debugLog('CM6 posAtCoords failed', e);
-                }
-            }
-            // b) Element-based
-            if (typeof cmView.posAtDOM === 'function') {
-                try {
-                    const offset = cmView.posAtDOM(checkboxEl, 0);
-                    const pos = offsetToPos.call(editor, offset);
-                    if (pos && typeof pos.line === 'number') return pos.line;
-                } catch (e) {
-                    this.debugLog('CM6 posAtDOM failed', e);
-                }
-            }
-        }
-
-        // Strategy 3: Visual Proximity (Force fallback for widgets in mobile)
-        if (pointer) {
-            return this.resolveLineByProximity(checkboxEl, pointer.y);
-        }
-
-        return null;
-    }
-
-    private resolveLineByProximity(el: HTMLElement, y: number): number | null {
-        const container = el.closest('.cm-content, .markdown-source-view');
-        if (!container) return null;
-
-        const lines = container.querySelectorAll('.cm-line, [data-line]');
-        let bestLine: number | null = null;
-        let minDist = Infinity;
-
-        for (let i = 0; i < lines.length; i++) {
-            const rect = lines[i].getBoundingClientRect();
-            if (y >= rect.top - 2 && y <= rect.bottom + 2) {
-                const dl = lines[i].getAttribute('data-line');
-                if (dl) return parseInt(dl, 10);
-            }
-            const dist = Math.abs(y - (rect.top + rect.bottom) / 2);
-            if (dist < minDist) {
-                minDist = dist;
-                const dl = lines[i].getAttribute('data-line');
-                if (dl) bestLine = parseInt(dl, 10);
-            }
-        }
-        return minDist < 20 ? bestLine : null;
     }
 
     private isRootRoutineNotePath(filePath: string): boolean {
@@ -1536,33 +1276,12 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    private getCM6View(editor: Editor): Record<string, unknown> | null {
-        // Obsidian/CM6 の内部構造はバージョンで揺れるため、自己再帰の緩い型で深いアクセスを許容する。
-        type CmNode = { cm?: CmNode; view?: unknown; cmEditor?: unknown; editor?: CmNode };
-        const raw = editor as unknown as CmNode;
-        const candidate = raw.cm?.cm ?? raw.cm ?? raw.cmEditor ?? raw.editor?.cm?.cm?.view ?? raw.editor?.cm ?? null;
-        return (candidate as Record<string, unknown> | null) ?? null;
-    }
-
-    private triggerHaptic(isLongPress: boolean): void {
-        // iOS WebView may ignore this API. Use best-effort without failing behavior.
-        const vibrate = window.navigator?.vibrate?.bind(window.navigator);
-        if (!vibrate) return;
-        if (!Platform.isMobile) return;
-
-        if (isLongPress) {
-            vibrate([20, 60, 20]);
-            return;
-        }
-        vibrate(20);
-    }
-
     onunload() {
         console.debug('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
         if (this.statusBarDebounce) clearTimeout(this.statusBarDebounce);
         if (this.refreshTimer) clearInterval(this.refreshTimer);
-        this.resetCheckboxInteractionState();
+        this.checkbox.reset();
         for (const timer of this.scheduleValidationTimers.values()) {
             clearTimeout(timer);
         }
@@ -2271,7 +1990,7 @@ export default class LlrPlugin extends Plugin {
 
         // Force CM6 widget re-render (needed when triggered from click handler)
         requestAnimationFrame(() => {
-            const cmView = this.getCM6View(editor);
+            const cmView = getCM6View(editor);
             if (cmView && typeof cmView.dispatch === 'function') {
                 cmView.dispatch({});
             }
