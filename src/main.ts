@@ -8,6 +8,7 @@ import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
+import { DebugLog } from './service/debug-log';
 import { TaskParser } from './service/task-parser';
 
 interface LlrSettings {
@@ -28,14 +29,6 @@ interface SectionDefinition {
 
 type UILanguage = 'auto' | 'ja' | 'en';
 type ResolvedLanguage = 'ja' | 'en';
-
-interface DebugRecord {
-    timestamp: string;
-    localTime: string;
-    source: 'plugin' | 'routine-engine';
-    message: string;
-    data?: unknown;
-}
 
 interface RoutineCompletionSnapshotEntry {
     totalCount: number;
@@ -270,17 +263,18 @@ export default class LlrPlugin extends Plugin {
     private routineCompletionSnapshotByFile: Map<string, Map<string, RoutineCompletionSnapshotEntry>> = new Map();
     private dailyNoteAutoInsertTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
-    private debugFolderEnsured = false;
-    private debugWriteQueue: Promise<void> = Promise.resolve();
     private lastDebugNoticeAtMs = 0;
     private readonly debugNoticeThrottleMs = 5000;
-    // Keep debug logs outside the routine folder so Base views on routines don't react to debug writes.
-    private readonly debugLogDir = 'llrlog';
-    private readonly debugLogFileName = 'debug.jsonl';
-    private readonly debugLogMaxBytes = 5 * 1024 * 1024;
-    private readonly debugLogTrimBytes = 1 * 1024 * 1024;
+    // Debug log I/O is delegated to DebugLog. Logs live outside the routine folder
+    // (llrlog/) so Base views on routines don't react to debug writes.
+    private debug!: DebugLog;
 
     async onload() {
+        this.debug = new DebugLog(
+            this.app,
+            () => this.settings.debugModeEnabled,
+            (message, timeout) => this.showLlrNotice(message, timeout),
+        );
         await this.loadSettings();
         this.syncMobileLargeCheckboxClass();
         SummaryView.setRoutineFolder(this.settings.routineFolder);
@@ -531,7 +525,7 @@ export default class LlrPlugin extends Plugin {
         const logMsg = `[LLR Debug ${timestamp}] ${message}`;
         console.debug(logMsg);
         if (data) console.debug(data);
-        this.emitDebugRecord('plugin', message, data);
+        this.debug.emit('plugin', message, data);
     }
 
     async loadSettings(): Promise<void> {
@@ -683,12 +677,12 @@ export default class LlrPlugin extends Plugin {
     }
 
     private handleRoutineEngineDebugEvent(event: RoutineEngineDebugEvent): void {
-        this.emitDebugRecord(event.source, event.message, event.data);
+        this.debug.emit(event.source, event.message, event.data);
     }
 
     private async runCommandWithDebug(commandId: string, commandName: string, fn: () => Promise<void> | void): Promise<void> {
         const startedAt = new Date();
-        this.emitDebugRecord('plugin', 'command:start', {
+        this.debug.emit('plugin', 'command:start', {
             commandId,
             commandName,
             startedAt: startedAt.toISOString(),
@@ -696,13 +690,13 @@ export default class LlrPlugin extends Plugin {
 
         try {
             await fn();
-            this.emitDebugRecord('plugin', 'command:done', {
+            this.debug.emit('plugin', 'command:done', {
                 commandId,
                 commandName,
                 finishedAt: new Date().toISOString(),
             });
         } catch (error) {
-            this.emitDebugRecord('plugin', 'command:error', {
+            this.debug.emit('plugin', 'command:error', {
                 commandId,
                 commandName,
                 finishedAt: new Date().toISOString(),
@@ -712,26 +706,6 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    private emitDebugRecord(source: 'plugin' | 'routine-engine', message: string, data?: unknown, options?: { notice?: boolean }): void {
-        if (!this.settings.debugModeEnabled) return;
-
-        const now = new Date();
-        const record: DebugRecord = {
-            timestamp: now.toISOString(),
-            localTime: this.formatDebugLocalTime(now),
-            source,
-            message,
-            ...(data !== undefined ? { data } : {}),
-        };
-
-        if (options?.notice !== false) {
-            const noticeText = `[Debug ${record.localTime}] ${source} ${message}${this.summarizeDebugData(data)}`;
-            // Defer Notice to avoid DOM change during pointerdown suppressing iOS click event
-            setTimeout(() => { this.showDebugNotice(noticeText, 5000); }, 0);
-        }
-        void this.appendDebugLog(record);
-    }
-
     showLlrNotice(message: string, timeout = 5000): void {
         if (this.settings.debugModeEnabled) {
             const nowMs = Date.now();
@@ -739,97 +713,6 @@ export default class LlrPlugin extends Plugin {
             this.lastDebugNoticeAtMs = nowMs;
         }
         new Notice(message, timeout);
-    }
-
-    private showDebugNotice(message: string, timeout = 5000): void {
-        this.showLlrNotice(message, timeout);
-    }
-
-    private summarizeDebugData(data: unknown): string {
-        if (data === undefined) return '';
-        try {
-            const json = JSON.stringify(data);
-            if (!json) return '';
-            return json.length > 140 ? ` ${json.slice(0, 140)}...` : ` ${json}`;
-        } catch {
-            return ' [unserializable-data]';
-        }
-    }
-
-    private formatDebugLocalTime(date: Date): string {
-        const hh = date.getHours().toString().padStart(2, '0');
-        const mm = date.getMinutes().toString().padStart(2, '0');
-        const ss = date.getSeconds().toString().padStart(2, '0');
-        const ms = date.getMilliseconds().toString().padStart(3, '0');
-        return `${hh}:${mm}:${ss}.${ms}`;
-    }
-
-    private getDebugLogFilePath(): string {
-        return normalizePath(`${this.debugLogDir}/${this.debugLogFileName}`);
-    }
-
-    private async ensureDebugLogFolder(): Promise<void> {
-        if (this.debugFolderEnsured) return;
-
-        const adapter = this.app.vault.adapter;
-        const segments = this.debugLogDir.split('/').filter(Boolean);
-        let current = '';
-
-        for (const segment of segments) {
-            current = current ? `${current}/${segment}` : segment;
-            const path = normalizePath(current);
-            if (!(await adapter.exists(path))) {
-                await adapter.mkdir(path);
-            }
-        }
-
-        this.debugFolderEnsured = true;
-    }
-
-    private async appendDebugLog(record: DebugRecord): Promise<void> {
-        this.debugWriteQueue = this.debugWriteQueue.then(async () => {
-            try {
-                await this.ensureDebugLogFolder();
-                const path = this.getDebugLogFilePath();
-                await this.trimDebugLogIfNeeded(path);
-                await this.app.vault.adapter.append(path, `${JSON.stringify(record)}\n`);
-            } catch (error) {
-                console.error('[LLR] Failed to write debug log', error);
-            }
-        });
-        await this.debugWriteQueue;
-    }
-
-    private async trimDebugLogIfNeeded(path: string): Promise<void> {
-        const adapter = this.app.vault.adapter;
-        if (!(await adapter.exists(path))) return;
-
-        let currentSize = 0;
-        try {
-            const stat = await adapter.stat(path);
-            currentSize = stat?.size ?? 0;
-        } catch {
-            return;
-        }
-
-        if (currentSize <= this.debugLogMaxBytes) return;
-
-        const content = await adapter.read(path);
-        const encoded = new TextEncoder().encode(content);
-        if (encoded.length <= this.debugLogTrimBytes) {
-            await adapter.write(path, '');
-            return;
-        }
-
-        // Rough trim: drop oldest ~1MB, then align to next newline.
-        let dropAt = this.debugLogTrimBytes;
-        while (dropAt < encoded.length && encoded[dropAt] !== 0x0a) {
-            dropAt += 1;
-        }
-        if (dropAt < encoded.length) dropAt += 1;
-
-        const trimmed = new TextDecoder().decode(encoded.slice(dropAt));
-        await adapter.write(path, trimmed);
     }
 
     /** Debounce wrapper: waits 500ms after the last call before updating UI */
@@ -1053,7 +936,7 @@ export default class LlrPlugin extends Plugin {
         const context = this.getEditorEventContext(ev.target);
         if (!context) return;
 
-        this.emitDebugRecord('plugin', `Editor ${phase}`, {
+        this.debug.emit('plugin', `Editor ${phase}`, {
             pointerType: this.checkboxPointerDownPointerType,
             line: context.cursor.line,
             ch: context.cursor.ch,
@@ -1068,7 +951,7 @@ export default class LlrPlugin extends Plugin {
         const context = this.getEditorEventContext(ev.target);
         if (!context) return;
 
-        this.emitDebugRecord('plugin', `Editor ${phase}`, {
+        this.debug.emit('plugin', `Editor ${phase}`, {
             pointerType: this.checkboxPointerDownPointerType,
             line: context.cursor.line,
             ch: context.cursor.ch,
