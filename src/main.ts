@@ -12,6 +12,7 @@ import { getCM6View } from './view/editor-internal';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
+import { DailyNoteAutoInsertController } from './service/daily-note-auto-insert';
 import { TaskParser } from './service/task-parser';
 
 interface LlrSettings {
@@ -162,12 +163,6 @@ const TRANSLATIONS = {
 
 type TranslationKey = keyof typeof TRANSLATIONS.en;
 
-const DAILY_ROUTINE_TEMPLATE_MARKERS = [
-    '{{llr-today}}',
-    '{{llr-routines}}',
-    '<!-- llr:insert-routine -->',
-] as const;
-const DAILY_ROUTINE_EXPANDED_STAMP_PREFIX = '<!-- llr:routines-expanded ';
 const LEGACY_SKIP_COMMAND_ID = 'defer-task-to-tomorrow';
 const SKIP_COMMAND_ID = 'skip-task-log-only';
 const DEFAULT_ROUTINE_FOLDER = 'routine';
@@ -229,7 +224,7 @@ export default class LlrPlugin extends Plugin {
     private lastScheduleValidationError: Map<string, string> = new Map();
     private metadataChangedTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private snapshots!: RoutineCompletionSnapshotStore;
-    private dailyNoteAutoInsertTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    private dailyAutoInsert!: DailyNoteAutoInsertController;
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private lastDebugNoticeAtMs = 0;
     private readonly debugNoticeThrottleMs = 5000;
@@ -264,6 +259,13 @@ export default class LlrPlugin extends Plugin {
         this.snapshots = new RoutineCompletionSnapshotStore(this.app, {
             isDailyNoteFile: (file) => this.isDailyNoteFile(file),
             resolveRoutineFile: (link, sourcePath) => this.routineEngine.resolveRoutineFile(link, sourcePath),
+        });
+        this.dailyAutoInsert = new DailyNoteAutoInsertController(this.app, {
+            isDailyNoteFile: (file) => this.isDailyNoteFile(file),
+            parseDailyNoteDate: (file) => this.parseDailyNoteDate(file),
+            getDailyNoteSettings: () => this.getDailyNoteSettings(),
+            buildRoutineInsertLines: (targetDate) => this.buildRoutineInsertLines(targetDate),
+            debugLog: (message, data) => this.debugLog(message, data),
         });
         this.debugLog('Loading LLR plugin...');
 
@@ -308,14 +310,14 @@ export default class LlrPlugin extends Plugin {
         this.registerEvent(
             this.app.vault.on('create', (file) => {
                 if (file instanceof TFile) {
-                    this.scheduleDailyNoteRoutineAutoInsert(file, 0, 'create');
+                    this.dailyAutoInsert.schedule(file, 0, 'create');
                 }
             })
         );
         this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
                 if (file instanceof TFile) {
-                    this.scheduleDailyNoteRoutineAutoInsert(file, 0, 'open');
+                    this.dailyAutoInsert.schedule(file, 0, 'open');
                 }
             })
         );
@@ -323,7 +325,7 @@ export default class LlrPlugin extends Plugin {
             this.app.metadataCache.on('changed', (file) => this.scheduleMetadataChangedProcessing(file))
         );
         this.app.workspace.onLayoutReady(() => {
-            void this.tryAutoInsertTodayDailyNoteOnStartup();
+            this.dailyAutoInsert.tryStartup();
         });
         // Checkbox override + long-press support
         this.registerDomEvent(document, 'pointerdown', (ev) => this.checkbox.onPointerDown(ev));
@@ -1046,107 +1048,6 @@ export default class LlrPlugin extends Plugin {
         return selected ? `# ${selected.label}` : null;
     }
 
-    private scheduleDailyNoteRoutineAutoInsert(file: TFile, attempt = 0, trigger: 'create' | 'open' | 'startup' = 'create'): void {
-        if (!this.isDailyNoteFile(file)) return;
-        if (!this.shouldAttemptDeferredDailyRoutineInsert(file, trigger)) return;
-        if (attempt > 12) {
-            this.dailyNoteAutoInsertTimers.delete(file.path);
-            return;
-        }
-
-        const existing = this.dailyNoteAutoInsertTimers.get(file.path);
-        if (existing) clearTimeout(existing);
-
-        const timer = setTimeout(() => {
-            void this.tryAutoInsertRoutinesFromTemplateMarker(file, attempt, trigger);
-        }, attempt === 0 ? 200 : 500);
-
-        this.dailyNoteAutoInsertTimers.set(file.path, timer);
-    }
-
-    private tryAutoInsertTodayDailyNoteOnStartup(): void {
-        const file = this.resolveTodayDailyNoteFile();
-        if (!file) return;
-        this.scheduleDailyNoteRoutineAutoInsert(file, 0, 'startup');
-    }
-
-    private resolveTodayDailyNoteFile(): TFile | null {
-        const settings = this.getDailyNoteSettings();
-        if (!settings.enabled) return null;
-
-        const basename = moment().format(settings.format.trim());
-        const path = settings.folder.trim() ? `${settings.folder.trim()}/${basename}.md` : `${basename}.md`;
-        const file = this.app.vault.getAbstractFileByPath(path);
-        return file instanceof TFile ? file : null;
-    }
-
-    private shouldAttemptDeferredDailyRoutineInsert(file: TFile, trigger: 'create' | 'open' | 'startup'): boolean {
-        if (trigger === 'create') return true;
-
-        const fileDate = this.parseDailyNoteDate(file);
-        if (!fileDate) return false;
-
-        const today = moment().format('YYYY-MM-DD');
-        const target = moment(fileDate).format('YYYY-MM-DD');
-        return target === today;
-    }
-
-    private buildDailyRoutineExpandedStamp(targetDate: Date): string {
-        return `${DAILY_ROUTINE_EXPANDED_STAMP_PREFIX}${moment(targetDate).format('YYYY-MM-DD')} -->`;
-    }
-
-    private async tryAutoInsertRoutinesFromTemplateMarker(
-        file: TFile,
-        attempt: number,
-        trigger: 'create' | 'open' | 'startup'
-    ): Promise<void> {
-        try {
-            if (!this.isDailyNoteFile(file)) return;
-
-            const content = await this.app.vault.read(file);
-            if (content.includes(DAILY_ROUTINE_EXPANDED_STAMP_PREFIX)) return;
-            const hasMarker = DAILY_ROUTINE_TEMPLATE_MARKERS.some((marker) => content.includes(marker));
-            if (!hasMarker) {
-                // Templater may populate the content after create; retry for a short window.
-                if (trigger === 'create') {
-                    this.scheduleDailyNoteRoutineAutoInsert(file, attempt + 1, trigger);
-                }
-                return;
-            }
-
-            const targetDate = this.parseDailyNoteDate(file) ?? new Date();
-            const outputLines = await this.buildRoutineInsertLines(targetDate);
-            const stamp = this.buildDailyRoutineExpandedStamp(targetDate);
-            const block = [...outputLines, stamp].join('\n');
-
-            let replaced = content;
-            for (const marker of DAILY_ROUTINE_TEMPLATE_MARKERS) {
-                if (!replaced.includes(marker)) continue;
-                replaced = replaced.split(marker).join(block);
-            }
-
-            if (replaced !== content) {
-                await this.app.vault.modify(file, replaced);
-                this.debugLog('Daily template marker expanded to routines', {
-                    file: file.path,
-                    date: targetDate.toISOString(),
-                    lineCount: outputLines.length,
-                    attempt,
-                    trigger,
-                });
-            }
-        } catch (error) {
-            this.debugLog('Daily template routine auto-insert failed', {
-                file: file.path,
-                attempt,
-                trigger,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        } finally {
-            this.dailyNoteAutoInsertTimers.delete(file.path);
-        }
-    }
-
     onunload() {
         console.debug('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
@@ -1156,13 +1057,10 @@ export default class LlrPlugin extends Plugin {
         for (const timer of this.scheduleValidationTimers.values()) {
             clearTimeout(timer);
         }
-        for (const timer of this.dailyNoteAutoInsertTimers.values()) {
-            clearTimeout(timer);
-        }
+        this.dailyAutoInsert.clearTimers();
         for (const timer of this.metadataChangedTimers.values()) {
             clearTimeout(timer);
         }
-        this.dailyNoteAutoInsertTimers.clear();
         this.metadataChangedTimers.clear();
         this.scheduleValidationTimers.clear();
         this.lastScheduleValidationError.clear();
