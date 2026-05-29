@@ -7,7 +7,7 @@ import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-p
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
-import { isDailyNoteMatch, resolveDailyNoteDate, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
+import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { TaskParser } from './service/task-parser';
 
 interface LlrSettings {
@@ -17,6 +17,7 @@ interface LlrSettings {
     mobileLargeCheckboxEnabled: boolean;
     uiLanguage: UILanguage;
     routineFolder: string;
+    dailyNoteFolder: string;
     sectionDefinitions: SectionDefinition[];
 }
 
@@ -68,6 +69,7 @@ const DEFAULT_SETTINGS: LlrSettings = {
     mobileLargeCheckboxEnabled: false,
     uiLanguage: 'auto',
     routineFolder: 'routine',
+    dailyNoteFolder: '',
     sectionDefinitions: [
         { time: '0700', label: '午前' },
         { time: '1200', label: '午後' },
@@ -116,6 +118,8 @@ const TRANSLATIONS = {
         'settings.routineSections.timePlaceholder': '0700',
         'settings.advanced.heading': 'Advanced / compatibility',
         'settings.advanced.desc': 'Settings for exceptional cases. Most users can leave these as-is.',
+        'settings.dailyNoteFolder.name': 'Daily note folder (fallback)',
+        'settings.dailyNoteFolder.desc': 'Normally LLR follows the core Daily Notes plugin. Set a folder here only as a safety net: it is used solely when the Daily Notes plugin’s own folder is blank (e.g. its settings got reset by cloud sync). While the plugin reports a folder, that always wins and this value is ignored. Leave empty if your daily notes live in the vault root.',
         'notice.invalidTime': 'LLR: Please enter time in HHmm format (example: 0700).',
         'notice.emptySectionLabel': 'LLR: Please enter a section label.',
     },
@@ -159,6 +163,8 @@ const TRANSLATIONS = {
         'settings.routineSections.timePlaceholder': '0700',
         'settings.advanced.heading': '詳細設定 / 互換性',
         'settings.advanced.desc': '例外的な運用向けの設定です。通常はこのままで構いません。',
+        'settings.dailyNoteFolder.name': 'デイリーノートのフォルダ（予備）',
+        'settings.dailyNoteFolder.desc': '通常 LLR はコアの Daily Notes プラグインに従います。ここは保険用です。Daily Notes プラグイン側のフォルダが空のとき（例: クラウド同期で設定が巻き戻ったとき）だけこの値を使います。プラグインがフォルダを返している間は常にそちらが優先され、この値は無視されます。デイリーをボールト直下に置いている場合は空のままにしてください。',
         'notice.invalidTime': 'LLR: 時刻は HHmm（例: 0700）で入力してください。',
         'notice.emptySectionLabel': 'LLR: 見出しラベルを入力してください。',
     },
@@ -234,6 +240,14 @@ function normalizeRoutineFolder(value: unknown): string {
     const asText = typeof value === 'string' ? value : '';
     const normalizedPath = normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
     return normalizedPath || DEFAULT_ROUTINE_FOLDER;
+}
+
+// Daily Notes プラグインの folder が空のときだけ使う補完値。
+// 空文字は「補完なし（プラグインに完全に従う）」を意味するので、ルーチンと違って既定フォルダには倒さない。
+function normalizeDailyNoteFolder(value: unknown): string {
+    const asText = typeof value === 'string' ? value : '';
+    if (!asText.trim()) return '';
+    return normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
 export default class LlrPlugin extends Plugin {
@@ -529,6 +543,7 @@ export default class LlrPlugin extends Plugin {
             ? loaded.uiLanguage
             : 'auto';
         merged.routineFolder = normalizeRoutineFolder(loaded?.routineFolder ?? merged.routineFolder);
+        merged.dailyNoteFolder = normalizeDailyNoteFolder(loaded?.dailyNoteFolder ?? merged.dailyNoteFolder);
         merged.sectionDefinitions = normalizeSectionDefinitions(loaded?.sectionDefinitions ?? merged.sectionDefinitions);
         this.settings = merged;
     }
@@ -582,6 +597,17 @@ export default class LlrPlugin extends Plugin {
 
     getRoutineFolder(): string {
         return this.settings.routineFolder;
+    }
+
+    getDailyNoteFolder(): string {
+        return this.settings.dailyNoteFolder;
+    }
+
+    async setDailyNoteFolder(folder: string): Promise<void> {
+        const normalized = normalizeDailyNoteFolder(folder);
+        if (normalized === this.settings.dailyNoteFolder) return;
+        this.settings.dailyNoteFolder = normalized;
+        await this.saveSettings();
     }
 
     getSectionDefinitions(): SectionDefinition[] {
@@ -1370,10 +1396,11 @@ export default class LlrPlugin extends Plugin {
         const internalPlugins = (this.app as unknown as { internalPlugins?: InternalPlugins }).internalPlugins;
         const dailyNotesPlugin = internalPlugins?.getPluginById?.('daily-notes');
         const options = (dailyNotesPlugin?.instance?.options ?? {});
+        const pluginFolder = typeof options.folder === 'string' ? options.folder : '';
         return {
             enabled: !!dailyNotesPlugin?.enabled,
             format: (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD',
-            folder: typeof options.folder === 'string' ? options.folder : '',
+            folder: resolveDailyNoteFolder(pluginFolder, this.settings.dailyNoteFolder),
         };
     }
 
@@ -2785,5 +2812,29 @@ class LlrSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     await this.plugin.setCheckboxOverrideEnabled(value);
                 }));
+
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.dailyNoteFolder.name'))
+            .setDesc(this.plugin.t('settings.dailyNoteFolder.desc'))
+            .addSearch((search) => {
+                search.setValue(this.plugin.getDailyNoteFolder());
+                const folderSuggest = new FolderPathSuggest(this.app, search.inputEl);
+                const commit = async () => {
+                    await this.plugin.setDailyNoteFolder(search.getValue());
+                    search.setValue(this.plugin.getDailyNoteFolder());
+                };
+                folderSuggest.onSelect((folder) => {
+                    search.setValue(folder.path);
+                    folderSuggest.close();
+                    void commit();
+                });
+                search.inputEl.addEventListener('keydown', (ev) => {
+                    if (ev.isComposing || ev.key !== 'Enter') return;
+                    ev.preventDefault();
+                    folderSuggest.close();
+                    void commit();
+                });
+                search.inputEl.addEventListener('blur', () => { void commit(); });
+            });
     }
 }

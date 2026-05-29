@@ -10,6 +10,20 @@ export interface DailyNoteSettings {
     folder: string;
 }
 
+/**
+ * デイリーノートのフォルダを解決する。
+ *
+ * LLR は「Daily Notes プラグインに乗っかる」コンセプトなので、プラグインが folder を
+ * 返している間は常にそれが真実の源。プラグイン側 folder が空（クラウド同期で設定が
+ * 巻き戻った等）のときだけ、ユーザーが LLR 設定に書いた補完値を使う。
+ *
+ * この優先順は getDailyNoteSettings()（判定）と getDailyNotePathCandidates()（パス生成）の
+ * 両方で共有しなければならない。片方だけ変えると「判定と生成のフォルダがズレる」非対称バグになる。
+ */
+export function resolveDailyNoteFolder(pluginFolder: string, fallbackFolder: string): string {
+    return pluginFolder.trim() || fallbackFolder.trim();
+}
+
 export function isDailyNoteMatch(
     file: DailyNoteDescriptor,
     settings: DailyNoteSettings,

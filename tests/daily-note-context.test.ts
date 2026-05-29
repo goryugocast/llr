@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     isDailyNoteMatch,
     resolveDailyNoteDate,
+    resolveDailyNoteFolder,
     resolveMutationReferenceDate,
     resolveReferenceDate,
     type DailyNoteDescriptor,
@@ -86,5 +87,28 @@ describe('daily-note-context', () => {
         const resolved = resolveMutationReferenceDate(primary, new Date('2026-02-28T09:30:00Z'));
         expect(resolved.toISOString()).toBe('2026-02-27T00:00:00.000Z');
         expect(resolved).not.toBe(primary);
+    });
+
+    describe('resolveDailyNoteFolder', () => {
+        it('uses the plugin folder when it is present', () => {
+            expect(resolveDailyNoteFolder('Daily', 'Fallback')).toBe('Daily');
+        });
+
+        it('ignores the fallback even after the plugin folder changes', () => {
+            // ユーザーがプラグイン側でフォルダを変えたら、LLR 補完値は黙って追従させない（陳腐化防止）。
+            expect(resolveDailyNoteFolder('Journal', 'Daily')).toBe('Journal');
+        });
+
+        it('uses the fallback when the plugin folder is blank (settings reset)', () => {
+            expect(resolveDailyNoteFolder('', 'Daily')).toBe('Daily');
+        });
+
+        it('treats a whitespace-only plugin folder as blank', () => {
+            expect(resolveDailyNoteFolder('   ', 'Daily')).toBe('Daily');
+        });
+
+        it('returns root (empty) when both are blank', () => {
+            expect(resolveDailyNoteFolder('', '')).toBe('');
+        });
     });
 });

@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Notice, moment, setIcon } from 'obsidian';
 import { SummaryItem, SummaryPresentation, SummaryRenderGroup, buildSummaryPresentation, computeSummaryData } from '../service/summary-calculator';
 import { calculateDuration } from '../service/time-calculator';
+import { resolveDailyNoteFolder } from '../service/daily-note-context';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -241,10 +242,14 @@ export class SummaryView extends ItemView {
         type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null }; plugins?: { plugins?: Record<string, { settings?: Record<string, unknown> }> } };
         const appInternal = this.app as unknown as AppInternal;
         const dailyNotesPlugin = appInternal.internalPlugins?.getPluginById?.('daily-notes');
+        const rawDailyNoteFolder = appInternal.plugins?.plugins?.['llr']?.settings?.dailyNoteFolder;
+        const llrDailyNoteFolder = typeof rawDailyNoteFolder === 'string' ? rawDailyNoteFolder : '';
         if (dailyNotesPlugin?.enabled) {
             const options = (dailyNotesPlugin.instance?.options ?? {});
             const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
-            const folder = (typeof options.folder === 'string' ? options.folder : '').trim();
+            const pluginFolder = typeof options.folder === 'string' ? options.folder : '';
+            // プラグインの folder が空(巻き戻り等)のときだけ LLR の補完値を使う。getDailyNoteSettings() と対称。
+            const folder = resolveDailyNoteFolder(pluginFolder, llrDailyNoteFolder);
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
