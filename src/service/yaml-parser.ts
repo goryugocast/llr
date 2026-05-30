@@ -724,3 +724,38 @@ export function calculateNextDue(frequency: Frequency, baseDate: Date): string |
             return calculateNextDueFromSchedule(parseScheduleExpression(frequency.expression), baseDate);
     }
 }
+
+/**
+ * Advance a YYYY-MM-DD due date by `frequency` strides until it reaches `threshold`.
+ *
+ * Shared "catch-up" loop used by routine-engine's due-anchor completion, display,
+ * and preview paths. The only difference between those callers is the comparison:
+ * - `inclusive === false`: stop at the first candidate strictly after the threshold
+ *   (`candidate > threshold`) — due-anchor completion (advance past the completion day).
+ * - `inclusive === true`: stop at the first candidate on or after the threshold
+ *   (`candidate >= threshold`) — display / preview (the target day itself counts).
+ *
+ * Returns the first qualifying date string. Returns `null` if a stride yields null
+ * (e.g. frequency 'none'). Throws if a stride fails to advance (would loop forever)
+ * or if it exceeds the 1000-iteration safety bound. Date strings compare correctly
+ * with `<`/`>=` because they are zero-padded ISO `YYYY-MM-DD`.
+ */
+export function advanceDueUntil(
+    frequency: Frequency,
+    startDue: string,
+    threshold: string,
+    inclusive: boolean,
+): string | null {
+    let candidate = startDue;
+    for (let i = 0; i < 1000; i++) {
+        const reached = inclusive ? candidate >= threshold : candidate > threshold;
+        if (reached) return candidate;
+        const next = calculateNextDue(frequency, fromDateString(candidate));
+        if (next === null) return null;
+        if (next === candidate) {
+            throw new Error(`Due catch-up did not advance: ${candidate}`);
+        }
+        candidate = next;
+    }
+    throw new Error('Due catch-up exceeded iteration limit');
+}

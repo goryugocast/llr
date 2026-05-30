@@ -9,7 +9,7 @@
  */
 
 import { App, TFile } from 'obsidian';
-import { addDays, calculateNextDue, fromDateString, normalizeAsciiDigits, normalizeRepeatExpression, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
+import { addDays, advanceDueUntil, calculateNextDue, fromDateString, normalizeAsciiDigits, normalizeRepeatExpression, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
@@ -185,24 +185,9 @@ export class RoutineEngine {
             return calculateNextDue(frequency, completionDay);
         }
 
-        // If the due date is already in the future, keep it (do not push farther).
-        if (nextDue > completionDayStr) {
-            return nextDue;
-        }
-
-        // Catch up within the existing due-based phase until it becomes strictly future.
-        let candidate = nextDue;
-        for (let i = 0; i < 1000; i++) {
-            if (candidate > completionDayStr) return candidate;
-            const next = calculateNextDue(frequency, fromDateString(candidate));
-            if (next === null) return null;
-            if (next === candidate) {
-                throw new Error(`Due-anchor catch-up did not advance: ${candidate}`);
-            }
-            candidate = next;
-        }
-
-        throw new Error('Due-anchor catch-up exceeded iteration limit');
+        // Catch up the existing due-based phase until it becomes strictly future
+        // (a due date already in the future is returned unchanged by the first check).
+        return advanceDueUntil(frequency, nextDue, completionDayStr, false);
     }
 
     private shouldAdvanceFromCurrentDue(
@@ -326,18 +311,8 @@ export class RoutineEngine {
             return targetStr;
         }
 
-        let candidate = note.next_due;
-        for (let i = 0; i < 1000; i++) {
-            if (candidate >= targetStr) return candidate;
-            const next = calculateNextDue(note.frequency, fromDateString(candidate));
-            if (next === null) return null;
-            if (next === candidate) {
-                throw new Error(`Rollover catch-up did not advance: ${candidate}`);
-            }
-            candidate = next;
-        }
-
-        throw new Error('Rollover catch-up exceeded iteration limit');
+        // Rollover disabled: advance the due date to the first occurrence on or after target.
+        return advanceDueUntil(note.frequency, note.next_due, targetStr, true);
     }
 
     private shouldDisplayOnTargetDate(note: RoutineNote, targetDate: Date, displayDue: string | null): boolean {
@@ -363,16 +338,10 @@ export class RoutineEngine {
         const targetStr = toDateString(targetDate);
         if (note.next_due >= targetStr) return note;
 
-        let candidate = note.next_due;
-        for (let i = 0; i < 1000; i++) {
-            if (candidate >= targetStr) break;
-            const next = calculateNextDue(note.frequency, fromDateString(candidate));
-            if (next === null) return note;
-            if (next === candidate) {
-                throw new Error(`Overdue catch-up did not advance: ${candidate}`);
-            }
-            candidate = next;
-        }
+        // Rollover disabled and overdue: roll the due date forward to the first
+        // occurrence on or after target so the preview shows the upcoming slot.
+        const candidate = advanceDueUntil(note.frequency, note.next_due, targetStr, true);
+        if (candidate === null) return note;
 
         if (candidate !== note.next_due) {
             this.emitDebugEvent('fetchDueRoutines:preview-catchup-next-due', {
