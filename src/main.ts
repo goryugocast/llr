@@ -980,6 +980,12 @@ export default class LlrPlugin extends Plugin {
             return;
         }
 
+        // デイリーノート以外ではイベントを横取りせず、Obsidian 標準のチェック操作に任せる
+        if (!this.isEditableMarkdownView()) {
+            this.updateUI();
+            return;
+        }
+
         const { checkbox, lineIndex } = target;
         const elapsedSincePointerDownMs = this.checkboxPointerDownAtMs ? Date.now() - this.checkboxPointerDownAtMs : null;
 
@@ -1161,7 +1167,16 @@ export default class LlrPlugin extends Plugin {
         preResolvedLineIndex?: number
     ): Promise<void> {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.file || !view.editor) return;
+        if (!view?.file || !view.editor) {
+            this.pendingCheckboxLineIndex = null;
+            return;
+        }
+
+        // 遅延実行中のビュー切り替えや、将来追加される別の呼び出し経路から通常ノートを保護する
+        if (!this.ensureDailyNoteView(view, 'Checkbox operation')) {
+            this.pendingCheckboxLineIndex = null;
+            return;
+        }
 
         const editor = view.editor;
         const lineIndex = preResolvedLineIndex
