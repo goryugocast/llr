@@ -2045,27 +2045,6 @@ class LlrSettingTab extends PluginSettingTab {
         this.renderSectionDefinitionSettings(listContainer);
 
         this.renderNewSectionDraftSetting(containerEl);
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.srsGrowth.name'))
-            .setDesc(this.plugin.t('settings.srsGrowth.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.isSrsGrowthEnabled())
-                .onChange(async (value) => {
-                    await this.plugin.setSrsGrowthEnabled(value);
-                }));
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.srsMaxDaily.name'))
-            .setDesc(this.plugin.t('settings.srsMaxDaily.desc'))
-            .addText(text => text
-                .setValue(String(this.plugin.settings.srsMaxDaily))
-                .onChange(async (value) => {
-                    const num = parseInt(value, 10);
-                    if (!isNaN(num) && num >= 0) {
-                        this.plugin.settings.srsMaxDaily = num;
-                        await this.plugin.saveSettings();
-                    }
-                }));
 
         this.renderAdvancedSettings(containerEl);
     }
@@ -2205,6 +2184,28 @@ class LlrSettingTab extends PluginSettingTab {
             text: this.plugin.t('settings.advanced.desc'),
             cls: 'setting-item-description',
         });
+
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.srsGrowth.name'))
+            .setDesc(this.plugin.t('settings.srsGrowth.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.isSrsGrowthEnabled())
+                .onChange(async (value) => {
+                    await this.plugin.setSrsGrowthEnabled(value);
+                }));
+
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.srsMaxDaily.name'))
+            .setDesc(this.plugin.t('settings.srsMaxDaily.desc'))
+            .addText(text => text
+                .setValue(String(this.plugin.settings.srsMaxDaily))
+                .onChange(async (value) => {
+                    const num = parseInt(value, 10);
+                    if (!isNaN(num) && num >= 0) {
+                        this.plugin.settings.srsMaxDaily = num;
+                        await this.plugin.saveSettings();
+                    }
+                }));
 
         new Setting(containerEl)
             .setName(this.plugin.t('settings.debugMode.name'))
