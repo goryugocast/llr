@@ -24,6 +24,7 @@ interface LlrSettings {
     routineFolder: string;
     dailyNoteFolder: string;
     srsGrowthEnabled: boolean;
+    srsMaxDaily: number;
     sectionDefinitions: SectionDefinition[];
 }
 
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS: LlrSettings = {
     routineFolder: 'routine',
     dailyNoteFolder: '',
     srsGrowthEnabled: false,
+    srsMaxDaily: 3,
     sectionDefinitions: [
         { time: '0700', label: '午前' },
         { time: '1200', label: '午後' },
@@ -111,6 +113,8 @@ const TRANSLATIONS = {
         'settings.routineSections.timePlaceholder': '0700',
         'settings.srsGrowth.name': 'SRS growth (experimental)',
         'settings.srsGrowth.desc': 'When enabled, completing a note with repeat > 0 outside the routine folder grows the repeat interval by 2-3x. The note can live anywhere in the vault.',
+        'settings.srsMaxDaily.name': 'SRS daily limit',
+        'settings.srsMaxDaily.desc': 'Maximum number of SRS notes shown per day in daily note insertion. Due notes beyond this limit carry over to the next day. 0 = no limit.',
         'settings.advanced.heading': 'Advanced / compatibility',
         'settings.advanced.desc': 'Settings for exceptional cases. Most users can leave these as-is.',
         'settings.dailyNoteFolder.name': 'Daily note folder (fallback)',
@@ -158,6 +162,8 @@ const TRANSLATIONS = {
         'settings.routineSections.timePlaceholder': '0700',
         'settings.srsGrowth.name': 'SRS 成長（実験的）',
         'settings.srsGrowth.desc': 'ON にすると、routine フォルダ以外にある repeat > 0 のノートを完了したとき、repeat が 2〜3 倍に成長します。ノートは vault のどこにあっても対象になります。',
+        'settings.srsMaxDaily.name': 'SRS 1日の上限',
+        'settings.srsMaxDaily.desc': 'デイリーノートに出す SRS ノートの1日あたり上限。超えた分は翌日以降に繰り越されます。0 で無制限。',
         'settings.advanced.heading': '詳細設定 / 互換性',
         'settings.advanced.desc': '例外的な運用向けの設定です。通常はこのままで構いません。',
         'settings.dailyNoteFolder.name': 'デイリーノートのフォルダ（予備）',
@@ -1796,15 +1802,28 @@ export default class LlrPlugin extends Plugin {
             return [];
         }
 
+        const routineNotes = dueRoutines.filter(r => !r.isSrs);
+        let srsNotes = dueRoutines.filter(r => r.isSrs);
+
+        // SRS: sort by next_due ascending (oldest first) for MAX cutoff
+        srsNotes.sort((a, b) => (a.next_due ?? '').localeCompare(b.next_due ?? ''));
+
+        const max = this.settings.srsMaxDaily;
+        if (max > 0 && srsNotes.length > max) {
+            srsNotes = srsNotes.slice(0, max);
+        }
+
+        const combined = [...routineNotes, ...srsNotes];
+
         // Sort priority: SRS without section goes to bottom (Infinity),
         // SRS with section uses that section, routine uses section ?? -Infinity
-        const sortKey = (r: typeof dueRoutines[0]): [number, number] => {
+        const sortKey = (r: typeof combined[0]): [number, number] => {
             const sec = r.isSrs && r.section === undefined ? Infinity : (r.section ?? -Infinity);
             const start = r.start ?? -Infinity;
             return [sec, start];
         };
 
-        const sorted = [...dueRoutines].sort((a, b) => {
+        const sorted = [...combined].sort((a, b) => {
             const [as1, as2] = sortKey(a);
             const [bs1, bs2] = sortKey(b);
             return as1 !== bs1 ? as1 - bs1 : as2 - bs2;
@@ -2033,6 +2052,19 @@ class LlrSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.isSrsGrowthEnabled())
                 .onChange(async (value) => {
                     await this.plugin.setSrsGrowthEnabled(value);
+                }));
+
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.srsMaxDaily.name'))
+            .setDesc(this.plugin.t('settings.srsMaxDaily.desc'))
+            .addText(text => text
+                .setValue(String(this.plugin.settings.srsMaxDaily))
+                .onChange(async (value) => {
+                    const num = parseInt(value, 10);
+                    if (!isNaN(num) && num >= 0) {
+                        this.plugin.settings.srsMaxDaily = num;
+                        await this.plugin.saveSettings();
+                    }
                 }));
 
         this.renderAdvancedSettings(containerEl);

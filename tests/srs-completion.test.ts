@@ -563,4 +563,57 @@ describe('SRS completion (vault-wide)', () => {
             expect(sorted[1].file.path).toBe('routine/B.md');
         });
     });
+
+    describe('SRS daily limit (srsMaxDaily)', () => {
+        it('limits SRS notes by oldest next_due first', () => {
+            const srsNotes = [
+                { path: 'c.md', isSrs: true, next_due: '2026-06-28' },
+                { path: 'a.md', isSrs: true, next_due: '2026-06-20' },
+                { path: 'b.md', isSrs: true, next_due: '2026-06-25' },
+                { path: 'd.md', isSrs: true, next_due: '2026-06-30' },
+            ];
+
+            srsNotes.sort((a, b) => (a.next_due ?? '').localeCompare(b.next_due ?? ''));
+            const max = 2;
+            const limited = srsNotes.slice(0, max);
+
+            expect(limited).toHaveLength(2);
+            expect(limited[0].path).toBe('a.md');
+            expect(limited[1].path).toBe('b.md');
+        });
+
+        it('does not limit when max is 0 (unlimited)', () => {
+            const srsNotes = [
+                { path: 'a.md', isSrs: true, next_due: '2026-06-20' },
+                { path: 'b.md', isSrs: true, next_due: '2026-06-25' },
+                { path: 'c.md', isSrs: true, next_due: '2026-06-28' },
+            ];
+
+            const max = 0;
+            const limited = max > 0 && srsNotes.length > max ? srsNotes.slice(0, max) : srsNotes;
+
+            expect(limited).toHaveLength(3);
+        });
+
+        it('does not affect routine notes', () => {
+            const routineNotes = [
+                { path: 'r1.md', isSrs: false },
+                { path: 'r2.md', isSrs: false },
+                { path: 'r3.md', isSrs: false },
+                { path: 'r4.md', isSrs: false },
+            ];
+            const srsNotes = [
+                { path: 's1.md', isSrs: true, next_due: '2026-06-20' },
+                { path: 's2.md', isSrs: true, next_due: '2026-06-25' },
+            ];
+
+            const max = 1;
+            const limitedSrs = srsNotes.slice(0, max);
+            const combined = [...routineNotes, ...limitedSrs];
+
+            expect(combined).toHaveLength(5);
+            expect(combined.filter(n => !n.isSrs)).toHaveLength(4);
+            expect(combined.filter(n => n.isSrs)).toHaveLength(1);
+        });
+    });
 });
