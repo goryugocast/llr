@@ -32,6 +32,7 @@ describe('RoutineEngine', () => {
             },
             vault: {
                 getFolderByPath: vi.fn(),
+                getMarkdownFiles: vi.fn().mockReturnValue([]),
             }
         };
         engine = new RoutineEngine(mockApp as any);

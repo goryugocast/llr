@@ -13,7 +13,6 @@ import { addDays, calculateNextDue, fromDateString, normalizeAsciiDigits, normal
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
-const DEFAULT_SRS_FOLDER = 'srs';
 const DEBOUNCE_DELAY_MS = 0; // Debug phase: immediate update (may revert to delayed)
 const SRS_GROWTH_MIN = 2;
 const SRS_GROWTH_MAX = 3;
@@ -28,7 +27,6 @@ interface RoutineEngineOptions {
     onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     onNotice?: (message: string, timeout?: number) => void;
     routineFolder?: string;
-    srsFolder?: string;
 }
 
 export interface RoutineNote {
@@ -70,7 +68,6 @@ export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'):
 export class RoutineEngine {
     private app: App;
     private routineFolder: string;
-    private srsFolder: string;
     private pendingTimers: Map<string, PendingRoutineUpdate> = new Map();
     private onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     private onNotice?: (message: string, timeout?: number) => void;
@@ -80,7 +77,6 @@ export class RoutineEngine {
         this.onDebugEvent = options.onDebugEvent;
         this.onNotice = options.onNotice;
         this.routineFolder = this.normalizeRoutineFolder(options.routineFolder);
-        this.srsFolder = this.normalizeFolderName(options.srsFolder, DEFAULT_SRS_FOLDER);
     }
 
     private normalizeRoutineFolder(value: unknown): string {
@@ -98,24 +94,25 @@ export class RoutineEngine {
         this.emitDebugEvent('routine-folder:updated', { routineFolder: this.routineFolder });
     }
 
-    private isSrsFile(file: TFile): boolean {
+    private isRoutineFile(file: TFile): boolean {
         const lowerPath = file.path.toLowerCase();
-        const lowerFolder = this.srsFolder.toLowerCase() + '/';
-        if (!lowerPath.startsWith(lowerFolder)) return false;
-        const pathAfterFolder = file.path.substring(this.srsFolder.length + 1);
-        return !pathAfterFolder.includes('/');
+        const routePrefix = this.routineFolder.toLowerCase() + '/';
+        if (!lowerPath.startsWith(routePrefix)) return false;
+        const after = file.path.substring(this.routineFolder.length + 1);
+        return !after.includes('/');
+    }
+
+    isSrsFile(file: TFile): boolean {
+        if (this.isRoutineFile(file)) return false;
+        const cache = this.app.metadataCache.getFileCache(file);
+        const repeat = cache?.frontmatter?.repeat;
+        if (repeat === undefined || repeat === null) return false;
+        const num = typeof repeat === 'string' ? Number(repeat) : repeat;
+        return typeof num === 'number' && num > 0;
     }
 
     private isInManagedFolder(file: TFile): boolean {
-        const lowerPath = file.path.toLowerCase();
-
-        const routePrefix = this.routineFolder.toLowerCase() + '/';
-        if (lowerPath.startsWith(routePrefix)) {
-            const after = file.path.substring(this.routineFolder.length + 1);
-            if (!after.includes('/')) return true;
-        }
-
-        return this.isSrsFile(file);
+        return this.isRoutineFile(file) || this.isSrsFile(file);
     }
 
     private emitDebugEvent(message: string, data?: unknown): void {
@@ -656,32 +653,48 @@ export class RoutineEngine {
      */
     fetchDueRoutines(today: Date): RoutineNote[] {
         const results: RoutineNote[] = [];
-        const visited = new Set<string>();
 
-        this.collectDueFromFolder(this.routineFolder, today, results, visited);
-        this.collectDueFromFolder(this.srsFolder, today, results, visited);
+        this.collectDueFromFolder(this.routineFolder, today, results);
+        this.collectDueFromVault(today, results);
 
         return results;
     }
 
-    private collectDueFromFolder(folderPath: string, today: Date, results: RoutineNote[], visited: Set<string>): void {
+    private collectDueFromFolder(folderPath: string, today: Date, results: RoutineNote[]): void {
         const folder = this.app.vault.getFolderByPath(folderPath);
         if (!folder) return;
 
         for (const child of folder.children) {
             if (!(child instanceof TFile)) continue;
             if (child.extension !== 'md') continue;
-            if (visited.has(child.path)) continue;
-            visited.add(child.path);
 
             const note = this.readRoutineNote(child);
             if (!note) continue;
-            // Skip if no next_due and either: explicitly set to none, or has an explicit repeat (needs an anchor date).
-            // Notes with no explicit repeat default to every day and can surface without next_due.
             if (!note.next_due && (note.frequency.type === 'none' || note.repeatExplicit)) continue;
 
             const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
+            const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
 
+            if (this.shouldDisplayOnTargetDate(normalizedNote, today, displayDue)) {
+                results.push(normalizedNote);
+            }
+        }
+    }
+
+    private collectDueFromVault(today: Date, results: RoutineNote[]): void {
+        const routineFiles = new Set(results.map(r => r.file.path));
+        const allFiles = this.app.vault.getMarkdownFiles();
+
+        for (const file of allFiles) {
+            if (routineFiles.has(file.path)) continue;
+            if (this.isRoutineFile(file)) continue;
+            if (!this.isSrsFile(file)) continue;
+
+            const note = this.readRoutineNote(file);
+            if (!note) continue;
+            if (!note.next_due && (note.frequency.type === 'none' || note.repeatExplicit)) continue;
+
+            const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
             const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
 
             if (this.shouldDisplayOnTargetDate(normalizedNote, today, displayDue)) {
