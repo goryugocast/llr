@@ -197,6 +197,58 @@ describe('SRS completion', () => {
             expect(args.repeat).toBeGreaterThanOrEqual(10);
             expect(args.repeat).toBeLessThanOrEqual(15);
         });
+
+        it('overdue: should grow based on elapsed days when longer than repeat', async () => {
+            const mockFile = makeFile('srs/放置ノート.md');
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 7, next_due: '2026-06-10' },
+            });
+            const routineNote = engine.readRoutineNote(mockFile)!;
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            // completionDay = 6/30, due was 6/10, elapsed = 20 days
+            await engine.processCompletion(routineNote, new Date('2026-06-30'));
+
+            const args = updateSpy.mock.calls[0][1];
+            // next_due still uses current repeat: 6/30 + 7 = 7/7
+            expect(args.nextDue).toBe('2026-07-07');
+            // growth base = 20 (elapsed) not 7 (repeat), so 20 * 2~3 = 40~60
+            expect(args.repeat).toBeGreaterThanOrEqual(40);
+            expect(args.repeat).toBeLessThanOrEqual(60);
+        });
+
+        it('overdue: should use repeat when elapsed is shorter', async () => {
+            const mockFile = makeFile('srs/早めノート.md');
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 10, next_due: '2026-06-28' },
+            });
+            const routineNote = engine.readRoutineNote(mockFile)!;
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            // completionDay = 6/30, due was 6/28, elapsed = 2 days (less than repeat 10)
+            await engine.processCompletion(routineNote, new Date('2026-06-30'));
+
+            const args = updateSpy.mock.calls[0][1];
+            // growth base = 10 (repeat), not 2 (elapsed)
+            expect(args.repeat).toBeGreaterThanOrEqual(20);
+            expect(args.repeat).toBeLessThanOrEqual(30);
+        });
+
+        it('overdue: should handle no next_due gracefully', async () => {
+            const mockFile = makeFile('srs/初期ノート.md');
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 3 },
+            });
+            const routineNote = engine.readRoutineNote(mockFile)!;
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            await engine.processCompletion(routineNote, new Date('2026-06-30'));
+
+            const args = updateSpy.mock.calls[0][1];
+            // no next_due, so growth base = repeat (3)
+            expect(args.repeat).toBeGreaterThanOrEqual(6);
+            expect(args.repeat).toBeLessThanOrEqual(9);
+        });
     });
 
     describe('routine/ notes are not affected by SRS growth', () => {

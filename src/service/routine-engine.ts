@@ -633,8 +633,17 @@ export class RoutineEngine {
 
         const nextDue = toDateString(addDays(completionDay, effectiveRepeat));
 
+        let growthBase = effectiveRepeat;
+        if (routineNote.next_due) {
+            const dueDate = fromDateString(routineNote.next_due);
+            const elapsed = Math.floor((completionDay.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (elapsed > growthBase) {
+                growthBase = elapsed;
+            }
+        }
+
         const growthRate = SRS_GROWTH_MIN + Math.random() * (SRS_GROWTH_MAX - SRS_GROWTH_MIN);
-        const grownRepeat = Math.round(effectiveRepeat * growthRate);
+        const grownRepeat = Math.round(growthBase * growthRate);
 
         return { nextDue, grownRepeat };
     }
