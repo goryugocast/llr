@@ -27,6 +27,7 @@ interface RoutineEngineOptions {
     onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     onNotice?: (message: string, timeout?: number) => void;
     routineFolder?: string;
+    srsGrowthEnabled?: boolean;
 }
 
 export interface RoutineNote {
@@ -68,6 +69,7 @@ export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'):
 export class RoutineEngine {
     private app: App;
     private routineFolder: string;
+    private srsGrowthEnabled: boolean;
     private pendingTimers: Map<string, PendingRoutineUpdate> = new Map();
     private onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     private onNotice?: (message: string, timeout?: number) => void;
@@ -77,6 +79,11 @@ export class RoutineEngine {
         this.onDebugEvent = options.onDebugEvent;
         this.onNotice = options.onNotice;
         this.routineFolder = this.normalizeRoutineFolder(options.routineFolder);
+        this.srsGrowthEnabled = options.srsGrowthEnabled ?? false;
+    }
+
+    setSrsGrowthEnabled(enabled: boolean): void {
+        this.srsGrowthEnabled = enabled;
     }
 
     private normalizeRoutineFolder(value: unknown): string {
@@ -97,12 +104,11 @@ export class RoutineEngine {
     private isRoutineFile(file: TFile): boolean {
         const lowerPath = file.path.toLowerCase();
         const routePrefix = this.routineFolder.toLowerCase() + '/';
-        if (!lowerPath.startsWith(routePrefix)) return false;
-        const after = file.path.substring(this.routineFolder.length + 1);
-        return !after.includes('/');
+        return lowerPath.startsWith(routePrefix);
     }
 
     isSrsFile(file: TFile): boolean {
+        if (!this.srsGrowthEnabled) return false;
         if (this.isRoutineFile(file)) return false;
         const cache = this.app.metadataCache.getFileCache(file);
         const repeat = cache?.frontmatter?.repeat;
@@ -655,7 +661,9 @@ export class RoutineEngine {
         const results: RoutineNote[] = [];
 
         this.collectDueFromFolder(this.routineFolder, today, results);
-        this.collectDueFromVault(today, results);
+        if (this.srsGrowthEnabled) {
+            this.collectDueFromVault(today, results);
+        }
 
         return results;
     }

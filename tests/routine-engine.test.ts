@@ -78,12 +78,12 @@ describe('RoutineEngine', () => {
             expect(resolved).toBe(mockFile);
         });
 
-        it('should NOT resolve a file in a subfolder of routine/', () => {
+        it('should resolve a file in a subfolder of routine/', () => {
             const mockFile = { path: `${DEFAULT_ROUTINE_FOLDER}/sub/daily.md` } as TFile;
             mockApp.metadataCache.getFirstLinkpathDest.mockReturnValue(mockFile);
 
             const resolved = engine.resolveRoutineFile('daily', 'source.md');
-            expect(resolved).toBeNull();
+            expect(resolved).toBe(mockFile);
         });
 
         it('should NOT resolve a file outside routine/', () => {

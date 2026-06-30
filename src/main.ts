@@ -23,6 +23,7 @@ interface LlrSettings {
     uiLanguage: UILanguage;
     routineFolder: string;
     dailyNoteFolder: string;
+    srsGrowthEnabled: boolean;
     sectionDefinitions: SectionDefinition[];
 }
 
@@ -61,6 +62,7 @@ const DEFAULT_SETTINGS: LlrSettings = {
     uiLanguage: 'auto',
     routineFolder: 'routine',
     dailyNoteFolder: '',
+    srsGrowthEnabled: false,
     sectionDefinitions: [
         { time: '0700', label: '午前' },
         { time: '1200', label: '午後' },
@@ -107,6 +109,8 @@ const TRANSLATIONS = {
         'settings.routineSections.addTooltip': 'Add section (when both fields are filled)',
         'settings.routineSections.labelPlaceholder': 'Morning',
         'settings.routineSections.timePlaceholder': '0700',
+        'settings.srsGrowth.name': 'SRS growth (experimental)',
+        'settings.srsGrowth.desc': 'When enabled, completing a note with repeat > 0 outside the routine folder grows the repeat interval by 2-3x. The note can live anywhere in the vault.',
         'settings.advanced.heading': 'Advanced / compatibility',
         'settings.advanced.desc': 'Settings for exceptional cases. Most users can leave these as-is.',
         'settings.dailyNoteFolder.name': 'Daily note folder (fallback)',
@@ -152,6 +156,8 @@ const TRANSLATIONS = {
         'settings.routineSections.addTooltip': 'セクションを追加（両方入力時）',
         'settings.routineSections.labelPlaceholder': '午前',
         'settings.routineSections.timePlaceholder': '0700',
+        'settings.srsGrowth.name': 'SRS 成長（実験的）',
+        'settings.srsGrowth.desc': 'ON にすると、routine フォルダ以外にある repeat > 0 のノートを完了したとき、repeat が 2〜3 倍に成長します。ノートは vault のどこにあっても対象になります。',
         'settings.advanced.heading': '詳細設定 / 互換性',
         'settings.advanced.desc': '例外的な運用向けの設定です。通常はこのままで構いません。',
         'settings.dailyNoteFolder.name': 'デイリーノートのフォルダ（予備）',
@@ -253,6 +259,7 @@ export default class LlrPlugin extends Plugin {
 
         this.routineEngine = new RoutineEngine(this.app, {
             routineFolder: this.settings.routineFolder,
+            srsGrowthEnabled: this.settings.srsGrowthEnabled,
             onDebugEvent: (event) => this.handleRoutineEngineDebugEvent(event),
             onNotice: (message, timeout) => this.showLlrNotice(message, timeout),
         });
@@ -613,6 +620,17 @@ export default class LlrPlugin extends Plugin {
         await this.saveSettings();
         this.syncMobileLargeCheckboxClass();
         this.debugLog(`Mobile large checkbox ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    async setSrsGrowthEnabled(enabled: boolean): Promise<void> {
+        this.settings.srsGrowthEnabled = enabled;
+        this.routineEngine.setSrsGrowthEnabled(enabled);
+        await this.saveSettings();
+        this.debugLog(`SRS growth ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    isSrsGrowthEnabled(): boolean {
+        return this.settings.srsGrowthEnabled;
     }
 
     async setSectionDefinitions(definitions: SectionDefinition[]): Promise<void> {
@@ -2008,6 +2026,15 @@ class LlrSettingTab extends PluginSettingTab {
         this.renderSectionDefinitionSettings(listContainer);
 
         this.renderNewSectionDraftSetting(containerEl);
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.srsGrowth.name'))
+            .setDesc(this.plugin.t('settings.srsGrowth.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.isSrsGrowthEnabled())
+                .onChange(async (value) => {
+                    await this.plugin.setSrsGrowthEnabled(value);
+                }));
+
         this.renderAdvancedSettings(containerEl);
     }
 

@@ -34,7 +34,7 @@ describe('SRS completion (vault-wide)', () => {
                 read: vi.fn(),
             },
         };
-        engine = new RoutineEngine(mockApp as any);
+        engine = new RoutineEngine(mockApp as any, { srsGrowthEnabled: true });
     });
 
     describe('SRS recognition (vault-wide, not folder-based)', () => {
@@ -125,6 +125,38 @@ describe('SRS completion (vault-wide)', () => {
                 frontmatter: { repeat: 1, next_due: '2026-05-09' },
             });
             expect(engine.isSrsFile(file)).toBe(true);
+        });
+
+        it('isSrsFile should reject files in routine/ subfolders', () => {
+            const file = makeFile('routine/完了/過去のタスク.md');
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 5, next_due: '2026-06-30' },
+            });
+            expect(engine.isSrsFile(file)).toBe(false);
+        });
+
+        it('isSrsFile returns false when srsGrowthEnabled is off', () => {
+            const offEngine = new RoutineEngine(mockApp as any, { srsGrowthEnabled: false });
+            const file = makeFile('notes/Book/振り返り.md');
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 5, next_due: '2026-06-30' },
+            });
+            expect(offEngine.isSrsFile(file)).toBe(false);
+        });
+
+        it('fetchDueRoutines skips vault scan when srsGrowthEnabled is off', () => {
+            const offEngine = new RoutineEngine(mockApp as any, { srsGrowthEnabled: false });
+            const bookFile = makeFile('notes/Book/『7』.md');
+
+            mockApp.vault.getFolderByPath.mockReturnValue(null);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([bookFile]);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 5, next_due: '2026-06-30' },
+            });
+
+            const results = offEngine.fetchDueRoutines(new Date('2026-06-30T10:00:00'));
+            expect(results).toHaveLength(0);
+            expect(mockApp.vault.getMarkdownFiles).not.toHaveBeenCalled();
         });
     });
 
@@ -351,7 +383,7 @@ describe('SRS completion (vault-wide)', () => {
         });
 
         it('custom routineFolder is respected (not hardcoded)', () => {
-            const customEngine = new RoutineEngine(mockApp as any, { routineFolder: 'my-routines' });
+            const customEngine = new RoutineEngine(mockApp as any, { routineFolder: 'my-routines', srsGrowthEnabled: true });
             const file = makeFile('my-routines/タスク.md');
             mockApp.metadataCache.getFileCache.mockReturnValue({
                 frontmatter: { repeat: 5, next_due: '2026-06-30' },
