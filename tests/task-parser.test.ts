@@ -264,6 +264,114 @@ describe('TaskParser', () => {
         });
     });
 
+    describe('extractStatus: cancelled status', () => {
+        it('treats [-] as plain because the regex only matches [ /x]', () => {
+            const result = TaskParser.parseLine('- [-] Cancelled task');
+            expect(result.status).toBe('plain');
+            expect(result.content).toBe('[-] Cancelled task');
+        });
+    });
+
+    describe('extractDurationFromTail: bare duration without parens', () => {
+        it('parses bare duration at tail', () => {
+            const result = TaskParser.parseLine('- [ ] Task 45m');
+            expect(result.estimate).toBe('45m');
+            expect(result.content).toBe('Task');
+        });
+
+        it('parses bare hour duration at tail', () => {
+            const result = TaskParser.parseLine('- [ ] Task 1.5h');
+            expect(result.estimate).toBe('90m');
+            expect(result.content).toBe('Task');
+        });
+    });
+
+    describe('extractMarkerFromTail: various formats', () => {
+        it('parses full-width ＠done marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task ＠done');
+            expect(result.marker).toEqual({
+                kind: 'atdone',
+                raw: '＠done',
+                value: 'done',
+                pending: true,
+            });
+        });
+
+        it('parses processed →done marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task →done');
+            expect(result.marker).toEqual({
+                kind: 'atdone',
+                raw: '→done',
+                value: 'done',
+                pending: false,
+            });
+        });
+
+        it('parses MMDD compact reschedule marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task @0415');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '@0415',
+                value: '0415',
+                pending: true,
+            });
+        });
+
+        it('parses M/D reschedule marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task @4/15');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '@4/15',
+                value: '4/15',
+                pending: true,
+            });
+        });
+
+        it('parses 月日 reschedule marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task @4月15日');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '@4月15日',
+                value: '4月15日',
+                pending: true,
+            });
+        });
+
+        it('parses processed → reschedule marker', () => {
+            const result = TaskParser.parseLine('- [ ] Task →2026-04-15');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '→2026-04-15',
+                value: '2026-04-15',
+                pending: false,
+            });
+        });
+    });
+
+    describe('normalizeTime edge cases', () => {
+        it('returns input as-is for single digit', () => {
+            expect(TaskParser.normalizeTime('5')).toBe('5');
+        });
+
+        it('returns input as-is for 5+ digit strings', () => {
+            expect(TaskParser.normalizeTime('12345')).toBe('12345');
+        });
+    });
+
+    describe('extractPlannedStartFromBody edge cases', () => {
+        it('body with only time token produces empty content', () => {
+            const result = TaskParser.parseLine('- [ ] 1800');
+            expect(result.plannedStart).toBe('18:00');
+            expect(result.content).toBe('');
+        });
+
+        it('out-of-range time token is not treated as planned start', () => {
+            const result = TaskParser.parseLine('- [ ] 2500 Task');
+            expect(result.plannedStart).toBe('');
+            expect(result.content).toBe('2500 Task');
+        });
+    });
+
     describe('parseLine → serialize round trip', () => {
         const roundTrips = [
             '- [x] 18:00 原稿修正 18:12 - 18:35 (30m > 23m)',

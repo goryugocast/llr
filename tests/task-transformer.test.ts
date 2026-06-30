@@ -236,6 +236,58 @@ describe('task-transformer v2', () => {
         });
     });
 
+    describe('normalizeQuickInputBody', () => {
+        it('parses parenthesized estimate', () => {
+            const result = transformTaskLine('Task (30m)', mockNow);
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [ ] Task (30m)',
+            });
+        });
+
+        it('returns raw input when time + estimate leave no title', () => {
+            const result = transformTaskLine('1200 30m', mockNow);
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [ ] 1200 30m',
+            });
+        });
+    });
+
+    describe('transformCheckboxPress long press on plain line', () => {
+        it('long press on a plain line starts it', () => {
+            const result = transformCheckboxPress('- Some note', mockNow, 'long');
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [/] Some note 17:30 -',
+            });
+        });
+    });
+
+    describe('adjustTaskTimeByMinutes with estimate > actual comparison', () => {
+        it('recalculates actual duration after moving end time on estimated task', () => {
+            const result = adjustTaskTimeByMinutes('- [x] 18:00 Task 18:00 - 18:20 (30m > 20m)', 5);
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [x] 18:00 Task 18:00 - 18:25 (30m > 25m)',
+            });
+        });
+    });
+
+    describe('normalizeCompletedTaskActualDuration edge cases', () => {
+        it('returns null for unchecked tasks', () => {
+            expect(normalizeCompletedTaskActualDuration('- [ ] Task (30m)')).toBeNull();
+        });
+
+        it('returns null for running tasks', () => {
+            expect(normalizeCompletedTaskActualDuration('- [/] Task 10:00 - (30m)')).toBeNull();
+        });
+
+        it('returns null for completed tasks without actual end', () => {
+            expect(normalizeCompletedTaskActualDuration('- [x] Task')).toBeNull();
+        });
+    });
+
     describe('formatTime', () => {
         it('formats a Date to HH:mm', () => {
             expect(formatTime(new Date('2026-01-15T09:05:00'))).toBe('09:05');

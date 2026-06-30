@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
     calculateEndTime,
     calculateDuration,
-    estimateFromText,
     extractCompletionEndTime,
     findLatestCompletionEndTime,
     parseTimeToMinutes
@@ -39,53 +38,51 @@ describe('TimeCalculator', () => {
         });
     });
 
-    describe('estimateFromText', () => {
-        it('extracts estimate from parentheses with m', () => {
-            expect(estimateFromText('[[Task (45m)]]')).toBe(45);
-        });
-
-        it('extracts estimate from parentheses with h', () => {
-            expect(estimateFromText('[[Meeting (1h)]]')).toBe(60);
-        });
-
-        it('extracts decimal hours (1.5h)', () => {
-            expect(estimateFromText('Jogging 1.5h')).toBe(90);
-        });
-
-        it('extracts min suffix without parens', () => {
-            expect(estimateFromText('Lunch 60min')).toBe(60);
-        });
-
-        it('extracts m suffix with space', () => {
-            expect(estimateFromText('Clean 30 m')).toBe(30);
-        });
-
-        it('handles change pattern (30m > 45m)', () => {
-            expect(estimateFromText('Task (30m > 45m)')).toBe(45);
-        });
-
-        it('ignores timestamps (HH:mm)', () => {
-            // Should not pick up '50' from '09:50'
-            expect(estimateFromText('09:50 Hセミナー手伝い')).toBe(0);
-        });
-
-        it('picks duration even if timestamp exists', () => {
-            expect(estimateFromText('09:50 Runner 30m')).toBe(30);
-        });
-
-        it('extracts from plain text without any prefix (Pad練習 60m)', () => {
-            expect(estimateFromText('Pad練習 60m')).toBe(60);
-        });
-
-        it('returns 0 if no estimate found', () => {
-            expect(estimateFromText('[[Task]]')).toBe(0);
-        });
-    });
-
-    describe('completion time helpers', () => {
+    describe('parseTimeToMinutes', () => {
         it('parses HH:mm to minutes', () => {
             expect(parseTimeToMinutes('09:45')).toBe(585);
         });
+
+        it('returns null for invalid format', () => {
+            expect(parseTimeToMinutes('9:45')).toBeNull();
+            expect(parseTimeToMinutes('abc')).toBeNull();
+            expect(parseTimeToMinutes('')).toBeNull();
+        });
+
+        it('returns null for out-of-range hours', () => {
+            expect(parseTimeToMinutes('25:00')).toBeNull();
+        });
+
+        it('returns null for out-of-range minutes', () => {
+            expect(parseTimeToMinutes('12:60')).toBeNull();
+        });
+
+        it('parses midnight correctly', () => {
+            expect(parseTimeToMinutes('00:00')).toBe(0);
+        });
+
+        it('parses end of day correctly', () => {
+            expect(parseTimeToMinutes('23:59')).toBe(1439);
+        });
+    });
+
+    describe('calculateEndTime edge cases', () => {
+        it('adds zero minutes', () => {
+            expect(calculateEndTime('10:00', 0)).toBe('10:00');
+        });
+
+        it('adds large duration spanning multiple days', () => {
+            expect(calculateEndTime('10:00', 1440)).toBe('10:00');
+        });
+    });
+
+    describe('calculateDuration edge cases', () => {
+        it('returns 0 for same start and end', () => {
+            expect(calculateDuration('10:00', '10:00')).toBe(0);
+        });
+    });
+
+    describe('extractCompletionEndTime', () => {
 
         it('extracts the end time from a completed task', () => {
             expect(extractCompletionEndTime('- [x] 09:00 - 09:45 Review PR')).toBe('09:45');
@@ -149,6 +146,36 @@ describe('TimeCalculator', () => {
 
         it('extractCompletionEndTime returns null for running task with no actual start', () => {
             expect(extractCompletionEndTime('- [/] [[Task]] (30m)')).toBeNull();
+        });
+
+        it('returns null for unchecked tasks', () => {
+            expect(extractCompletionEndTime('- [ ] Task (30m)')).toBeNull();
+        });
+
+        it('returns null for plain lines', () => {
+            expect(extractCompletionEndTime('- Some note')).toBeNull();
+        });
+
+        it('returns null for cancelled tasks', () => {
+            expect(extractCompletionEndTime('- [-] Cancelled (30m)')).toBeNull();
+        });
+    });
+
+    describe('findLatestCompletionEndTime edge cases', () => {
+        it('returns null for empty array', () => {
+            expect(findLatestCompletionEndTime([])).toBeNull();
+        });
+
+        it('returns null when no tasks have timestamps', () => {
+            expect(findLatestCompletionEndTime(['- [ ] Task', '- Some note'])).toBeNull();
+        });
+
+        it('works without reference time', () => {
+            const lines = [
+                '- [x] Task A 09:00 - 09:30 (30m)',
+                '- [x] Task B 10:00 - 10:15 (15m)',
+            ];
+            expect(findLatestCompletionEndTime(lines)).toBe('10:15');
         });
     });
 

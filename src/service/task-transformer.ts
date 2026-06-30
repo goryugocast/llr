@@ -426,13 +426,6 @@ export function prepareCursorBeforeActualStart(lineText: string): { content: str
     return { content: lineText, ch: idx };
 }
 
-/**
- * @deprecated prepareCursorBeforeActualStart を使用すること。
- * テキストなし時のスペース挿入が考慮されていない。
- */
-export function getCursorBeforeActualStartCh(lineText: string): number {
-    return prepareCursorBeforeActualStart(lineText).ch;
-}
 
 /**
  * タスク完了時のカーソル位置: 完了時刻（終了時刻）の直後。
