@@ -2046,6 +2046,7 @@ class LlrSettingTab extends PluginSettingTab {
 
         this.renderNewSectionDraftSetting(containerEl);
 
+        this.renderSrsSettings(containerEl);
         this.renderAdvancedSettings(containerEl);
     }
 
@@ -2176,14 +2177,10 @@ class LlrSettingTab extends PluginSettingTab {
                 .onClick(() => { void maybeCommitDraft(); }));
     }
 
-    private renderAdvancedSettings(containerEl: HTMLElement): void {
+    private renderSrsSettings(containerEl: HTMLElement): void {
         new Setting(containerEl)
-            .setName(this.plugin.t('settings.advanced.heading'))
+            .setName('SRS')
             .setHeading();
-        containerEl.createEl('p', {
-            text: this.plugin.t('settings.advanced.desc'),
-            cls: 'setting-item-description',
-        });
 
         new Setting(containerEl)
             .setName(this.plugin.t('settings.srsGrowth.name'))
@@ -2206,6 +2203,16 @@ class LlrSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }
                 }));
+    }
+
+    private renderAdvancedSettings(containerEl: HTMLElement): void {
+        new Setting(containerEl)
+            .setName(this.plugin.t('settings.advanced.heading'))
+            .setHeading();
+        containerEl.createEl('p', {
+            text: this.plugin.t('settings.advanced.desc'),
+            cls: 'setting-item-description',
+        });
 
         new Setting(containerEl)
             .setName(this.plugin.t('settings.debugMode.name'))
