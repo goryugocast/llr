@@ -1,10 +1,80 @@
 import { describe, it, expect } from 'vitest';
-import { calculateNextDue, fromDateString, toDateString, type Frequency } from '../src/service/yaml-parser';
+import {
+    addDays,
+    calculateNextDue,
+    fromDateString,
+    normalizeAsciiDigits,
+    toDateString,
+    usesCompletionAnchor,
+    usesDueAnchor,
+    type Frequency,
+} from '../src/service/yaml-parser';
 
 // Helper: create a date from a string for clean test setup
 const d = (str: string) => fromDateString(str);
 
+describe('toDateString / fromDateString', () => {
+    it('round-trips a date', () => {
+        const date = new Date(2026, 1, 20);
+        expect(toDateString(date)).toBe('2026-02-20');
+        expect(fromDateString('2026-02-20').getTime()).toBe(date.getTime());
+    });
+
+    it('zero-pads single-digit month and day', () => {
+        expect(toDateString(new Date(2026, 0, 5))).toBe('2026-01-05');
+    });
+});
+
+describe('addDays', () => {
+    it('adds positive days', () => {
+        expect(toDateString(addDays(d('2026-02-28'), 1))).toBe('2026-03-01');
+    });
+
+    it('subtracts days with negative value', () => {
+        expect(toDateString(addDays(d('2026-03-01'), -1))).toBe('2026-02-28');
+    });
+});
+
+describe('normalizeAsciiDigits', () => {
+    it('converts full-width digits to ASCII', () => {
+        expect(normalizeAsciiDigits('１２３')).toBe('123');
+    });
+
+    it('leaves ASCII digits unchanged', () => {
+        expect(normalizeAsciiDigits('123abc')).toBe('123abc');
+    });
+
+    it('handles mixed full-width and ASCII', () => {
+        expect(normalizeAsciiDigits('第１回 test ２')).toBe('第1回 test 2');
+    });
+});
+
+describe('usesCompletionAnchor / usesDueAnchor', () => {
+    it('usesDueAnchor returns true for due-anchored schedule', () => {
+        const freq: Frequency = { type: 'schedule', expression: 'every 7 days from due' };
+        expect(usesDueAnchor(freq)).toBe(true);
+        expect(usesCompletionAnchor(freq)).toBe(false);
+    });
+
+    it('usesDueAnchor returns false for non-schedule types', () => {
+        expect(usesDueAnchor({ type: 'daily', interval: 1 })).toBe(false);
+        expect(usesDueAnchor({ type: 'none' })).toBe(false);
+    });
+
+    it('usesCompletionAnchor returns false for none type', () => {
+        expect(usesCompletionAnchor({ type: 'none' })).toBe(false);
+    });
+
+    it('usesCompletionAnchor returns true for after type', () => {
+        expect(usesCompletionAnchor({ type: 'after', days: 7 })).toBe(true);
+    });
+});
+
 describe('calculateNextDue', () => {
+
+    it('returns null for none type', () => {
+        expect(calculateNextDue({ type: 'none' }, d('2026-02-20'))).toBeNull();
+    });
 
     // ---- daily ----
     describe('daily', () => {
