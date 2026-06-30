@@ -13,7 +13,10 @@ import { addDays, calculateNextDue, fromDateString, normalizeAsciiDigits, normal
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
+const DEFAULT_SRS_FOLDER = 'srs';
 const DEBOUNCE_DELAY_MS = 0; // Debug phase: immediate update (may revert to delayed)
+const SRS_GROWTH_MIN = 2;
+const SRS_GROWTH_MAX = 3;
 
 export interface RoutineEngineDebugEvent {
     source: 'routine-engine';
@@ -25,6 +28,7 @@ interface RoutineEngineOptions {
     onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     onNotice?: (message: string, timeout?: number) => void;
     routineFolder?: string;
+    srsFolder?: string;
 }
 
 export interface RoutineNote {
