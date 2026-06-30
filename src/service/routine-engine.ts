@@ -13,7 +13,10 @@ import { addDays, calculateNextDue, fromDateString, normalizeAsciiDigits, normal
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
+const DEFAULT_SRS_FOLDER = 'srs';
 const DEBOUNCE_DELAY_MS = 0; // Debug phase: immediate update (may revert to delayed)
+const SRS_GROWTH_MIN = 2;
+const SRS_GROWTH_MAX = 3;
 
 export interface RoutineEngineDebugEvent {
     source: 'routine-engine';
@@ -67,6 +70,7 @@ export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'):
 export class RoutineEngine {
     private app: App;
     private routineFolder: string;
+    private srsFolder: string;
     private pendingTimers: Map<string, PendingRoutineUpdate> = new Map();
     private onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     private onNotice?: (message: string, timeout?: number) => void;
@@ -76,17 +80,42 @@ export class RoutineEngine {
         this.onDebugEvent = options.onDebugEvent;
         this.onNotice = options.onNotice;
         this.routineFolder = this.normalizeRoutineFolder(options.routineFolder);
+        this.srsFolder = this.normalizeFolderName(options.srsFolder, DEFAULT_SRS_FOLDER);
     }
 
     private normalizeRoutineFolder(value: unknown): string {
+        return this.normalizeFolderName(value, DEFAULT_ROUTINE_FOLDER);
+    }
+
+    private normalizeFolderName(value: unknown, defaultName: string): string {
         const raw = typeof value === 'string' ? value.trim() : '';
         const stripped = raw.replace(/^\/+/, '').replace(/\/+$/, '');
-        return stripped || DEFAULT_ROUTINE_FOLDER;
+        return stripped || defaultName;
     }
 
     setRoutineFolder(folder: string): void {
         this.routineFolder = this.normalizeRoutineFolder(folder);
         this.emitDebugEvent('routine-folder:updated', { routineFolder: this.routineFolder });
+    }
+
+    private isSrsFile(file: TFile): boolean {
+        const lowerPath = file.path.toLowerCase();
+        const lowerFolder = this.srsFolder.toLowerCase() + '/';
+        if (!lowerPath.startsWith(lowerFolder)) return false;
+        const pathAfterFolder = file.path.substring(this.srsFolder.length + 1);
+        return !pathAfterFolder.includes('/');
+    }
+
+    private isInManagedFolder(file: TFile): boolean {
+        const lowerPath = file.path.toLowerCase();
+
+        const routePrefix = this.routineFolder.toLowerCase() + '/';
+        if (lowerPath.startsWith(routePrefix)) {
+            const after = file.path.substring(this.routineFolder.length + 1);
+            if (!after.includes('/')) return true;
+        }
+
+        return this.isSrsFile(file);
     }
 
     private emitDebugEvent(message: string, data?: unknown): void {
@@ -205,14 +234,7 @@ export class RoutineEngine {
         const file = this.app.metadataCache.getFirstLinkpathDest(linkText, sourcePath);
         if (!file) return null;
 
-        // Path must start with routineFolder + "/" (case-insensitive) and NOT contain any subsequent "/"
-        const lowerPath = file.path.toLowerCase();
-        const lowerFolder = this.routineFolder.toLowerCase() + '/';
-
-        if (!lowerPath.startsWith(lowerFolder)) return null;
-
-        const pathAfterFolder = file.path.substring(this.routineFolder.length + 1);
-        if (pathAfterFolder.includes('/')) return null;
+        if (!this.isInManagedFolder(file)) return null;
 
         return file;
     }
@@ -456,13 +478,27 @@ export class RoutineEngine {
         });
 
         try {
+            const completionDay = this.normalizeToDateOnly(completionDate);
+
+            if (this.isSrsFile(file)) {
+                const { nextDue, grownRepeat } = this.computeSrsCompletion(routineNote, completionDay);
+                await this.updateNextDue(file, { nextDue, repeat: grownRepeat });
+                this.emitDebugEvent('processCompletion:done', {
+                    file: file.path,
+                    newNextDue: nextDue,
+                    baseDate: toDateString(completionDay),
+                    anchorMode: 'srs',
+                    grownRepeat,
+                });
+                return;
+            }
+
             // If repeat was not explicit in frontmatter (repeatExplicit === false), write repeat: 1 to make the default permanent.
             const repeatToAppend: number | undefined = routineNote.repeatExplicit === false ? 1 : undefined;
 
             // frequency is always set via readRoutineNote, but guard here for safety.
             if (!frequency) frequency = { type: 'schedule', expression: 'every day' };
 
-            const completionDay = this.normalizeToDateOnly(completionDate);
             const isDueAnchored = usesDueAnchor(frequency);
             const shouldAdvanceFromDue = this.shouldAdvanceFromCurrentDue(routineNote, completionDay, requestedMode);
             const newNextDue = shouldAdvanceFromDue && next_due
@@ -591,19 +627,52 @@ export class RoutineEngine {
         this.emitDebugEvent('flushAll:done');
     }
 
+    private computeSrsCompletion(routineNote: RoutineNote, completionDay: Date): { nextDue: string; grownRepeat: number } {
+        const currentRepeat = this.extractRepeatAsNumber(routineNote);
+        const effectiveRepeat = Math.max(currentRepeat, 1);
+
+        const nextDue = toDateString(addDays(completionDay, effectiveRepeat));
+
+        const growthRate = SRS_GROWTH_MIN + Math.random() * (SRS_GROWTH_MAX - SRS_GROWTH_MIN);
+        const grownRepeat = Math.round(effectiveRepeat * growthRate);
+
+        return { nextDue, grownRepeat };
+    }
+
+    private extractRepeatAsNumber(routineNote: RoutineNote): number {
+        if (!routineNote.repeatExplicit) return 1;
+        if (routineNote.frequency.type !== 'schedule') return 1;
+        const expr = routineNote.frequency.expression;
+        if (!expr) return 1;
+        if (expr === 'every day') return 1;
+        const match = expr.match(/^every\s+(\d+)\s+days?$/);
+        if (match) return Number(match[1]);
+        return 1;
+    }
+
     /**
      * Fetch all routine notes whose normalized next_due lands on the target day.
      * Used by the Insert Routine command.
      */
     fetchDueRoutines(today: Date): RoutineNote[] {
-        const folder = this.app.vault.getFolderByPath(this.routineFolder);
-        if (!folder) return [];
-
         const results: RoutineNote[] = [];
+        const visited = new Set<string>();
+
+        this.collectDueFromFolder(this.routineFolder, today, results, visited);
+        this.collectDueFromFolder(this.srsFolder, today, results, visited);
+
+        return results;
+    }
+
+    private collectDueFromFolder(folderPath: string, today: Date, results: RoutineNote[], visited: Set<string>): void {
+        const folder = this.app.vault.getFolderByPath(folderPath);
+        if (!folder) return;
 
         for (const child of folder.children) {
             if (!(child instanceof TFile)) continue;
             if (child.extension !== 'md') continue;
+            if (visited.has(child.path)) continue;
+            visited.add(child.path);
 
             const note = this.readRoutineNote(child);
             if (!note) continue;
@@ -619,7 +688,5 @@ export class RoutineEngine {
                 results.push(normalizedNote);
             }
         }
-
-        return results;
     }
 }
