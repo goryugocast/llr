@@ -1796,10 +1796,10 @@ export default class LlrPlugin extends Plugin {
             return [];
         }
 
-        // Sort priority: section (asc) > start (asc)
-        // Records with no section come first (treated as -Infinity)
+        // Sort priority: SRS without section goes to bottom (Infinity),
+        // SRS with section uses that section, routine uses section ?? -Infinity
         const sortKey = (r: typeof dueRoutines[0]): [number, number] => {
-            const sec = r.section ?? -Infinity;
+            const sec = r.isSrs && r.section === undefined ? Infinity : (r.section ?? -Infinity);
             const start = r.start ?? -Infinity;
             return [sec, start];
         };

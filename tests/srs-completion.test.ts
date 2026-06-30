@@ -186,6 +186,11 @@ describe('SRS completion (vault-wide)', () => {
             expect(results).toHaveLength(2);
             expect(results.some(r => r.file.path === 'routine/毎日の運動.md')).toBe(true);
             expect(results.some(r => r.file.path === 'notes/Book/『7』.md')).toBe(true);
+
+            const routineResult = results.find(r => r.file.path === 'routine/毎日の運動.md');
+            const srsResult = results.find(r => r.file.path === 'notes/Book/『7』.md');
+            expect(routineResult?.isSrs).toBeFalsy();
+            expect(srsResult?.isSrs).toBe(true);
         });
 
         it('should not pick up files without repeat', () => {
@@ -483,6 +488,79 @@ describe('SRS completion (vault-wide)', () => {
             expect(keys).not.toContain('section');
             expect(keys).not.toContain('start_before');
             expect(keys).not.toContain('summary_role');
+        });
+    });
+
+    describe('SRS notes sort to bottom in daily note insertion', () => {
+        const makeSortableNote = (path: string, opts: { section?: number; start?: number; isSrs?: boolean }) => ({
+            file: makeFile(path),
+            section: opts.section,
+            start: opts.start,
+            isSrs: opts.isSrs,
+            frequency: { type: 'schedule' as const, expression: 'every day' },
+        });
+
+        const sortKey = (r: { isSrs?: boolean; section?: number; start?: number }): [number, number] => {
+            const sec = r.isSrs && r.section === undefined ? Infinity : (r.section ?? -Infinity);
+            const start = r.start ?? -Infinity;
+            return [sec, start];
+        };
+
+        const sortNotes = <T extends { isSrs?: boolean; section?: number; start?: number }>(notes: T[]): T[] =>
+            [...notes].sort((a, b) => {
+                const [as1, as2] = sortKey(a);
+                const [bs1, bs2] = sortKey(b);
+                return as1 !== bs1 ? as1 - bs1 : as2 - bs2;
+            });
+
+        it('SRS notes without section go after all routine notes', () => {
+            const notes = [
+                makeSortableNote('notes/Book/SRS本.md', { isSrs: true }),
+                makeSortableNote('routine/朝の運動.md', {}),
+                makeSortableNote('routine/夜の日記.md', { section: 2200 }),
+            ];
+
+            const sorted = sortNotes(notes);
+            expect(sorted[0].file.path).toBe('routine/朝の運動.md');
+            expect(sorted[1].file.path).toBe('routine/夜の日記.md');
+            expect(sorted[2].file.path).toBe('notes/Book/SRS本.md');
+        });
+
+        it('SRS notes with section use that section position', () => {
+            const notes = [
+                makeSortableNote('notes/Book/SRS本.md', { isSrs: true, section: 900 }),
+                makeSortableNote('routine/朝の運動.md', {}),
+                makeSortableNote('routine/午後.md', { section: 1400 }),
+            ];
+
+            const sorted = sortNotes(notes);
+            expect(sorted[0].file.path).toBe('routine/朝の運動.md');
+            expect(sorted[1].file.path).toBe('notes/Book/SRS本.md');
+            expect(sorted[2].file.path).toBe('routine/午後.md');
+        });
+
+        it('multiple SRS notes without section sort by start among themselves', () => {
+            const notes = [
+                makeSortableNote('notes/Book/B.md', { isSrs: true, start: 1000 }),
+                makeSortableNote('notes/Book/A.md', { isSrs: true }),
+                makeSortableNote('routine/朝.md', {}),
+            ];
+
+            const sorted = sortNotes(notes);
+            expect(sorted[0].file.path).toBe('routine/朝.md');
+            expect(sorted[1].file.path).toBe('notes/Book/A.md');
+            expect(sorted[2].file.path).toBe('notes/Book/B.md');
+        });
+
+        it('routine notes without isSrs stay at their normal position', () => {
+            const notes = [
+                makeSortableNote('routine/B.md', { section: 1800 }),
+                makeSortableNote('routine/A.md', {}),
+            ];
+
+            const sorted = sortNotes(notes);
+            expect(sorted[0].file.path).toBe('routine/A.md');
+            expect(sorted[1].file.path).toBe('routine/B.md');
         });
     });
 });

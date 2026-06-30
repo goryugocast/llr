@@ -40,6 +40,7 @@ export interface RoutineNote {
     next_due?: string;
     rollover?: boolean;
     repeatExplicit?: boolean; // repeat/frequency/schedule が明示されていたか
+    isSrs?: boolean;
 }
 
 export type RoutineCompletionMode = 'normal' | 'advanceFromDue';
@@ -715,6 +716,7 @@ export class RoutineEngine {
             const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
 
             if (this.shouldDisplayOnTargetDate(normalizedNote, today, displayDue)) {
+                normalizedNote.isSrs = true;
                 results.push(normalizedNote);
             }
         }
