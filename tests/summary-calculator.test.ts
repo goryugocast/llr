@@ -198,6 +198,39 @@ describe('computeSummaryData', () => {
         expect(presentation.header.wake).toBe('21:15');
     });
 
+    it('タスク行がない場合はヘッダーが - になりアイテムが空', () => {
+        const lines = ['# Header', 'Some text', ''];
+        const nowTime = '10:00';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+
+        expect(data.items).toHaveLength(0);
+        expect(data.header.total).toBe('-');
+        expect(data.header.end).toBe('-');
+    });
+
+    it('完了タスクだけの場合はremainがゼロでヘッダーのtotalが - になる', () => {
+        const lines = [
+            '- [x] Done A 09:00 - 09:30 (30m)',
+            '- [x] Done B 09:30 - 10:00 (30m)',
+        ];
+        const nowTime = '10:30';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+
+        expect(data.items).toHaveLength(2);
+        expect(data.header.total).toBe('-');
+        expect(data.header.end).toBe('-');
+    });
+
+    it('予約開始時刻つきの未開始タスクは times に予約時刻を含む', () => {
+        const lines = [
+            '- [ ] 14:00 Meeting (60m)',
+        ];
+        const nowTime = '10:00';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+
+        expect(data.items[0].times).toEqual(['14:00']);
+    });
+
     it('完了済みsleepがある日は未完タスク全体を未来計算から外す', () => {
         const lines = [
             '- [ ] 寝る前の片付け (15m)',

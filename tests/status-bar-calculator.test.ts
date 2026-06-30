@@ -40,5 +40,59 @@ describe('status-bar-calculator', () => {
             // cursor at running line includes running remaining only
             expect(result.cursorMin).toBe(30);
         });
+
+        it('returns zeros when there are no tasks', () => {
+            const lines = ['# Header', 'Some text', ''];
+            const result = computeStatusBarMetrics(lines, 0, '12:00', calculateDuration);
+            expect(result).toEqual({ totalMin: 0, remainMin: 0, cursorMin: 0 });
+        });
+
+        it('includes unstarted tasks in remain and cursor', () => {
+            const lines = [
+                '- [ ] Task A (30m)',
+                '- [ ] Task B (45m)',
+            ];
+            const result = computeStatusBarMetrics(lines, 0, '12:00', calculateDuration);
+            expect(result.totalMin).toBe(75);
+            expect(result.remainMin).toBe(75);
+            expect(result.cursorMin).toBe(30);
+        });
+
+        it('accumulates cursor up to and including the cursor line', () => {
+            const lines = [
+                '- [ ] Task A (20m)',
+                '- [ ] Task B (30m)',
+                '- [ ] Task C (10m)',
+            ];
+            const result = computeStatusBarMetrics(lines, 1, '12:00', calculateDuration);
+            expect(result.cursorMin).toBe(50);
+        });
+
+        it('clamps running task remaining to zero when elapsed exceeds estimate', () => {
+            const lines = [
+                '- [/] 09:00 - Overdue (30m)',
+            ];
+            const result = computeStatusBarMetrics(lines, 0, '10:00', calculateDuration);
+            expect(result.totalMin).toBe(30);
+            expect(result.remainMin).toBe(0);
+        });
+
+        it('uses full estimate for running task when no time match is found', () => {
+            const lines = [
+                '- [/] Running no time (45m)',
+            ];
+            const result = computeStatusBarMetrics(lines, 0, '12:00', calculateDuration);
+            expect(result.remainMin).toBe(45);
+        });
+
+        it('counts cancelled ([-]) task duration in total but not in remain', () => {
+            const lines = [
+                '- [-] Cancelled (30m)',
+                '- [ ] Active (20m)',
+            ];
+            const result = computeStatusBarMetrics(lines, 1, '12:00', calculateDuration);
+            expect(result.totalMin).toBe(50);
+            expect(result.remainMin).toBe(20);
+        });
     });
 });

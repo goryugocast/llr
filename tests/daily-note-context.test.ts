@@ -89,6 +89,52 @@ describe('daily-note-context', () => {
         expect(resolved).not.toBe(primary);
     });
 
+    it('keeps same-day mutation dates (not clamped)', () => {
+        const primary = new Date('2026-02-28T00:00:00Z');
+        const resolved = resolveMutationReferenceDate(primary, new Date('2026-02-28T09:30:00Z'));
+        expect(resolved.toISOString()).toBe('2026-02-28T00:00:00.000Z');
+    });
+
+    it('matches a file with YYYYMMDD format', () => {
+        expect(isDailyNoteMatch(
+            file({ path: 'daily/20260227.md', basename: '20260227' }),
+            settings({ format: 'YYYYMMDD' }),
+            parseByFormat,
+        )).toBe(true);
+    });
+
+    it('rejects files in a subfolder of the configured folder', () => {
+        expect(isDailyNoteMatch(
+            file({ path: 'daily/sub/2026-02-27.md' }),
+            settings(),
+            parseByFormat,
+        )).toBe(false);
+    });
+
+    it('matches root-level files when folder is empty', () => {
+        expect(isDailyNoteMatch(
+            file({ path: '2026-02-27.md', basename: '2026-02-27' }),
+            settings({ folder: '' }),
+            parseByFormat,
+        )).toBe(true);
+    });
+
+    it('rejects root-level files in subfolders when folder is empty', () => {
+        expect(isDailyNoteMatch(
+            file({ path: 'sub/2026-02-27.md', basename: '2026-02-27' }),
+            settings({ folder: '' }),
+            parseByFormat,
+        )).toBe(false);
+    });
+
+    it('rejects non-md files', () => {
+        expect(isDailyNoteMatch(
+            file({ path: 'daily/2026-02-27.txt', extension: 'txt' }),
+            settings(),
+            parseByFormat,
+        )).toBe(false);
+    });
+
     describe('resolveDailyNoteFolder', () => {
         it('uses the plugin folder when it is present', () => {
             expect(resolveDailyNoteFolder('Daily', 'Fallback')).toBe('Daily');

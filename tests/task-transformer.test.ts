@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     adjustTaskTimeByMinutes,
+    formatTime,
     normalizeCompletedTaskActualDuration,
+    prepareCursorBeforeActualStart,
     transformCheckboxPress,
     transformTaskLine,
 } from '../src/service/task-transformer';
@@ -179,6 +181,68 @@ describe('task-transformer v2', () => {
 
         it('returns null when no adjustable time exists', () => {
             expect(adjustTaskTimeByMinutes('- [ ] Review PR', -1)).toBeNull();
+        });
+
+        it('wraps midnight when moving running start backward', () => {
+            const result = adjustTaskTimeByMinutes('- [/] Task 00:02 - (30m)', -5);
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [/] Task 23:57 - (30m)',
+            });
+        });
+
+        it('wraps midnight when moving completed end forward', () => {
+            const result = adjustTaskTimeByMinutes('- [x] Task 23:58 - 23:59 (1m)', 3);
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [x] Task 23:58 - 00:02 (4m)',
+            });
+        });
+
+        it('returns null for indented lines', () => {
+            expect(adjustTaskTimeByMinutes('  - [/] Task 10:00 - (30m)', -1)).toBeNull();
+        });
+    });
+
+    describe('transformCheckboxPress edge cases', () => {
+        it('short press on completed task returns null', () => {
+            const result = transformCheckboxPress('- [x] Done 10:00 - 10:30 (30m)', mockNow, 'short');
+            expect(result).toBeNull();
+        });
+
+        it('returns null for indented lines', () => {
+            expect(transformCheckboxPress('  - [ ] Task (30m)', mockNow, 'short')).toBeNull();
+        });
+    });
+
+    describe('prepareCursorBeforeActualStart', () => {
+        it('places cursor before actual start time', () => {
+            const result = prepareCursorBeforeActualStart('- [/] 07:00 Review PR 17:30 - (30m)');
+            expect(result.content).toBe('- [/] 07:00 Review PR 17:30 - (30m)');
+            expect(result.ch).toBe('- [/] 07:00 Review PR'.length);
+        });
+
+        it('inserts space when no task text exists before actual time', () => {
+            const result = prepareCursorBeforeActualStart('- [/] 17:30 -');
+            expect(result.content).toBe('- [/]  17:30 -');
+            expect(result.ch).toBe('- [/] '.length);
+        });
+
+        it('falls back to line end when no actual start is found', () => {
+            const line = '- [ ] Review PR (30m)';
+            const result = prepareCursorBeforeActualStart(line);
+            expect(result.content).toBe(line);
+            expect(result.ch).toBe(line.length);
+        });
+    });
+
+    describe('formatTime', () => {
+        it('formats a Date to HH:mm', () => {
+            expect(formatTime(new Date('2026-01-15T09:05:00'))).toBe('09:05');
+        });
+
+        it('zero-pads single-digit hours and minutes', () => {
+            expect(formatTime(new Date('2026-01-15T00:00:00'))).toBe('00:00');
         });
     });
 });

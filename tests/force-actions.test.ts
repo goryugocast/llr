@@ -84,5 +84,66 @@ describe('transformTaskLine force actions (v2)', () => {
                 content: '- [ ] Task B (25m)',
             });
         });
+
+        it('returns null for a plain line without checkbox', () => {
+            expect(transformTaskLine('- Task A', mockNow, 'duplicate')).toBeNull();
+        });
+    });
+
+    describe('interrupt edge cases', () => {
+        it('creates a followup with no estimate when the original has none', () => {
+            const result = transformTaskLine('- [/] Task A 17:00 -', mockNow, 'interrupt');
+            expect(result).toEqual({
+                type: 'interrupt',
+                content: '- [x] Task A 17:00 - 17:30 (30m)',
+                extraContent: '- [ ] Task A',
+            });
+        });
+
+        it('returns null for a running task without actual start time', () => {
+            expect(transformTaskLine('- [/] Task A (30m)', mockNow, 'interrupt')).toBeNull();
+        });
+
+        it('returns null for a plain line', () => {
+            expect(transformTaskLine('- Task A', mockNow, 'interrupt')).toBeNull();
+        });
+
+        it('returns null for a completed line', () => {
+            expect(transformTaskLine('- [x] Task 10:00 - 10:30 (30m)', mockNow, 'interrupt')).toBeNull();
+        });
+    });
+
+    describe('taskify', () => {
+        it('converts a plain line into an unchecked checkbox line', () => {
+            const result = transformTaskLine('- Task A', mockNow, 'taskify');
+            expect(result).toEqual({
+                type: 'update',
+                content: '- [ ] Task A',
+            });
+        });
+
+        it('returns null when the line already has a checkbox', () => {
+            expect(transformTaskLine('- [ ] Task A', mockNow, 'taskify')).toBeNull();
+        });
+    });
+
+    describe('start edge cases', () => {
+        it('returns null when trying to start an already-running task', () => {
+            expect(transformTaskLine('- [/] Task 17:00 -', mockNow, 'start')).toBeNull();
+        });
+    });
+
+    describe('complete edge cases', () => {
+        it('returns null for a plain line without checkbox', () => {
+            expect(transformTaskLine('- Task A', mockNow, 'complete')).toBeNull();
+        });
+    });
+
+    describe('indented lines', () => {
+        it('returns null for indented lines regardless of action', () => {
+            expect(transformTaskLine('  - [ ] Task', mockNow, 'start')).toBeNull();
+            expect(transformTaskLine('  - [/] Task 17:00 -', mockNow, 'complete')).toBeNull();
+            expect(transformTaskLine('  - [ ] Task', mockNow)).toBeNull();
+        });
     });
 });

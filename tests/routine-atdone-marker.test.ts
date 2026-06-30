@@ -36,4 +36,25 @@ describe('routine-atdone-marker', () => {
     it('returns null when there is no pending @done marker', () => {
         expect(replacePendingRoutineAtDoneMarker('- [x] [[朝の仕込み]] →done')).toBeNull();
     });
+
+    it('detects @done even with trailing text (word boundary match)', () => {
+        expect(hasPendingRoutineAtDoneMarker('- [x] [[Task]] @done extra')).toBe(true);
+    });
+
+    it('rejects @done embedded in a word without whitespace prefix', () => {
+        expect(hasPendingRoutineAtDoneMarker('- [x] email@done.com')).toBe(false);
+    });
+
+    it('handles @done as the only content', () => {
+        expect(hasPendingRoutineAtDoneMarker('@done')).toBe(true);
+    });
+
+    it('is case insensitive', () => {
+        expect(hasPendingRoutineAtDoneMarker('- [x] Task @DONE')).toBe(true);
+        expect(hasPendingRoutineAtDoneMarker('- [x] Task @Done')).toBe(true);
+    });
+
+    it('returns null for lines with no markers at all', () => {
+        expect(replacePendingRoutineAtDoneMarker('- [x] [[朝の仕込み]]')).toBeNull();
+    });
 });

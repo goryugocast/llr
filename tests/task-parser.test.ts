@@ -62,6 +62,17 @@ describe('TaskParser', () => {
             expect(result.content).toBe('原稿修正 @done 追記');
         });
 
+        it('未処理の日付 reschedule marker を読む', () => {
+            const result = TaskParser.parseLine('- [ ] 原稿修正 @2026-04-10');
+            expect(result.marker).toEqual({
+                kind: 'reschedule',
+                raw: '@2026-04-10',
+                value: '2026-04-10',
+                pending: true,
+            });
+            expect(result.content).toBe('原稿修正');
+        });
+
         it('処理済み日付 marker を読む', () => {
             const result = TaskParser.parseLine('- [ ] 原稿修正 →2026-04-10');
             expect(result.marker).toEqual({
@@ -128,5 +139,146 @@ describe('TaskParser', () => {
             expect(TaskParser.normalizeTime('9:30')).toBe('09:30');
             expect(TaskParser.normalizeTime('14:05')).toBe('14:05');
         });
+    });
+
+    describe('normalizeLooseTimeToken', () => {
+        it('normalizes 4-digit time', () => {
+            expect(TaskParser.normalizeLooseTimeToken('0900')).toBe('09:00');
+        });
+
+        it('normalizes 3-digit time', () => {
+            expect(TaskParser.normalizeLooseTimeToken('900')).toBe('09:00');
+        });
+
+        it('accepts HH:mm format with colon', () => {
+            expect(TaskParser.normalizeLooseTimeToken('09:30')).toBe('09:30');
+            expect(TaskParser.normalizeLooseTimeToken('9:05')).toBe('09:05');
+        });
+
+        it('returns null for out-of-range hours', () => {
+            expect(TaskParser.normalizeLooseTimeToken('2500')).toBeNull();
+        });
+
+        it('returns null for out-of-range minutes', () => {
+            expect(TaskParser.normalizeLooseTimeToken('1260')).toBeNull();
+        });
+
+        it('returns null for non-time strings', () => {
+            expect(TaskParser.normalizeLooseTimeToken('abc')).toBeNull();
+            expect(TaskParser.normalizeLooseTimeToken('12345')).toBeNull();
+        });
+    });
+
+    describe('normalizeDurationToken', () => {
+        it('normalizes bare minutes', () => {
+            expect(TaskParser.normalizeDurationToken('30')).toBe('30m');
+            expect(TaskParser.normalizeDurationToken('120')).toBe('120m');
+        });
+
+        it('normalizes m suffix', () => {
+            expect(TaskParser.normalizeDurationToken('45m')).toBe('45m');
+        });
+
+        it('normalizes min suffix', () => {
+            expect(TaskParser.normalizeDurationToken('60min')).toBe('60m');
+        });
+
+        it('converts h suffix to minutes', () => {
+            expect(TaskParser.normalizeDurationToken('1.5h')).toBe('90m');
+            expect(TaskParser.normalizeDurationToken('2h')).toBe('120m');
+        });
+
+        it('returns null for invalid input', () => {
+            expect(TaskParser.normalizeDurationToken('abc')).toBeNull();
+            expect(TaskParser.normalizeDurationToken('')).toBeNull();
+        });
+
+        it('returns null for 4+ digit bare numbers', () => {
+            expect(TaskParser.normalizeDurationToken('1234')).toBeNull();
+        });
+    });
+
+    describe('serialize edge cases', () => {
+        it('serializes a plain status line', () => {
+            const result = TaskParser.serialize({
+                status: 'plain',
+                body: 'メモ',
+                content: 'メモ',
+                plannedStart: '',
+                actualStart: '',
+                actualEnd: '',
+                estimate: '',
+                actualDuration: '',
+                marker: null,
+                times: [],
+            });
+            expect(result).toBe('- メモ');
+        });
+
+        it('serializes an unchecked task with only estimate', () => {
+            const result = TaskParser.serialize({
+                status: ' ',
+                body: 'Review',
+                content: 'Review',
+                plannedStart: '',
+                actualStart: '',
+                actualEnd: '',
+                estimate: '30m',
+                actualDuration: '',
+                marker: null,
+                times: [],
+            });
+            expect(result).toBe('- [ ] Review (30m)');
+        });
+
+        it('serializes a completed task with actual-only duration', () => {
+            const result = TaskParser.serialize({
+                status: 'x',
+                body: 'Task',
+                content: 'Task',
+                plannedStart: '',
+                actualStart: '10:00',
+                actualEnd: '10:30',
+                estimate: '',
+                actualDuration: '30m',
+                marker: null,
+                times: ['10:00', '10:30'],
+            });
+            expect(result).toBe('- [x] Task 10:00 - 10:30 (30m)');
+        });
+
+        it('includes marker in serialized output', () => {
+            const result = TaskParser.serialize({
+                status: ' ',
+                body: 'Task',
+                content: 'Task',
+                plannedStart: '',
+                actualStart: '',
+                actualEnd: '',
+                estimate: '30m',
+                actualDuration: '',
+                marker: { kind: 'atdone', raw: '@done', value: 'done', pending: true },
+                times: [],
+            });
+            expect(result).toBe('- [ ] Task (30m) @done');
+        });
+    });
+
+    describe('parseLine → serialize round trip', () => {
+        const roundTrips = [
+            '- [x] 18:00 原稿修正 18:12 - 18:35 (30m > 23m)',
+            '- [/] 18:00 原稿修正 18:12 - (30m)',
+            '- [ ] 18:00 ばんごはん (30m)',
+            '- [ ] Review PR (45m)',
+            '- [x] Task 10:00 - 10:30 (30m)',
+            '- [/] ALPsでセミナー管理 21:49 -',
+        ];
+
+        for (const line of roundTrips) {
+            it(`round-trips: ${line}`, () => {
+                const parsed = TaskParser.parseLine(line);
+                expect(TaskParser.serialize(parsed)).toBe(line);
+            });
+        }
     });
 });
