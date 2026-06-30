@@ -1851,6 +1851,7 @@ export default class LlrPlugin extends Plugin {
         // Build grouped output
         const outputLines: string[] = [];
         let currentLabel: string | null | undefined = undefined; // undefined = not yet started
+        let srsBlankLineInserted = false;
 
         for (const r of sorted) {
             const label = this.getRoutineSectionHeading(r.section);
@@ -1860,6 +1861,11 @@ export default class LlrPlugin extends Plugin {
                     outputLines.push(label);
                 }
                 currentLabel = label;
+            }
+            // 視認性のため、SRS ノートの最初の行の直前に空行を1つ入れて区切る
+            if (r.isSrs && !srsBlankLineInserted) {
+                outputLines.push('');
+                srsBlankLineInserted = true;
             }
             outputLines.push(buildLine(r));
         }
