@@ -25,7 +25,6 @@ interface RoutineEngineOptions {
     onDebugEvent?: (event: RoutineEngineDebugEvent) => void;
     onNotice?: (message: string, timeout?: number) => void;
     routineFolder?: string;
-    srsFolder?: string;
 }
 
 export interface RoutineNote {
@@ -133,10 +132,6 @@ export class RoutineEngine {
         const value = Number(match[1]);
         if (!Number.isInteger(value) || value < 0) return undefined;
         return value;
-    }
-
-    private isDateStringAfter(dateStr: string, baseDate: Date): boolean {
-        return dateStr > toDateString(this.normalizeToDateOnly(baseDate));
     }
 
     private calculateNextDueForDueAnchor(

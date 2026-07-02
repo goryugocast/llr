@@ -1,12 +1,12 @@
-import { AbstractInputSuggest, App, Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, moment, normalizePath } from 'obsidian';
+import { Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, TFile, WorkspaceLeaf, moment } from 'obsidian';
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
-import { CheckboxPressIntent, adjustTaskTimeByMinutes, prepareCursorBeforeActualStart, getCursorAfterActualEndCh, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
+import { CheckboxPressIntent, adjustTaskTimeByMinutes, formatTime, prepareCursorBeforeActualStart, getCursorAfterActualEndCh, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
 import { RoutineEngine, type RoutineCompletionRequest, type RoutineEngineDebugEvent, type RoutineNote } from './service/routine-engine';
 import { computeStatusBarMetrics } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
-import { SummaryView, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
 import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
@@ -14,26 +14,9 @@ import { DebugLog } from './service/debug-log';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
 import { DailyNoteAutoInsertController } from './service/daily-note-auto-insert';
 import { TaskParser } from './service/task-parser';
-
-interface LlrSettings {
-    debugModeEnabled: boolean;
-    estimateWarningEnabled: boolean;
-    checkboxOverrideEnabled: boolean;
-    mobileLargeCheckboxEnabled: boolean;
-    uiLanguage: UILanguage;
-    routineFolder: string;
-    dailyNoteFolder: string;
-    sectionDefinitions: SectionDefinition[];
-}
-
-interface SectionDefinition {
-    time: string; // HHmm
-    label: string;
-}
-
-type UILanguage = 'auto' | 'ja' | 'en';
-type ResolvedLanguage = 'ja' | 'en';
-
+import { TranslationKey, UILanguage, resolveLanguage, translate } from './i18n';
+import { DEFAULT_SETTINGS, LlrSettings, SectionDefinition, normalizeDailyNoteFolder, normalizeRoutineFolder, normalizeSectionDefinitions, parseSectionTimeToInt } from './service/settings';
+import { LlrSettingTab } from './view/settings-tab';
 
 interface LlrPostActionContext {
     editor: Editor;
@@ -53,165 +36,9 @@ interface ApplyTaskResultOptions {
     placeCursorBeforeActualStart?: boolean;
 }
 
-const DEFAULT_SETTINGS: LlrSettings = {
-    debugModeEnabled: false,
-    estimateWarningEnabled: true,
-    checkboxOverrideEnabled: true,
-    mobileLargeCheckboxEnabled: false,
-    uiLanguage: 'auto',
-    routineFolder: 'routine',
-    dailyNoteFolder: '',
-    sectionDefinitions: [
-        { time: '0700', label: '午前' },
-        { time: '1200', label: '午後' },
-        { time: '1800', label: '夜' },
-    ],
-};
-
-const TRANSLATIONS = {
-    en: {
-        'ribbon.openSummary': 'Open LLR summary',
-        'ribbon.adjustTime1m': 'Adjust time (1m)',
-        'command.openSummaryView': 'Open summary view',
-        'command.toggleTask': 'Toggle task',
-        'command.adjustTime1m': 'Adjust time (1m)',
-        'command.startTask': 'Start task',
-        'command.stopTask': 'Complete task',
-        'command.startTaskFromPrev': 'Start task at previous time',
-        'command.duplicateTask': 'Duplicate task',
-        'command.skipTaskLogOnly': 'Skip task',
-        'command.rescheduleRoutine': 'Reschedule routine',
-        'command.insertRoutine': 'Insert routine',
-        'settings.language.name': 'UI language',
-        'settings.language.desc': 'Choose language for settings and command labels.',
-        'settings.language.option.auto': 'Auto (follow system locale)',
-        'settings.language.option.ja': 'Japanese',
-        'settings.language.option.en': 'English',
-        'settings.language.notice': 'LLR: Language updated. Reload plugin to refresh command names.',
-        'settings.debugMode.name': 'Debug mode',
-        'settings.debugMode.desc': 'Show command/internal delay timestamps in Notice and log them to llrlog/debug.jsonl. Intended for debugging and troubleshooting.',
-        'settings.estimateWarning.name': 'Estimate warning',
-        'settings.estimateWarning.desc': 'Show schedule warning cues based on estimated remaining time.',
-        'settings.checkboxOverride.name': 'Editor checkbox override',
-        'settings.checkboxOverride.desc': 'Use LLR short-press/long-press behavior for checkboxes in the editor. When off, checkbox clicks use Obsidian default behavior while commands and hotkeys stay available.',
-        'settings.routineFolder.name': 'Routine folder',
-        'settings.routineFolder.desc': 'Folder for repeat-task routine notes. You can pick from suggestions. Only direct child .md files are targeted.',
-        'settings.routineSections.heading': 'Routine sections',
-        'settings.routineSections.desc': 'Configure heading boundaries for Insert Routine / template auto-insert. A task goes into the latest section whose HHmm boundary is <= task time. Tasks without section stay at the top (no heading).',
-        'settings.routineSections.empty': 'No section definitions. All routines are inserted without headings.',
-        'settings.routineSections.itemName': 'Section {index}',
-        'settings.routineSections.itemDesc': 'Boundary time (HHmm) and heading label',
-        'settings.routineSections.newName': 'New section',
-        'settings.routineSections.newDesc': 'Enter HHmm and heading label. When both are set, it is committed and sorted by time.',
-        'settings.routineSections.deleteTooltip': 'Delete section',
-        'settings.routineSections.addTooltip': 'Add section (when both fields are filled)',
-        'settings.routineSections.labelPlaceholder': 'Morning',
-        'settings.routineSections.timePlaceholder': '0700',
-        'settings.advanced.heading': 'Advanced / compatibility',
-        'settings.advanced.desc': 'Settings for exceptional cases. Most users can leave these as-is.',
-        'settings.dailyNoteFolder.name': 'Daily note folder (fallback)',
-        'settings.dailyNoteFolder.desc': 'Normally LLR follows the core Daily Notes plugin. Set a folder here only as a safety net: it is used solely when the Daily Notes plugin’s own folder is blank (e.g. its settings got reset by cloud sync). While the plugin reports a folder, that always wins and this value is ignored. Leave empty if your daily notes live in the vault root.',
-        'notice.invalidTime': 'LLR: Please enter time in HHmm format (example: 0700).',
-        'notice.emptySectionLabel': 'LLR: Please enter a section label.',
-    },
-    ja: {
-        'ribbon.openSummary': 'LLR サマリーを開く',
-        'ribbon.adjustTime1m': '時間調整（1分）',
-        'command.openSummaryView': 'サマリービューを開く',
-        'command.toggleTask': 'タスクをトグル',
-        'command.adjustTime1m': '時間調整（1分）',
-        'command.startTask': 'タスク開始',
-        'command.stopTask': 'タスク完了',
-        'command.startTaskFromPrev': '前の時刻で開始',
-        'command.duplicateTask': 'タスク複製',
-        'command.skipTaskLogOnly': 'タスクをスキップ',
-        'command.rescheduleRoutine': 'ルーチンを先送り',
-        'command.insertRoutine': 'ルーチンを挿入',
-        'settings.language.name': 'UI言語',
-        'settings.language.desc': '設定画面とコマンド名の表示言語を選びます。',
-        'settings.language.option.auto': '自動（システム言語）',
-        'settings.language.option.ja': '日本語',
-        'settings.language.option.en': '英語',
-        'settings.language.notice': 'LLR: 言語を更新しました。コマンド名反映のためプラグインを再読み込みしてください。',
-        'settings.debugMode.name': 'デバッグモード',
-        'settings.debugMode.desc': 'コマンド実行・内部遅延処理の時刻を Notice 表示し、llrlog/debug.jsonl に記録します。デバッグや不具合調査向けです。',
-        'settings.estimateWarning.name': '見積警告',
-        'settings.estimateWarning.desc': '残り見積り時間に基づく予定警告の表示を切り替えます。',
-        'settings.checkboxOverride.name': 'エディタのチェック上書き',
-        'settings.checkboxOverride.desc': '編集画面のチェックボックスに LLR の短押し・長押し挙動を使います。OFF にするとクリックは Obsidian 標準に戻り、コマンドとショートカットはそのまま使えます。',
-        'settings.routineFolder.name': 'ルーチンフォルダ',
-        'settings.routineFolder.desc': 'リピートタスク（ルーチンノート）を置くフォルダ。候補から選択できます。対象はこのフォルダ直下の .md のみです。',
-        'settings.routineSections.heading': 'ルーチンセクション',
-        'settings.routineSections.desc': 'Insert Routine / テンプレート自動挿入の見出し区切りを設定します。section（HHmm）が各時刻以上になったらその見出しに入ります。未設定のタスクは先頭（見出しなし）です。',
-        'settings.routineSections.empty': 'セクション設定がありません。すべて見出しなしで書き出されます。',
-        'settings.routineSections.itemName': 'セクション {index}',
-        'settings.routineSections.itemDesc': '境界時刻（HHmm）と見出しラベル',
-        'settings.routineSections.newName': '新しいセクション',
-        'settings.routineSections.newDesc': '時刻（HHmm）と見出しラベルを入力。両方そろうと確定し、時刻順に並び替えます。',
-        'settings.routineSections.deleteTooltip': 'セクションを削除',
-        'settings.routineSections.addTooltip': 'セクションを追加（両方入力時）',
-        'settings.routineSections.labelPlaceholder': '午前',
-        'settings.routineSections.timePlaceholder': '0700',
-        'settings.advanced.heading': '詳細設定 / 互換性',
-        'settings.advanced.desc': '例外的な運用向けの設定です。通常はこのままで構いません。',
-        'settings.dailyNoteFolder.name': 'デイリーノートのフォルダ（予備）',
-        'settings.dailyNoteFolder.desc': '通常 LLR はコアの Daily Notes プラグインに従います。ここは保険用です。Daily Notes プラグイン側のフォルダが空のとき（例: クラウド同期で設定が巻き戻ったとき）だけこの値を使います。プラグインがフォルダを返している間は常にそちらが優先され、この値は無視されます。デイリーをボールト直下に置いている場合は空のままにしてください。',
-        'notice.invalidTime': 'LLR: 時刻は HHmm（例: 0700）で入力してください。',
-        'notice.emptySectionLabel': 'LLR: 見出しラベルを入力してください。',
-    },
-} as const;
-
-type TranslationKey = keyof typeof TRANSLATIONS.en;
 
 const LEGACY_SKIP_COMMAND_ID = 'defer-task-to-tomorrow';
 const SKIP_COMMAND_ID = 'skip-task-log-only';
-const DEFAULT_ROUTINE_FOLDER = 'routine';
-
-function parseSectionTimeToInt(value: string): number | null {
-    if (!/^\d{4}$/.test(value)) return null;
-    const hh = Number(value.slice(0, 2));
-    const mm = Number(value.slice(2, 4));
-    if (!Number.isInteger(hh) || !Number.isInteger(mm)) return null;
-    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-    return hh * 100 + mm;
-}
-
-function normalizeSectionDefinitions(input: unknown): SectionDefinition[] {
-    if (!Array.isArray(input)) return DEFAULT_SETTINGS.sectionDefinitions.map((x) => ({ ...x }));
-
-    const normalized: SectionDefinition[] = [];
-    for (const item of input) {
-        if (!item || typeof item !== 'object') continue;
-        const rec = item as Record<string, unknown>;
-        const rawTime = (typeof rec.time === 'string' ? rec.time : '').replace(/[^\d]/g, '').slice(0, 4);
-        const label = (typeof rec.label === 'string' ? rec.label : '').trim();
-        if (!label) continue;
-        if (parseSectionTimeToInt(rawTime) === null) continue;
-        normalized.push({ time: rawTime, label });
-    }
-
-    normalized.sort((a, b) => {
-        const av = parseSectionTimeToInt(a.time) ?? Number.MAX_SAFE_INTEGER;
-        const bv = parseSectionTimeToInt(b.time) ?? Number.MAX_SAFE_INTEGER;
-        return av - bv || a.label.localeCompare(b.label, 'ja');
-    });
-
-    return normalized;
-}
-
-function normalizeRoutineFolder(value: unknown): string {
-    const asText = typeof value === 'string' ? value : '';
-    const normalizedPath = normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
-    return normalizedPath || DEFAULT_ROUTINE_FOLDER;
-}
-
-// Daily Notes プラグインの folder が空のときだけ使う補完値。
-// 空文字は「補完なし（プラグインに完全に従う）」を意味するので、ルーチンと違って既定フォルダには倒さない。
-function normalizeDailyNoteFolder(value: unknown): string {
-    const asText = typeof value === 'string' ? value : '';
-    if (!asText.trim()) return '';
-    return normalizePath(asText.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
-}
 
 export default class LlrPlugin extends Plugin {
     private routineEngine: RoutineEngine;
@@ -248,7 +75,6 @@ export default class LlrPlugin extends Plugin {
         });
         await this.loadSettings();
         this.syncMobileLargeCheckboxClass();
-        SummaryView.setRoutineFolder(this.settings.routineFolder);
         this.addSettingTab(new LlrSettingTab(this.app, this));
 
         this.routineEngine = new RoutineEngine(this.app, {
@@ -273,9 +99,14 @@ export default class LlrPlugin extends Plugin {
         this.statusBar = this.addStatusBarItem();
         this.statusBar.setText('');
 
+        const summaryDelegate: SummaryViewDelegate = {
+            getRoutineFolder: () => this.settings.routineFolder,
+            getSectionBoundaries: () => this.getSortedSectionBoundaries(),
+            getDailyNoteSettings: () => this.getDailyNoteSettings(),
+        };
         this.registerView(
             VIEW_TYPE_SUMMARY,
-            (leaf) => new SummaryView(leaf)
+            (leaf) => new SummaryView(leaf, summaryDelegate)
         );
 
         this.addRibbonIcon('list-checks', this.t('ribbon.openSummary'), () => {
@@ -551,21 +382,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     t(key: TranslationKey, vars?: Record<string, string | number>): string {
-        const lang = this.resolveLanguage();
-        const template = TRANSLATIONS[lang][key] ?? TRANSLATIONS.en[key];
-        if (!vars) return template;
-        return Object.entries(vars).reduce(
-            (acc, [name, value]) => acc.replaceAll(`{${name}}`, String(value)),
-            template
-        );
-    }
-
-    private resolveLanguage(): ResolvedLanguage {
-        if (this.settings.uiLanguage === 'ja' || this.settings.uiLanguage === 'en') {
-            return this.settings.uiLanguage;
-        }
-        const locale = String(globalThis.navigator?.language ?? '').toLowerCase();
-        return locale.startsWith('ja') ? 'ja' : 'en';
+        return translate(resolveLanguage(this.settings.uiLanguage), key, vars);
     }
 
     getRoutineFolder(): string {
@@ -629,7 +446,6 @@ export default class LlrPlugin extends Plugin {
         this.settings.routineFolder = normalized;
         await this.saveSettings();
         this.routineEngine.setRoutineFolder(normalized);
-        SummaryView.setRoutineFolder(normalized);
 
         for (const timer of this.scheduleValidationTimers.values()) {
             clearTimeout(timer);
@@ -751,7 +567,7 @@ export default class LlrPlugin extends Plugin {
         const lines = content.split('\n');
         const cursorLine = view.editor.getCursor().line;
         const now = new Date();
-        const nowTime = this.formatTime(now);
+        const nowTime = formatTime(now);
 
         // 1. Status Bar update
         const { remainMin, cursorMin } = computeStatusBarMetrics(
@@ -932,7 +748,7 @@ export default class LlrPlugin extends Plugin {
             return { unstartedLongPressStartTime: previousCompletionTime };
         }
 
-        const fallback = this.formatTime(now);
+        const fallback = formatTime(now);
         this.debugLog('Checkbox long press previous completion time not found; fallback to now', {
             lineIndex,
             fallback,
@@ -967,7 +783,7 @@ export default class LlrPlugin extends Plugin {
             lines.push(editor.getLine(line));
         }
 
-        return findLatestCompletionEndTime(lines, this.formatTime(new Date()));
+        return findLatestCompletionEndTime(lines, formatTime(new Date()));
     }
 
     private isRootRoutineNotePath(filePath: string): boolean {
@@ -1321,7 +1137,7 @@ export default class LlrPlugin extends Plugin {
 
         const now = new Date();
         const previousCompletionTime = this.findPreviousCompletionEndTime(editor, cursor.line);
-        const fallback = this.formatTime(now);
+        const fallback = formatTime(now);
         const startTime = previousCompletionTime ?? fallback;
 
         this.debugLog('Start task from previous completion', {
@@ -1719,7 +1535,7 @@ export default class LlrPlugin extends Plugin {
 
     completeTask(editor: Editor, view: MarkdownView, lineIndex: number, lineText: string) {
         const now = new Date();
-        const endTimeStr = this.formatTime(now);
+        const endTimeStr = formatTime(now);
 
         const parsed = TaskParser.parseLine(lineText);
         const startTimeStr = parsed.status === '/' ? parsed.actualStart : undefined;
@@ -1852,341 +1668,4 @@ export default class LlrPlugin extends Plugin {
 
 
 
-    formatTime(date: Date): string {
-        const h = date.getHours().toString().padStart(2, '0');
-        const m = date.getMinutes().toString().padStart(2, '0');
-        return `${h}:${m}`;
-    }
-}
-
-class FolderPathSuggest extends AbstractInputSuggest<TFolder> {
-    constructor(app: App, inputEl: HTMLInputElement) {
-        super(app, inputEl);
-    }
-
-    protected getSuggestions(query: string): TFolder[] {
-        const normalizedQuery = query.trim().toLowerCase();
-        const folders = this.app.vault.getAllLoadedFiles()
-            .filter((file): file is TFolder => file instanceof TFolder)
-            .filter((folder) => folder.path.length > 0)
-            .sort((a, b) => a.path.localeCompare(b.path, 'ja'));
-
-        if (!normalizedQuery) return folders.slice(0, 100);
-        return folders
-            .filter((folder) => folder.path.toLowerCase().includes(normalizedQuery))
-            .slice(0, 100);
-    }
-
-    renderSuggestion(folder: TFolder, el: HTMLElement): void {
-        el.setText(folder.path);
-    }
-
-    selectSuggestion(folder: TFolder, _evt: MouseEvent | KeyboardEvent): void {
-        this.setValue(folder.path);
-    }
-
-    getFirstSuggestion(query: string): TFolder | null {
-        const suggestions = this.getSuggestions(query);
-        if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
-        return suggestions[0];
-    }
-}
-
-class LlrSettingTab extends PluginSettingTab {
-    plugin: LlrPlugin;
-    private routineFolderDraft = '';
-    private newSectionDraftTime = '';
-    private newSectionDraftLabel = '';
-
-    constructor(app: App, plugin: LlrPlugin) {
-        super(app, plugin);
-        this.plugin = plugin;
-    }
-
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
-        this.routineFolderDraft = this.plugin.getRoutineFolder();
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.language.name'))
-            .setDesc(this.plugin.t('settings.language.desc'))
-            .addDropdown((dropdown) => {
-                dropdown
-                    .addOption('auto', this.plugin.t('settings.language.option.auto'))
-                    .addOption('ja', this.plugin.t('settings.language.option.ja'))
-                    .addOption('en', this.plugin.t('settings.language.option.en'))
-                    .setValue(this.plugin.getUiLanguage())
-                    .onChange(async (value) => {
-                        if (value !== 'auto' && value !== 'ja' && value !== 'en') return;
-                        await this.plugin.setUiLanguage(value);
-                        this.display();
-                        this.plugin.showLlrNotice(this.plugin.t('settings.language.notice'));
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.estimateWarning.name'))
-            .setDesc(this.plugin.t('settings.estimateWarning.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.isEstimateWarningEnabled())
-                .onChange(async (value) => {
-                    await this.plugin.setEstimateWarningEnabled(value);
-                }));
-
-        const commitRoutineFolder = async (nextFolder?: string) => {
-            if (typeof nextFolder === 'string') {
-                this.routineFolderDraft = nextFolder;
-            }
-            const before = this.plugin.getRoutineFolder();
-            await this.plugin.setRoutineFolder(this.routineFolderDraft);
-            const after = this.plugin.getRoutineFolder();
-            this.routineFolderDraft = after;
-            if (after !== before) {
-                this.display();
-            }
-        };
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.routineFolder.name'))
-            .setDesc(this.plugin.t('settings.routineFolder.desc'))
-            .addSearch((search) => {
-                search.setPlaceholder(DEFAULT_ROUTINE_FOLDER).setValue(this.routineFolderDraft);
-                const folderSuggest = new FolderPathSuggest(this.app, search.inputEl);
-                const resolveCommittedFolderPath = (): string | null => {
-                    const query = search.getValue().trim();
-                    const normalized = normalizeRoutineFolder(query);
-                    const exact = this.app.vault.getFolderByPath(normalized);
-                    if (exact) return exact.path;
-                    if (!query) return this.plugin.getRoutineFolder();
-                    const first = folderSuggest.getFirstSuggestion(query);
-                    if (!first) return null;
-                    const q = query.toLowerCase();
-                    if (!first.path.toLowerCase().startsWith(q)) return null;
-                    return first.path;
-                };
-                folderSuggest.onSelect((folder) => {
-                    this.routineFolderDraft = folder.path;
-                    search.setValue(folder.path);
-                    void commitRoutineFolder();
-                });
-                search.onChange((value) => {
-                    this.routineFolderDraft = value;
-                });
-                search.inputEl.addEventListener('keydown', (ev) => {
-                    if (ev.isComposing || ev.key !== 'Enter') return;
-                    ev.preventDefault();
-                    const resolved = resolveCommittedFolderPath();
-                    if (!resolved) return;
-                    this.routineFolderDraft = resolved;
-                    search.setValue(resolved);
-                    folderSuggest.close();
-                    void commitRoutineFolder();
-                });
-                search.inputEl.addEventListener('blur', () => {
-                    const resolved = resolveCommittedFolderPath();
-                    if (!resolved) {
-                        search.setValue(this.plugin.getRoutineFolder());
-                        this.routineFolderDraft = this.plugin.getRoutineFolder();
-                        return;
-                    }
-                    this.routineFolderDraft = resolved;
-                    search.setValue(resolved);
-                    void commitRoutineFolder();
-                });
-            });
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.routineSections.heading'))
-            .setHeading();
-        containerEl.createEl('p', {
-            text: this.plugin.t('settings.routineSections.desc'),
-            cls: 'setting-item-description',
-        });
-
-        const listContainer = containerEl.createDiv('llr-section-settings-list');
-        this.renderSectionDefinitionSettings(listContainer);
-
-        this.renderNewSectionDraftSetting(containerEl);
-        this.renderAdvancedSettings(containerEl);
-    }
-
-    private renderSectionDefinitionSettings(containerEl: HTMLElement): void {
-        containerEl.empty();
-        const defs = this.plugin.getSectionDefinitions();
-
-        if (defs.length === 0) {
-            containerEl.createEl('p', {
-                text: this.plugin.t('settings.routineSections.empty'),
-                cls: 'setting-item-description',
-            });
-            return;
-        }
-
-        defs.forEach((def, index) => {
-            const saveTimeField = async () => {
-                if (defs[index].time.length !== 4 || parseSectionTimeToInt(defs[index].time) === null) {
-                    this.plugin.showLlrNotice(this.plugin.t('notice.invalidTime'));
-                    this.display();
-                    return;
-                }
-                await this.plugin.setSectionDefinitions(defs);
-                this.display();
-            };
-
-            const saveLabelField = async () => {
-                defs[index].label = defs[index].label.trim();
-                if (!defs[index].label) {
-                    this.plugin.showLlrNotice(this.plugin.t('notice.emptySectionLabel'));
-                    this.display();
-                    return;
-                }
-                await this.plugin.setSectionDefinitions(defs);
-                this.display();
-            };
-
-            new Setting(containerEl)
-                .setName(this.plugin.t('settings.routineSections.itemName', { index: index + 1 }))
-                .setDesc(this.plugin.t('settings.routineSections.itemDesc'))
-                .addText((text) => {
-                    text.setPlaceholder(this.plugin.t('settings.routineSections.labelPlaceholder')).setValue(def.label);
-                    text.onChange((value) => {
-                        defs[index].label = value;
-                    });
-                    text.inputEl.addEventListener('blur', () => { void saveLabelField(); });
-                    text.inputEl.addEventListener('keydown', (ev) => {
-                        if (ev.key !== 'Enter') return;
-                        ev.preventDefault();
-                        void saveLabelField();
-                    });
-                })
-                .addText((text) => {
-                    text.setPlaceholder(this.plugin.t('settings.routineSections.timePlaceholder')).setValue(def.time);
-                    text.inputEl.inputMode = 'numeric';
-                    text.inputEl.maxLength = 4;
-                    text.onChange((value) => {
-                        defs[index].time = value.replace(/[^\d]/g, '').slice(0, 4);
-                    });
-                    text.inputEl.addEventListener('blur', () => { void saveTimeField(); });
-                    text.inputEl.addEventListener('keydown', (ev) => {
-                        if (ev.key !== 'Enter') return;
-                        ev.preventDefault();
-                        void saveTimeField();
-                    });
-                })
-                .addExtraButton((btn) => btn
-                    .setIcon('trash')
-                    .setTooltip(this.plugin.t('settings.routineSections.deleteTooltip'))
-                    .onClick(() => {
-                        defs.splice(index, 1);
-                        void this.plugin.setSectionDefinitions(defs).then(() => { this.display(); });
-                    }));
-        });
-    }
-
-    private renderNewSectionDraftSetting(containerEl: HTMLElement): void {
-        const maybeCommitDraft = async () => {
-            const time = this.newSectionDraftTime.trim();
-            const label = this.newSectionDraftLabel.trim();
-            if (!time && !label) return;
-            if (!time || !label) return;
-            if (time.length !== 4 || parseSectionTimeToInt(time) === null) {
-                this.plugin.showLlrNotice(this.plugin.t('notice.invalidTime'));
-                return;
-            }
-
-            const defs = this.plugin.getSectionDefinitions();
-            defs.push({ time, label });
-            await this.plugin.setSectionDefinitions(defs);
-            this.newSectionDraftTime = '';
-            this.newSectionDraftLabel = '';
-            this.display();
-        };
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.routineSections.newName'))
-            .setDesc(this.plugin.t('settings.routineSections.newDesc'))
-            .addText((text) => {
-                text.setPlaceholder(this.plugin.t('settings.routineSections.labelPlaceholder')).setValue(this.newSectionDraftLabel);
-                text.onChange((value) => {
-                    this.newSectionDraftLabel = value;
-                });
-                text.inputEl.addEventListener('blur', () => { void maybeCommitDraft(); });
-                text.inputEl.addEventListener('keydown', (ev) => {
-                    if (ev.key !== 'Enter') return;
-                    ev.preventDefault();
-                    void maybeCommitDraft();
-                });
-            })
-            .addText((text) => {
-                text.setPlaceholder(this.plugin.t('settings.routineSections.timePlaceholder')).setValue(this.newSectionDraftTime);
-                text.inputEl.inputMode = 'numeric';
-                text.inputEl.maxLength = 4;
-                text.onChange((value) => {
-                    this.newSectionDraftTime = value.replace(/[^\d]/g, '').slice(0, 4);
-                });
-                text.inputEl.addEventListener('blur', () => { void maybeCommitDraft(); });
-                text.inputEl.addEventListener('keydown', (ev) => {
-                    if (ev.key !== 'Enter') return;
-                    ev.preventDefault();
-                    void maybeCommitDraft();
-                });
-            })
-            .addExtraButton((btn) => btn
-                .setIcon('plus')
-                .setTooltip(this.plugin.t('settings.routineSections.addTooltip'))
-                .onClick(() => { void maybeCommitDraft(); }));
-    }
-
-    private renderAdvancedSettings(containerEl: HTMLElement): void {
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.advanced.heading'))
-            .setHeading();
-        containerEl.createEl('p', {
-            text: this.plugin.t('settings.advanced.desc'),
-            cls: 'setting-item-description',
-        });
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.debugMode.name'))
-            .setDesc(this.plugin.t('settings.debugMode.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.isDebugModeEnabled())
-                .onChange(async (value) => {
-                    await this.plugin.setDebugModeEnabled(value);
-                }));
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.checkboxOverride.name'))
-            .setDesc(this.plugin.t('settings.checkboxOverride.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.isCheckboxOverrideEnabled())
-                .onChange(async (value) => {
-                    await this.plugin.setCheckboxOverrideEnabled(value);
-                }));
-
-        new Setting(containerEl)
-            .setName(this.plugin.t('settings.dailyNoteFolder.name'))
-            .setDesc(this.plugin.t('settings.dailyNoteFolder.desc'))
-            .addSearch((search) => {
-                search.setValue(this.plugin.getDailyNoteFolder());
-                const folderSuggest = new FolderPathSuggest(this.app, search.inputEl);
-                const commit = async () => {
-                    await this.plugin.setDailyNoteFolder(search.getValue());
-                    search.setValue(this.plugin.getDailyNoteFolder());
-                };
-                folderSuggest.onSelect((folder) => {
-                    search.setValue(folder.path);
-                    folderSuggest.close();
-                    void commit();
-                });
-                search.inputEl.addEventListener('keydown', (ev) => {
-                    if (ev.isComposing || ev.key !== 'Enter') return;
-                    ev.preventDefault();
-                    folderSuggest.close();
-                    void commit();
-                });
-                search.inputEl.addEventListener('blur', () => { void commit(); });
-            });
-    }
 }
