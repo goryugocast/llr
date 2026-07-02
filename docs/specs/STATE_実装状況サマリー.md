@@ -91,14 +91,18 @@
 - `Routine Sections` 設定（時刻 + ラベル）に基づき、`H1` 見出しでグルーピング。
 
 ### F. Settings UI (Implemented subset)
-- `Debug mode`（Notice + trace JSONL）
+- `UI Language`（auto / ja / en。設定画面とコマンド名の表示言語）
 - `Estimate Warning`（残り見積りに基づく予定警告表示）
-- `Large Mobile Checkboxes`（モバイル表示用トグル）
+- `Routine Folder`（ルーチンノート置き場。フォルダ候補サジェスト付き）
 - `Routine Sections`（時刻 `HHmm` + ラベル、入力/削除/自動ソート）
+- `Debug mode`（Notice + trace JSONL。詳細設定/互換性セクション）
+- `Editor Checkbox Override`（チェックボックス短押し/長押し上書きの ON/OFF）
+- `Daily Note Folder (fallback)`（Daily Notes プラグインの folder が空のときだけ使う予備値）
+- `Large Mobile Checkboxes`（モバイル表示用トグル）
 
 ### G. Debug Trace (Debug Mode)
 - `Notice` + JSONL トレースログ（デバッグ用）を実装。
-- 保存先は `llrlog/logs/debug/*.jsonl`（`routine/` 外）。
+- 保存先は `llrlog/debug.jsonl`（単一ファイル・5MB 上限で古い側から切り捨て。`routine/` 外）。
 - 目的: コマンド/ルーチン更新の時刻追跡、二重発火や遅延の調査。
 - ルーチンフォルダ配下の補助 `.md`（例: `routine/docs`）で不要な通知が出にくいように抑制済み。
 
@@ -125,6 +129,11 @@
   - 近接再描画でも上書きされにくいよう安定化済み
 
 ## 2. Not Implemented
+
+### 0. SRS growth — **main では未実装（Draft / 実験ブランチのみ）**
+- 「完了すると `repeat` が 2〜3 倍に育つ」SRS growth（[[SRS仕様]]）は main には入っていない。
+- 実装・テスト（`srs-completion.test.ts`）は `srs/vault-wide` ブランチにある。folder-based 方式の比較ブランチは `claude/fervent-haslett-fe4f13`。
+- 前身の incubate 構想（[[incubate仕様]] / [[incubate哲学]]）も未実装のまま SRS 仕様に吸収された。
 
 ### A. Day Boundary / Archive
 - `Llr: Start New Day`
@@ -191,4 +200,4 @@
 - 実行中タスクへの自動スクロールを改善。
 
 ---
-最終更新: 2026-05-22
+最終更新: 2026-07-02

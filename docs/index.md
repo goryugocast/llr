@@ -13,11 +13,25 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [クイックマニュアル](クイックマニュアル.md): 実用優先の操作マニュアル
 - [チートシート](チートシート.md): `repeat` / 操作の早見表 + 逆引き「こんな時 → これ」
 - [実装状況サマリー](specs/STATE_実装状況サマリー.md): 実装済み / 未実装 / **廃止・範囲外** の現状まとめ
-- [CHANGELOG](CHANGELOG.md): プレリリース変更履歴
 
 ### 「これってできる?」の即答先
 - 「タイマー・通知・カレンダー連携・統計グラフ」など → [実装状況サマリー §3 廃止・範囲外](specs/STATE_実装状況サマリー.md)
 - 「先送り・スキップ・前倒し完了など」 → [チートシート 逆引き](チートシート.md)
+
+## 正本マップ（トピックごとの一次ソース）
+
+同じ話題が複数の文書に出てくるときは、この表の文書を正とする。
+
+| トピック | 正本 |
+|---|---|
+| `repeat` 文法・`next_due` 計算・今日の表示判定 | [ルーチンエンジン仕様](specs/ルーチンエンジン仕様.md) |
+| `rollover` 既定値の表 | [ルーチンノートFrontmatter仕様](specs/ルーチンノートFrontmatter仕様.md) §5 |
+| `@done` / `→done` の意味と発動条件 | [start_before-@done仕様](specs/start_before-@done仕様.md) |
+| `@日付` による先送り | [routine-reschedule-marker仕様](specs/routine-reschedule-marker仕様.md) |
+| 未来日付ノートでの状態更新禁止（future-clamp） | [未来日付デイリーノートとルーチン基準日ポリシー](specs/未来日付デイリーノートとルーチン基準日ポリシー.md) |
+| タスク行の書式（v2 文法） | [記録フォーマット](specs/記録フォーマット.md) |
+| モジュール構成と spec ↔ src の対応 | [アーキテクチャ](specs/アーキテクチャ.md) §3.1 |
+| いま実装済みか・未実装か | [実装状況サマリー](specs/STATE_実装状況サマリー.md) |
 
 ## 読み方（重要）
 - **現状の真実（コードと合っているか）**: `docs/specs/STATE_実装状況サマリー.md`
@@ -85,7 +99,8 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [start_before-@done仕様](specs/start_before-@done仕様.md): 前倒し中の `@done` で次回送り
 - [routine-reschedule-marker仕様](specs/routine-reschedule-marker仕様.md): `@MMDD` で routine 先送り
 - [未来日付デイリーノートとルーチン基準日ポリシー](specs/未来日付デイリーノートとルーチン基準日ポリシー.md): future-clamp 方針
-- [incubate仕様](specs/incubate仕様.md) / [incubate哲学](specs/incubate哲学.md): 「今は触らない」ノートの再浮上（draft）
+- [SRS仕様](specs/SRS仕様.md): 完了で `repeat` が育つ SRS growth（draft、main 未実装・実験ブランチで検証中）
+- [incubate仕様](specs/incubate仕様.md) / [incubate哲学](specs/incubate哲学.md): SRS 構想の前身（draft。内容は [SRS仕様](specs/SRS仕様.md) に吸収済み）
 
 ## Design（設計思想）
 - [設計思想](specs/設計思想.md)
@@ -100,4 +115,4 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [CHANGELOG](CHANGELOG.md)
 
 ---
-最終更新: 2026-04-05
+最終更新: 2026-07-02

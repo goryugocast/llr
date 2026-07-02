@@ -1,5 +1,7 @@
 # incubate 哲学
 
+> この文書の内容は [[SRS仕様]] に吸収された。現在の正本は SRS仕様。この文書は経緯の記録として残している。
+
 ## この文書の役割
 - **対象**: LLR に追加したい新概念 `incubate` の意味づけ
 - **目的**: 既存の routine / daily note / reschedule marker と矛盾しない思想を先に固める

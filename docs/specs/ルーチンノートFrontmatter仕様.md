@@ -30,8 +30,8 @@
 | `next_due` | date (`YYYY-MM-DD`) | System | 次回予定日。完了時に自動更新。 |
 | `rollover` | boolean | No | 未完了タスクを翌日以降も持ち越して表示し続けるかどうか。`true` / `false`。 |
 | `summary_role` | string | No | サイドバー集計の特別扱い。現状は `sleep` を想定。 |
-| `sort_order` | number | No | 展開時の追加ソートキー（小さい順）。 |
-| `captures` | object | No | Dispatcher 将来機能向けの予約領域。 |
+| `sort_order` | number | No | **未実装**。展開時の追加ソートキー案（現行コードは読まない）。 |
+| `captures` | object | No | **未実装**。Dispatcher 将来機能向けの予約領域（現行コードは読まない）。 |
 
 ## 3. `repeat` の扱い（概要）
 

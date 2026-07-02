@@ -80,7 +80,7 @@ Inline markers (full reference: [recording format spec](https://github.com/goryu
 - `@MMDD` / `@M/D` / `@2026-05-30` — reschedule a routine to a specific date.
 - Processed markers normalize to `→done` / `→YYYY-MM-DD` so they're not re-fired.
 
-### Commands (13 total)
+### Commands (10 total)
 
 The three you'll use most:
 
@@ -92,11 +92,11 @@ The three you'll use most:
 
 Auxiliary commands:
 
-- `Start Task` / `Complete Task` / `Start Task (Align to Previous Completion)`
-- `Reset Task (Keep Estimate)` / `Duplicate Task` / `Interrupt Task`
-- `Skip Task (Log Only)` / `Retro Complete Task`
+- `Start Task` / `Complete Task` / `Start Task at Previous Time`
+- `Duplicate Task` / `Skip Task`
 - `Reschedule Routine` / `Insert Routine`
-- `Fix Duration Drift (All Completed Tasks)`
+
+A few more actions (interrupt, retro-complete, reset-keeping-estimate, fix duration drift in bulk) exist internally but are not exposed in the command palette — details in the commands spec below.
 
 Full reference: [commands spec](https://github.com/goryugocast/llr/blob/main/docs/specs/%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E4%BB%95%E6%A7%98.md).
 
@@ -192,7 +192,7 @@ The full "can it do X?" list is in [implementation summary §3](https://github.c
 | Index (start here) | [`docs/index.md`](https://github.com/goryugocast/llr/blob/main/docs/index.md) |
 | Quick manual | [`docs/クイックマニュアル.md`](https://github.com/goryugocast/llr/blob/main/docs/%E3%82%AF%E3%82%A4%E3%83%83%E3%82%AF%E3%83%9E%E3%83%8B%E3%83%A5%E3%82%A2%E3%83%AB.md) |
 | Cheatsheet (with reverse lookup) | [`docs/チートシート.md`](https://github.com/goryugocast/llr/blob/main/docs/%E3%83%81%E3%83%BC%E3%83%88%E3%82%B7%E3%83%BC%E3%83%88.md) |
-| Current release notes | [`docs/specs/今回のバージョンについて.md`](https://github.com/goryugocast/llr/blob/main/docs/specs/%E4%BB%8A%E5%9B%9E%E3%81%AE%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6.md) |
+| Changelog | [`docs/CHANGELOG.md`](https://github.com/goryugocast/llr/blob/main/docs/CHANGELOG.md) |
 | Design philosophy | [`docs/specs/設計思想.md`](https://github.com/goryugocast/llr/blob/main/docs/specs/%E8%A8%AD%E8%A8%88%E6%80%9D%E6%83%B3.md) |
 | Public site (EN) | https://goryugo.com/en/llr/ |
 | Public site (JA) | https://goryugo.com/topics/llr |
