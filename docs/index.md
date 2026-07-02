@@ -87,7 +87,7 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 
 - [記録フォーマット](specs/記録フォーマット.md): 記録フォーマットと中断記録の扱い
 - [コマンド仕様](specs/コマンド仕様.md): Toggle / Force / Align / Reset / アイコン
-- [トグル判定ロジック](specs/トグル判定ロジック.md): 忖度トグルの判定と見積り解釈
+- [トグル判定ロジック](specs/トグル判定ロジック.md): 旧設計メモ（時刻個数ベース判定の構想。現行トグルの正本は [コマンド仕様](specs/コマンド仕様.md)）
 - [データ永続化](specs/データ永続化.md): Markdown 正本 + Debug trace JSONL 例外
 - [ルーチンノートFrontmatter仕様](specs/ルーチンノートFrontmatter仕様.md): ルーチンノートの Frontmatter
 - [ルーチンエンジン仕様](specs/ルーチンエンジン仕様.md): `repeat` / `next_due` 更新ロジック

@@ -98,7 +98,7 @@
 - `Debug mode`（Notice + trace JSONL。詳細設定/互換性セクション）
 - `Editor Checkbox Override`（チェックボックス短押し/長押し上書きの ON/OFF）
 - `Daily Note Folder (fallback)`（Daily Notes プラグインの folder が空のときだけ使う予備値）
-- `Large Mobile Checkboxes`（モバイル表示用トグル）
+- `Large Mobile Checkboxes`（保存値と表示切り替えは実装済みだが、**設定画面のトグル UI は未実装**。現状 `data.json` の `mobileLargeCheckboxEnabled` を直接編集したときだけ効く）
 
 ### G. Debug Trace (Debug Mode)
 - `Notice` + JSONL トレースログ（デバッグ用）を実装。
