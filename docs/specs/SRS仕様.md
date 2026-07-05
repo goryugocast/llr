@@ -4,12 +4,21 @@
 
 - incubate 構想（incubate仕様.md / incubate哲学.md）を引き継ぎ、対話で練り直した結果をまとめたもの
 - 2026-06-30 の対話で方向が固まった
-- Status: Draft（お試し実装の段階。vault-wide と folder-based の2ブランチで比較検証中）
-- **main ブランチには未実装。** `srsGrowthEnabled` 設定も成長ロジックも main のコードには存在しない。vault-wide 方式の実装とテストは `srs/vault-wide` ブランチにある
+- Status: Draft（`srs/vault-wide` ブランチで実装・テスト済み、実運用で検証中）
+- **main ブランチには未実装。** `srsGrowthEnabled` 設定も成長ロジックも main のコードには存在しない。実装（vault-wide 方式）とテスト（`tests/srs-completion.test.ts` ほか）は `srs/vault-wide` ブランチにある
 
 ## 何をするか
 
 `repeat > 0` を持つノートを完了すると、repeat の間隔が自動で広がっていく仕組み。暗記カードのような細かい評価（hard / good / easy）はしない。チェックしたら伸びる、それだけ。
+
+## 使い方
+
+1. 設定画面の SRS セクションで「SRS 成長（実験的）」を ON にする（デフォルト OFF）
+2. 繰り返し見たいノートの frontmatter に `repeat: 1` を書く。置き場所は vault 内のどこでもよい（routine/ 配下だけは対象外）
+3. デイリーノートのルーチン挿入に、その日 due の SRS ノートが末尾に並ぶ（1日の件数は `srsMaxDaily`、デフォルト3件まで）
+4. チェックを付けて完了すると、`next_due` が先送りされ、`repeat` が 2〜3 倍に育つ。繰り返すほど出てくる間隔が開いていく
+
+やめたいノートは `repeat` を消すか 0 にする。毎日やりたくなったノートは routine/ フォルダに移す（その際 repeat の値は手で直す。「routine/ に移動したとき」を参照）。
 
 ## 設定
 
@@ -27,9 +36,9 @@ srs/ フォルダに入っている必要はない。vault のどこにあって
 
 `repeat: 0` にするか、repeat フィールドを消すと SRS 対象から外れる。routine/ に移動しても外れる。
 
-### folder-based 方式（別ブランチ）
+### folder-based 方式（廃案）
 
-`claude/fervent-haslett-fe4f13` ブランチでは srs/ フォルダに入っているノートだけを SRS 対象にする方式を残してある。vault-wide 方式と使い比べて、どちらが運用に合うか検証する。
+srs/ フォルダに入っているノートだけを SRS 対象にする方式も別ブランチで試したが、vault-wide 方式を採用して比較用ブランチは削除済み。ノートを特定フォルダに集める必要がなく、`repeat` の有無だけで出し入れできる点を取った。
 
 ## incubate 構想からの変更点
 
