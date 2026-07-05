@@ -9,17 +9,23 @@ import {
     type DailyNoteSettings,
 } from '../src/service/daily-note-context';
 
-function parseByFormat(basename: string, format: string): Date | null {
-    if (format === 'YYYY-MM-DD' && /^\d{4}-\d{2}-\d{2}$/.test(basename)) {
-        const [y, m, d] = basename.split('-').map(Number);
+// moment(value, format, true) の strict パースを模す。format と形が一致しない文字列は null。
+function parseByFormat(dateString: string, format: string): Date | null {
+    if (format === 'YYYY-MM-DD' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [y, m, d] = dateString.split('-').map(Number);
         return new Date(Date.UTC(y, m - 1, d));
     }
-    if (format === 'YYYYMMDD' && /^\d{8}$/.test(basename)) {
+    if (format === 'YYYYMMDD' && /^\d{8}$/.test(dateString)) {
         return new Date(Date.UTC(
-            Number(basename.slice(0, 4)),
-            Number(basename.slice(4, 6)) - 1,
-            Number(basename.slice(6, 8))
+            Number(dateString.slice(0, 4)),
+            Number(dateString.slice(4, 6)) - 1,
+            Number(dateString.slice(6, 8))
         ));
+    }
+    if (format === 'YYYY/MM/YYYY-MM-DD' && /^\d{4}\/\d{2}\/\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const datePart = dateString.slice(dateString.lastIndexOf('/') + 1);
+        const [y, m, d] = datePart.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, d));
     }
     return null;
 }
@@ -27,7 +33,6 @@ function parseByFormat(basename: string, format: string): Date | null {
 describe('daily-note-context', () => {
     const file = (overrides: Partial<DailyNoteDescriptor> = {}): DailyNoteDescriptor => ({
         path: 'daily/2026-02-27.md',
-        basename: '2026-02-27',
         extension: 'md',
         ...overrides,
     });
@@ -57,7 +62,7 @@ describe('daily-note-context', () => {
     });
 
     it('returns null for non-matching files', () => {
-        expect(resolveDailyNoteDate(file({ basename: 'memo' }), settings(), parseByFormat)).toBeNull();
+        expect(resolveDailyNoteDate(file({ path: 'daily/memo.md' }), settings(), parseByFormat)).toBeNull();
     });
 
     it('prefers the primary date and clones it', () => {
@@ -97,13 +102,13 @@ describe('daily-note-context', () => {
 
     it('matches a file with YYYYMMDD format', () => {
         expect(isDailyNoteMatch(
-            file({ path: 'daily/20260227.md', basename: '20260227' }),
+            file({ path: 'daily/20260227.md' }),
             settings({ format: 'YYYYMMDD' }),
             parseByFormat,
         )).toBe(true);
     });
 
-    it('rejects files in a subfolder of the configured folder', () => {
+    it('rejects files in a subfolder when the format has no slashes', () => {
         expect(isDailyNoteMatch(
             file({ path: 'daily/sub/2026-02-27.md' }),
             settings(),
@@ -113,7 +118,7 @@ describe('daily-note-context', () => {
 
     it('matches root-level files when folder is empty', () => {
         expect(isDailyNoteMatch(
-            file({ path: '2026-02-27.md', basename: '2026-02-27' }),
+            file({ path: '2026-02-27.md' }),
             settings({ folder: '' }),
             parseByFormat,
         )).toBe(true);
@@ -121,10 +126,56 @@ describe('daily-note-context', () => {
 
     it('rejects root-level files in subfolders when folder is empty', () => {
         expect(isDailyNoteMatch(
-            file({ path: 'sub/2026-02-27.md', basename: '2026-02-27' }),
+            file({ path: 'sub/2026-02-27.md' }),
             settings({ folder: '' }),
             parseByFormat,
         )).toBe(false);
+    });
+
+    // 回帰: format にスラッシュを含む（年月サブフォルダ）構成 — v0.2.1 まで認識できなかった
+    describe('slash-containing format (YYYY/MM/YYYY-MM-DD)', () => {
+        const slashed = () => settings({ format: 'YYYY/MM/YYYY-MM-DD' });
+
+        it('matches a note nested in year/month subfolders', () => {
+            expect(isDailyNoteMatch(
+                file({ path: 'daily/2026/02/2026-02-27.md' }),
+                slashed(),
+                parseByFormat,
+            )).toBe(true);
+        });
+
+        it('resolves the date from the folder-relative path', () => {
+            const resolved = resolveDailyNoteDate(
+                file({ path: 'daily/2026/02/2026-02-27.md' }),
+                slashed(),
+                parseByFormat,
+            );
+            expect(resolved?.toISOString()).toBe('2026-02-27T00:00:00.000Z');
+        });
+
+        it('matches nested notes at vault root when folder is empty', () => {
+            expect(isDailyNoteMatch(
+                file({ path: '2026/02/2026-02-27.md' }),
+                settings({ format: 'YYYY/MM/YYYY-MM-DD', folder: '' }),
+                parseByFormat,
+            )).toBe(true);
+        });
+
+        it('rejects a flat note that lacks the subfolder segments', () => {
+            expect(isDailyNoteMatch(
+                file({ path: 'daily/2026-02-27.md' }),
+                slashed(),
+                parseByFormat,
+            )).toBe(false);
+        });
+
+        it('rejects notes outside the configured folder', () => {
+            expect(isDailyNoteMatch(
+                file({ path: 'notes/2026/02/2026-02-27.md' }),
+                slashed(),
+                parseByFormat,
+            )).toBe(false);
+        });
     });
 
     it('rejects non-md files', () => {

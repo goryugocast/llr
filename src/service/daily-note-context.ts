@@ -1,6 +1,5 @@
 export interface DailyNoteDescriptor {
     path: string;
-    basename: string;
     extension: string;
 }
 
@@ -24,33 +23,43 @@ export function resolveDailyNoteFolder(pluginFolder: string, fallbackFolder: str
     return pluginFolder.trim() || fallbackFolder.trim();
 }
 
+/**
+ * デイリーノートのフォルダ相対パス（拡張子抜き）を返す。フォルダ外なら null。
+ *
+ * Daily Notes プラグインは format にスラッシュを含められる（例: YYYY/MM/YYYY-MM-DD）。
+ * その場合ノートはサブフォルダに作られるので、basename 単体ではなく相対パス全体を
+ * format で照合しないと一致しない。「フォルダ直下か」の判定は format との strict 照合が
+ * 兼ねる: format にスラッシュが無ければ、スラッシュ入りの相対パスはパースに失敗する。
+ */
+function dailyNoteDateString(file: DailyNoteDescriptor, settings: DailyNoteSettings): string | null {
+    if (file.extension !== 'md') return null;
+    if (!settings.enabled) return null;
+
+    const folder = settings.folder.trim();
+    let rest = file.path;
+    if (folder) {
+        if (!file.path.startsWith(`${folder}/`)) return null;
+        rest = file.path.slice(folder.length + 1);
+    }
+    return rest.replace(/\.md$/, '');
+}
+
 export function isDailyNoteMatch(
     file: DailyNoteDescriptor,
     settings: DailyNoteSettings,
-    parseDate: (basename: string, format: string) => Date | null
+    parseDate: (dateString: string, format: string) => Date | null
 ): boolean {
-    if (file.extension !== 'md') return false;
-    if (!settings.enabled) return false;
-
-    const folder = settings.folder.trim();
-    if (folder) {
-        if (!file.path.startsWith(`${folder}/`)) return false;
-        const rest = file.path.slice(folder.length + 1);
-        if (rest.includes('/')) return false;
-    } else if (file.path.includes('/')) {
-        return false;
-    }
-
-    return parseDate(file.basename, settings.format.trim()) !== null;
+    return resolveDailyNoteDate(file, settings, parseDate) !== null;
 }
 
 export function resolveDailyNoteDate(
     file: DailyNoteDescriptor,
     settings: DailyNoteSettings,
-    parseDate: (basename: string, format: string) => Date | null
+    parseDate: (dateString: string, format: string) => Date | null
 ): Date | null {
-    if (!isDailyNoteMatch(file, settings, parseDate)) return null;
-    return parseDate(file.basename, settings.format.trim());
+    const dateString = dailyNoteDateString(file, settings);
+    if (dateString === null) return null;
+    return parseDate(dateString, settings.format.trim());
 }
 
 export function resolveReferenceDate(primaryDate: Date | null, fallbackDate: Date): Date {

@@ -5,6 +5,7 @@
 - incubate 構想（incubate仕様.md / incubate哲学.md）を引き継ぎ、対話で練り直した結果をまとめたもの
 - 2026-06-30 の対話で方向が固まった
 - Status: Draft（お試し実装の段階。vault-wide と folder-based の2ブランチで比較検証中）
+- **main ブランチには未実装。** `srsGrowthEnabled` 設定も成長ロジックも main のコードには存在しない。vault-wide 方式の実装とテストは `srs/vault-wide` ブランチにある
 
 ## 何をするか
 

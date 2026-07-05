@@ -1,9 +1,22 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Notice, moment, setIcon } from 'obsidian';
 import { SummaryItem, SummaryPresentation, SummaryRenderGroup, buildSummaryPresentation, computeSummaryData } from '../service/summary-calculator';
 import { calculateDuration } from '../service/time-calculator';
-import { resolveDailyNoteFolder } from '../service/daily-note-context';
+import type { DailyNoteSettings } from '../service/daily-note-context';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
+
+/**
+ * SummaryView が LlrPlugin から受け取る設定参照。
+ * 以前は app.plugins.plugins['llr'].settings を内部 API 経由で直接覗いていたが、
+ * プラグイン ID 変更・private 構造変更に弱いので、必要な値だけを注入で受け取る。
+ */
+export interface SummaryViewDelegate {
+    getRoutineFolder(): string;
+    /** parseSectionTimeToInt 済み・時刻昇順のセクション境界。 */
+    getSectionBoundaries(): Array<{ value: number; label: string }>;
+    /** Daily Notes プラグイン設定（LLR のフォルダ補完込み）。main.ts の getDailyNoteSettings() と同一。 */
+    getDailyNoteSettings(): DailyNoteSettings;
+}
 
 export class SummaryView extends ItemView {
     private static readonly AUTO_SCROLL_TOP_MARGIN_PX = 18;
@@ -12,7 +25,6 @@ export class SummaryView extends ItemView {
     private static readonly AUTO_SCROLL_REQUEST_MS = 1500;
     private static readonly AUTO_SCROLL_USER_SUPPRESS_MS = 15000;
     private static readonly AUTO_SCROLL_IGNORE_EVENT_MS = 180;
-    private static routineFolder = 'routine';
 
     private currentDate: moment.Moment;
     private targetFile: TFile | null = null;
@@ -26,7 +38,7 @@ export class SummaryView extends ItemView {
     private ignoreScrollEventsUntilMs = 0;
     private lastRunningItemKey: string | null = null;
 
-    constructor(leaf: WorkspaceLeaf) {
+    constructor(leaf: WorkspaceLeaf, private readonly delegate: SummaryViewDelegate) {
         super(leaf);
         this.currentDate = moment();
     }
@@ -41,11 +53,6 @@ export class SummaryView extends ItemView {
 
     getIcon() {
         return 'list-checks';
-    }
-
-    static setRoutineFolder(folder: string): void {
-        const normalized = folder.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-        SummaryView.routineFolder = normalized || 'routine';
     }
 
     onOpen(): Promise<void> {
@@ -237,33 +244,18 @@ export class SummaryView extends ItemView {
     private getDailyNotePathCandidates(date: moment.Moment): string[] {
         const candidates: string[] = [];
 
-        // Core Daily Notes plugin settings (preferred source)
-        type DailyNotesPlugin = { enabled?: boolean; instance?: { options?: Record<string, unknown>; getDailyNote?: (date: unknown) => TFile | null } };
-        type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null }; plugins?: { plugins?: Record<string, { settings?: Record<string, unknown> }> } };
-        const appInternal = this.app as unknown as AppInternal;
-        const dailyNotesPlugin = appInternal.internalPlugins?.getPluginById?.('daily-notes');
-        const rawDailyNoteFolder = appInternal.plugins?.plugins?.['llr']?.settings?.dailyNoteFolder;
-        const llrDailyNoteFolder = typeof rawDailyNoteFolder === 'string' ? rawDailyNoteFolder : '';
-        if (dailyNotesPlugin?.enabled) {
-            const options = (dailyNotesPlugin.instance?.options ?? {});
-            const format = (typeof options.format === 'string' ? options.format : '') || 'YYYY-MM-DD';
-            const pluginFolder = typeof options.folder === 'string' ? options.folder : '';
-            // プラグインの folder が空(巻き戻り等)のときだけ LLR の補完値を使う。getDailyNoteSettings() と対称。
-            const folder = resolveDailyNoteFolder(pluginFolder, llrDailyNoteFolder);
+        // Core Daily Notes plugin settings (preferred source). Folder fallback is already
+        // resolved inside getDailyNoteSettings(), same as the daily-note match logic.
+        const settings = this.delegate.getDailyNoteSettings();
+        if (settings.enabled) {
+            const format = settings.format.trim() || 'YYYY-MM-DD';
+            const folder = settings.folder.trim();
             const fileName = `${date.format(format)}.md`;
             candidates.push(folder ? `${folder}/${fileName}` : fileName);
         }
 
-        // Legacy custom setting fallback (if available)
-        const rawWorkoutFolder = appInternal.plugins?.plugins?.['llr']?.settings?.workoutFolder;
-        const workoutFolder = (typeof rawWorkoutFolder === 'string' ? rawWorkoutFolder : '').trim();
-        if (workoutFolder) {
-            candidates.push(`${workoutFolder}/${date.format('YYYY-MM-DD')}.md`);
-        }
-
         // Root fallback (useful when no folder setting is configured)
         candidates.push(`${date.format('YYYY-MM-DD')}.md`);
-        candidates.push(`Workouts/${date.format('YYYY-MM-DD')}.md`);
 
         return [...new Set(candidates)];
     }
@@ -362,33 +354,12 @@ export class SummaryView extends ItemView {
         }
     }
 
-    private getRoutineSectionDefinitions(): Array<{ value: number; label: string }> {
-        type AppInternal = { plugins?: { plugins?: Record<string, { settings?: Record<string, unknown> }> } };
-        const appInternal = this.app as unknown as AppInternal;
-        const raw: unknown[] = (appInternal.plugins?.plugins?.['llr']?.settings?.sectionDefinitions ?? []) as unknown[];
-        if (!Array.isArray(raw)) return [];
-
-        return raw
-            .map((x) => {
-                const rec = (x && typeof x === 'object') ? x as Record<string, unknown> : {};
-                const time = typeof rec.time === 'string' ? rec.time : '';
-                const label = (typeof rec.label === 'string' ? rec.label : '').trim();
-                if (!/^\d{4}$/.test(time) || !label) return null;
-                const hh = Number(time.slice(0, 2));
-                const mm = Number(time.slice(2, 4));
-                if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-                return { value: hh * 100 + mm, label };
-            })
-            .filter((x): x is { value: number; label: string } => !!x)
-            .sort((a, b) => a.value - b.value || a.label.localeCompare(b.label, 'ja'));
-    }
-
     private resolveSectionLabelForItem(item: SummaryItem): string | null {
         const start = item.displayStartTime ?? item.times[0];
         if (!start || !/^\d{2}:\d{2}$/.test(start)) return null;
         const [hh, mm] = start.split(':').map(Number);
         const value = hh * 100 + mm;
-        const defs = this.getRoutineSectionDefinitions();
+        const defs = this.delegate.getSectionBoundaries();
         if (defs.length === 0) return null;
 
         let selected: string | null = null;
@@ -501,7 +472,7 @@ export class SummaryView extends ItemView {
     }
 
     private isRootRoutineFile(file: TFile): boolean {
-        const folderPrefix = `${SummaryView.routineFolder}/`;
+        const folderPrefix = `${this.delegate.getRoutineFolder()}/`;
         if (!file.path.startsWith(folderPrefix) || file.extension !== 'md') return false;
         const afterFolder = file.path.slice(folderPrefix.length);
         return !afterFolder.includes('/');

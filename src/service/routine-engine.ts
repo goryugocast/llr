@@ -168,10 +168,6 @@ export class RoutineEngine {
         return value;
     }
 
-    private isDateStringAfter(dateStr: string, baseDate: Date): boolean {
-        return dateStr > toDateString(this.normalizeToDateOnly(baseDate));
-    }
-
     private calculateNextDueForDueAnchor(
         frequency: Frequency,
         nextDue: string | undefined,

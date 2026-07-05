@@ -66,8 +66,9 @@ export class DailyNoteAutoInsertController {
         const settings = this.deps.getDailyNoteSettings();
         if (!settings.enabled) return null;
 
-        const basename = moment().format(settings.format.trim());
-        const path = settings.folder.trim() ? `${settings.folder.trim()}/${basename}.md` : `${basename}.md`;
+        // format にスラッシュが入ると相対パス（例: 2026/07/2026-07-05）になる
+        const relativePath = moment().format(settings.format.trim());
+        const path = settings.folder.trim() ? `${settings.folder.trim()}/${relativePath}.md` : `${relativePath}.md`;
         const file = this.app.vault.getAbstractFileByPath(path);
         return file instanceof TFile ? file : null;
     }
