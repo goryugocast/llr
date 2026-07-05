@@ -797,7 +797,7 @@ export default class LlrPlugin extends Plugin {
         return isDailyNoteMatch(
             file,
             this.getDailyNoteSettings(),
-            (basename, format) => this.parseDailyNoteBasename(basename, format)
+            (dateString, format) => this.parseDailyNoteDateString(dateString, format)
         );
     }
 
@@ -805,7 +805,7 @@ export default class LlrPlugin extends Plugin {
         return resolveDailyNoteDate(
             file,
             this.getDailyNoteSettings(),
-            (basename, format) => this.parseDailyNoteBasename(basename, format)
+            (dateString, format) => this.parseDailyNoteDateString(dateString, format)
         );
     }
 
@@ -822,8 +822,8 @@ export default class LlrPlugin extends Plugin {
         };
     }
 
-    private parseDailyNoteBasename(basename: string, format: string): Date | null {
-        const parsed = moment(basename, format, true);
+    private parseDailyNoteDateString(dateString: string, format: string): Date | null {
+        const parsed = moment(dateString, format, true);
         return parsed.isValid() ? parsed.toDate() : null;
     }
 
