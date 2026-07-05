@@ -100,8 +100,9 @@ export class DailyNoteAutoInsertController {
             if (content.includes(DAILY_ROUTINE_EXPANDED_STAMP_PREFIX)) return;
             const hasMarker = DAILY_ROUTINE_TEMPLATE_MARKERS.some((marker) => content.includes(marker));
             if (!hasMarker) {
-                // Templater may populate the content after create; retry for a short window.
-                if (trigger === 'create') {
+                // Retry only when the file is still empty (template engine hasn't written yet).
+                // Once content exists without a marker, the user isn't using LLR markers — stop.
+                if (trigger === 'create' && content.trim().length === 0) {
                     this.schedule(file, attempt + 1, trigger);
                 }
                 return;
