@@ -133,6 +133,21 @@ Once a routine is completed, `next_due` updates automatically. The full "is this
 
 ---
 
+## SRS (experimental)
+
+Spaced repetition for regular notes — reread things you want to remember, at intervals that grow on their own. No grading, no flashcards: check it off and the interval expands.
+
+1. Enable **SRS growth (experimental)** in settings (off by default)
+2. Add `repeat: 1` to the frontmatter of any note **outside** the `routine/` folder — it can live anywhere in your vault
+3. Due notes appear at the bottom of the daily-note routine insertion, up to **SRS daily limit** per day (default 3; extras carry over)
+4. Completing a note pushes `next_due` forward and multiplies `repeat` by 2–3×, so a note you keep completing drifts from daily to weekly to monthly
+
+If you complete a note late but still found it worth rereading, the elapsed days become the growth base — the same idea as Anki's handling of overdue cards. To stop reviewing a note, remove `repeat` (or set it to `0`). To make it a daily habit instead, move it into `routine/`.
+
+Details: [SRS spec](https://github.com/goryugocast/llr/blob/main/docs/specs/SRS%E4%BB%95%E6%A7%98.md).
+
+---
+
 ## Summary View
 
 Run `Open Summary View` for a sidebar overview of the day.

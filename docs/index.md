@@ -100,7 +100,6 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [routine-reschedule-marker仕様](specs/routine-reschedule-marker仕様.md): `@MMDD` で routine 先送り
 - [未来日付デイリーノートとルーチン基準日ポリシー](specs/未来日付デイリーノートとルーチン基準日ポリシー.md): future-clamp 方針
 - [SRS仕様](specs/SRS仕様.md): 完了で `repeat` が育つ SRS growth（draft、main 未実装。`srs/vault-wide` ブランチで実装・テスト済み、実運用検証中。使い方はこの仕様書の「使い方」節）
-- [incubate仕様](specs/incubate仕様.md) / [incubate哲学](specs/incubate哲学.md): SRS 構想の前身（draft。内容は [SRS仕様](specs/SRS仕様.md) に吸収済み）
 
 ## Design（設計思想）
 - [設計思想](specs/設計思想.md)

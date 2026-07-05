@@ -133,7 +133,7 @@
 ### 0. SRS growth — **main では未実装（Draft / 実験ブランチのみ）**
 - 「完了すると `repeat` が 2〜3 倍に育つ」SRS growth（[[SRS仕様]]）は main には入っていない。
 - 実装・テスト（`srs-completion.test.ts`）は `srs/vault-wide` ブランチにある。folder-based 方式は比較検証の結果廃案（比較ブランチは削除済み）。
-- 前身の incubate 構想（[[incubate仕様]] / [[incubate哲学]]）も未実装のまま SRS 仕様に吸収された。
+- 前身の incubate 構想は未実装のまま SRS 仕様に吸収された（incubate の設計文書は削除済み）。
 
 ### A. Day Boundary / Archive
 - `Llr: Start New Day`

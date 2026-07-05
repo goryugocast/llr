@@ -2,7 +2,7 @@
 
 ## この文書の役割
 
-- incubate 構想（incubate仕様.md / incubate哲学.md）を引き継ぎ、対話で練り直した結果をまとめたもの
+- incubate 構想（前身の設計文書。内容をこの仕様に吸収して削除済み）を引き継ぎ、対話で練り直した結果をまとめたもの
 - 2026-06-30 の対話で方向が固まった
 - Status: Draft（`srs/vault-wide` ブランチで実装・テスト済み、実運用で検証中）
 - **main ブランチには未実装。** `srsGrowthEnabled` 設定も成長ロジックも main のコードには存在しない。実装（vault-wide 方式）とテスト（`tests/srs-completion.test.ts` ほか）は `srs/vault-wide` ブランチにある
@@ -123,10 +123,6 @@ SRS ノートはデイリーノートの一番下に配置される。routine �
 6月25日 due のノートを 6月30日のデイリーノートで完了した場合、completionDay は 6月30日（デイリーノートの日付）になる。next_due は 6月30日 + repeat で計算される。overdue growth により、5日間の経過日数が考慮される。
 
 ## 今後やること
-
-### 設計書の整理
-
-incubate仕様.md と incubate哲学.md は SRS 仕様に吸収されたので、アーカイブするか削除する。
 
 ### テスト
 
