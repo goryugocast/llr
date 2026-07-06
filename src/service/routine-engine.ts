@@ -675,14 +675,11 @@ export class RoutineEngine {
 
             const note = this.readRoutineNote(file);
             if (!note) continue;
-            if (!note.next_due && (note.frequency.type === 'none' || note.repeatExplicit)) continue;
 
-            const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
-            const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
-
-            if (this.shouldDisplayOnTargetDate(normalizedNote, today, displayDue)) {
-                normalizedNote.isSrs = true;
-                results.push(normalizedNote);
+            const todayStr = toDateString(today);
+            if (!note.next_due || note.next_due <= todayStr) {
+                note.isSrs = true;
+                results.push(note);
             }
         }
     }
