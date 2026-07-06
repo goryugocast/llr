@@ -7,6 +7,7 @@ import {
     buildSrsBatchBlock,
     SRS_BATCH_START,
     SRS_BATCH_END,
+    SRS_BATCH_DONE,
 } from '../src/service/srs-batch';
 
 describe('sortSrsCandidatesByOverdue', () => {
@@ -312,5 +313,44 @@ describe('SRS バッチ補充の統合シナリオ', () => {
         ].join('\n');
 
         expect(isSrsBatchAllComplete(content)).toBe(false);
+    });
+
+    it('全完了で候補なし → done マーカーに書き換わるべき状態', () => {
+        const content = [
+            SRS_BATCH_START,
+            '- [x] [[SRS_1]]',
+            '- [x] [[SRS_2]]',
+            SRS_BATCH_END,
+        ].join('\n');
+
+        expect(isSrsBatchAllComplete(content)).toBe(true);
+
+        const alreadyLinked = collectLinkedBasenames(content);
+        const allCandidates = [
+            { basename: 'SRS_1', next_due: '2026-07-01' },
+            { basename: 'SRS_2', next_due: '2026-07-03' },
+        ];
+        const fresh = allCandidates.filter(c => !alreadyLinked.has(c.basename));
+
+        expect(fresh).toHaveLength(0);
+
+        const expected = content.replace(SRS_BATCH_END, SRS_BATCH_DONE);
+        expect(expected).toContain('<!-- llr:srs done -->');
+        expect(expected).not.toContain('<!-- llr:srs end -->');
+    });
+
+    it('done マーカーの区間では isBatchAllComplete が false を返す', () => {
+        const content = [
+            SRS_BATCH_START,
+            '- [x] [[A]]',
+            '- [x] [[B]]',
+            SRS_BATCH_DONE,
+        ].join('\n');
+
+        expect(isSrsBatchAllComplete(content)).toBe(false);
+    });
+
+    it('done マーカーの文字列が正しい', () => {
+        expect(SRS_BATCH_DONE).toBe('<!-- llr:srs done -->');
     });
 });
