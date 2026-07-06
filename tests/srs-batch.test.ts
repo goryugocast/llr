@@ -140,6 +140,43 @@ describe('isSrsBatchAllComplete', () => {
 
         expect(isSrsBatchAllComplete(content)).toBe(false);
     });
+
+    it('区間内にメモ行があってもチェックボックスだけで判定する', () => {
+        const content = [
+            SRS_BATCH_START,
+            '- [x] [[A]] 17:00 - 17:05 (5m)',
+            'これ面白かった',
+            '',
+            '- [x] [[B]] 17:05 - 17:10 (5m)',
+            SRS_BATCH_END,
+        ].join('\n');
+
+        expect(isSrsBatchAllComplete(content)).toBe(true);
+    });
+
+    it('メモ行があっても未完了チェックボックスがあれば false', () => {
+        const content = [
+            SRS_BATCH_START,
+            '- [x] [[A]]',
+            'メモ',
+            '- [ ] [[B]]',
+            SRS_BATCH_END,
+        ].join('\n');
+
+        expect(isSrsBatchAllComplete(content)).toBe(false);
+    });
+
+    it('チェックボックスでない箇条書きは判定に含めない', () => {
+        const content = [
+            SRS_BATCH_START,
+            '- [x] [[A]]',
+            '- 普通のリスト項目',
+            '- [x] [[B]]',
+            SRS_BATCH_END,
+        ].join('\n');
+
+        expect(isSrsBatchAllComplete(content)).toBe(true);
+    });
 });
 
 describe('collectLinkedBasenames', () => {
