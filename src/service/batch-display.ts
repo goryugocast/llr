@@ -7,11 +7,11 @@
  */
 
 export function batchStartMarker(tag: string): string {
-    return `<!-- llr:${tag}-batch start -->`;
+    return `<!-- llr:${tag} start -->`;
 }
 
 export function batchEndMarker(tag: string): string {
-    return `<!-- llr:${tag}-batch end -->`;
+    return `<!-- llr:${tag} end -->`;
 }
 
 export interface BatchCandidate {

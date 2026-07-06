@@ -127,11 +127,11 @@ SRS ノートはデイリーノートの一番下に配置される。routine �
 SRS ノートはデイリーノートに一度に全部出さず、`srsMaxDaily` 件ずつバッチで表示する。バッチ区間は HTML コメントのマーカーで囲まれる：
 
 ```markdown
-<!-- llr:srs-batch start -->
+<!-- llr:srs start -->
 - [ ] [[ノートA]]
 - [ ] [[ノートB]]
 - [ ] [[ノートC]]
-<!-- llr:srs-batch end -->
+<!-- llr:srs end -->
 ```
 
 ### バッチ内の優先順
