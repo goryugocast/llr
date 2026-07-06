@@ -17,6 +17,7 @@ import { TaskParser } from './service/task-parser';
 import { TranslationKey, UILanguage, resolveLanguage, translate } from './i18n';
 import { DEFAULT_SETTINGS, LlrSettings, SectionDefinition, normalizeDailyNoteFolder, normalizeRoutineFolder, normalizeSectionDefinitions, parseSectionTimeToInt } from './service/settings';
 import { LlrSettingTab } from './view/settings-tab';
+import { SRS_BATCH_END, isSrsBatchAllComplete, collectLinkedBasenames, sortSrsCandidatesByOverdue, formatSrsTaskLine, buildSrsBatchBlock } from './service/srs-batch';
 
 interface LlrPostActionContext {
     editor: Editor;
@@ -39,9 +40,6 @@ interface ApplyTaskResultOptions {
 
 const LEGACY_SKIP_COMMAND_ID = 'defer-task-to-tomorrow';
 const SKIP_COMMAND_ID = 'skip-task-log-only';
-
-const SRS_BATCH_START = '<!-- llr:srs-batch start -->';
-const SRS_BATCH_END = '<!-- llr:srs-batch end -->';
 
 export default class LlrPlugin extends Plugin {
     private routineEngine: RoutineEngine;
@@ -1631,42 +1629,36 @@ export default class LlrPlugin extends Plugin {
         const routineNotes = dueRoutines.filter(r => !r.isSrs);
         let srsNotes = dueRoutines.filter(r => r.isSrs);
 
-        // SRS: sort by next_due ascending (oldest first) for MAX cutoff
-        srsNotes.sort((a, b) => (a.next_due ?? '').localeCompare(b.next_due ?? ''));
+        const todayStr = targetDate.toISOString().slice(0, 10);
+        const srsSorted = sortSrsCandidatesByOverdue(
+            srsNotes.map(r => ({ basename: r.file.basename, next_due: r.next_due, start: r.start, estimate: r.estimate })),
+            todayStr
+        );
 
         const max = this.settings.srsMaxDaily;
-        if (max > 0 && srsNotes.length > max) {
-            srsNotes = srsNotes.slice(0, max);
-        }
+        const srsBatch = max > 0 && srsSorted.length > max ? srsSorted.slice(0, max) : srsSorted;
 
-        const combined = [...routineNotes, ...srsNotes];
-
-        // Sort priority: SRS without section goes to bottom (Infinity),
-        // SRS with section uses that section, routine uses section ?? -Infinity
-        const sortKey = (r: typeof combined[0]): [number, number] => {
-            const sec = r.isSrs && r.section === undefined ? Infinity : (r.section ?? -Infinity);
+        const sortKey = (r: typeof routineNotes[0]): [number, number] => {
+            const sec = r.section ?? -Infinity;
             const start = r.start ?? -Infinity;
             return [sec, start];
         };
 
-        const sorted = [...combined].sort((a, b) => {
+        const sortedRoutines = [...routineNotes].sort((a, b) => {
             const [as1, as2] = sortKey(a);
             const [bs1, bs2] = sortKey(b);
             return as1 !== bs1 ? as1 - bs1 : as2 - bs2;
         });
 
-        // Helper: build a single task line string
         const formatStart = (value: number | undefined): string | null => {
             if (typeof value !== 'number') return null;
             const hh = Math.floor(value / 100);
             const mm = value % 100;
-            if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || mm < 0 || mm > 59) {
-                return null;
-            }
+            if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || mm < 0 || mm > 59) return null;
             return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
         };
 
-        const buildLine = (r: typeof sorted[0]): string => {
+        const buildLine = (r: typeof sortedRoutines[0]): string => {
             const linkName = r.file.basename;
             const startText = formatStart(r.start);
             const prefix = startText ? `${startText} ` : '';
@@ -1674,16 +1666,10 @@ export default class LlrPlugin extends Plugin {
             return `- [ ] ${prefix}[[${linkName}]]${suffix}`;
         };
 
-        // Build grouped output
         const outputLines: string[] = [];
-        const srsLines: string[] = [];
-        let currentLabel: string | null | undefined = undefined; // undefined = not yet started
+        let currentLabel: string | null | undefined = undefined;
 
-        for (const r of sorted) {
-            if (r.isSrs) {
-                srsLines.push(buildLine(r));
-                continue;
-            }
+        for (const r of sortedRoutines) {
             const label = this.getRoutineSectionHeading(r.section);
             if (label !== currentLabel) {
                 if (label !== null) {
@@ -1694,11 +1680,9 @@ export default class LlrPlugin extends Plugin {
             outputLines.push(buildLine(r));
         }
 
-        if (srsLines.length > 0) {
+        if (srsBatch.length > 0) {
             outputLines.push('');
-            outputLines.push(SRS_BATCH_START);
-            outputLines.push(...srsLines);
-            outputLines.push(SRS_BATCH_END);
+            outputLines.push(...buildSrsBatchBlock(srsBatch));
         }
 
         return outputLines;
@@ -1711,56 +1695,28 @@ export default class LlrPlugin extends Plugin {
         if (max <= 0) return;
 
         const content = editor.getValue();
-        const startIdx = content.indexOf(SRS_BATCH_START);
-        const endIdx = content.indexOf(SRS_BATCH_END);
-        if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
+        if (!isSrsBatchAllComplete(content)) return;
 
-        const batchContent = content.slice(
-            startIdx + SRS_BATCH_START.length,
-            endIdx
-        );
-
-        const taskLines = batchContent.split('\n').filter(l => /^- \[[ x/]\]/.test(l.trim()));
-        if (taskLines.length === 0) return;
-
-        const unchecked = taskLines.filter(l => /^- \[ \]/.test(l.trim()));
-        if (unchecked.length > 0) return;
-
-        const alreadyLinked = new Set<string>();
-        const allContent = content;
-        const linkRegex = /\[\[([^\]]+)\]\]/g;
-        let match: RegExpExecArray | null;
-        while ((match = linkRegex.exec(allContent)) !== null) {
-            alreadyLinked.add(match[1]);
-        }
+        const alreadyLinked = collectLinkedBasenames(content);
 
         const targetDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
+        const todayStr = targetDate.toISOString().slice(0, 10);
         const dueRoutines = this.routineEngine.fetchDueRoutines(targetDate);
-        const candidates = dueRoutines
-            .filter(r => r.isSrs)
-            .filter(r => !alreadyLinked.has(r.file.basename))
-            .sort((a, b) => (a.next_due ?? '').localeCompare(b.next_due ?? ''));
+        const candidates = sortSrsCandidatesByOverdue(
+            dueRoutines
+                .filter(r => r.isSrs)
+                .filter(r => !alreadyLinked.has(r.file.basename))
+                .map(r => ({ basename: r.file.basename, next_due: r.next_due, start: r.start, estimate: r.estimate })),
+            todayStr
+        );
 
         if (candidates.length === 0) return;
 
         const batch = candidates.slice(0, max);
+        const newLines = batch.map(formatSrsTaskLine);
 
-        const formatStart = (value: number | undefined): string | null => {
-            if (typeof value !== 'number') return null;
-            const hh = Math.floor(value / 100);
-            const mm = value % 100;
-            if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || mm < 0 || mm > 59) return null;
-            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-        };
-
-        const newLines = batch.map(r => {
-            const startText = formatStart(r.start);
-            const prefix = startText ? `${startText} ` : '';
-            const suffix = r.estimate ? ` (${r.estimate}m)` : '';
-            return `- [ ] ${prefix}[[${r.file.basename}]]${suffix}`;
-        });
-
-        const endLineIndex = editor.getValue().slice(0, endIdx).split('\n').length - 1;
+        const endIdx = content.indexOf(SRS_BATCH_END);
+        const endLineIndex = content.slice(0, endIdx).split('\n').length - 1;
 
         const insertPos = { line: endLineIndex, ch: 0 };
         editor.replaceRange(newLines.join('\n') + '\n', insertPos);
