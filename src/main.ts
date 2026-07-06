@@ -40,6 +40,9 @@ interface ApplyTaskResultOptions {
 const LEGACY_SKIP_COMMAND_ID = 'defer-task-to-tomorrow';
 const SKIP_COMMAND_ID = 'skip-task-log-only';
 
+const SRS_BATCH_START = '<!-- llr:srs-batch start -->';
+const SRS_BATCH_END = '<!-- llr:srs-batch end -->';
+
 export default class LlrPlugin extends Plugin {
     private routineEngine: RoutineEngine;
     private settings: LlrSettings = DEFAULT_SETTINGS;
@@ -1022,6 +1025,11 @@ export default class LlrPlugin extends Plugin {
                 completionRequest
             );
         }
+
+        // SRS バッチ区間が全完了なら次のバッチを補充する
+        if (activeView?.file?.path === file.path) {
+            await this.replenishSrsBatchIfNeeded(activeView.editor, file);
+        }
     }
 
     private scheduleRoutineScheduleValidation(file: TFile): void {
@@ -1668,27 +1676,100 @@ export default class LlrPlugin extends Plugin {
 
         // Build grouped output
         const outputLines: string[] = [];
+        const srsLines: string[] = [];
         let currentLabel: string | null | undefined = undefined; // undefined = not yet started
-        let srsBlankLineInserted = false;
 
         for (const r of sorted) {
+            if (r.isSrs) {
+                srsLines.push(buildLine(r));
+                continue;
+            }
             const label = this.getRoutineSectionHeading(r.section);
             if (label !== currentLabel) {
-                // Emit heading only if transitioning to a new named section
                 if (label !== null) {
                     outputLines.push(label);
                 }
                 currentLabel = label;
             }
-            // 視認性のため、SRS ノートの最初の行の直前に空行を1つ入れて区切る
-            if (r.isSrs && !srsBlankLineInserted) {
-                outputLines.push('');
-                srsBlankLineInserted = true;
-            }
             outputLines.push(buildLine(r));
         }
 
+        if (srsLines.length > 0) {
+            outputLines.push('');
+            outputLines.push(SRS_BATCH_START);
+            outputLines.push(...srsLines);
+            outputLines.push(SRS_BATCH_END);
+        }
+
         return outputLines;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- async for consistency with other post-action methods
+    private async replenishSrsBatchIfNeeded(editor: Editor, file: TFile): Promise<void> {
+        if (!this.settings.srsGrowthEnabled) return;
+        const max = this.settings.srsMaxDaily;
+        if (max <= 0) return;
+
+        const content = editor.getValue();
+        const startIdx = content.indexOf(SRS_BATCH_START);
+        const endIdx = content.indexOf(SRS_BATCH_END);
+        if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
+
+        const batchContent = content.slice(
+            startIdx + SRS_BATCH_START.length,
+            endIdx
+        );
+
+        const taskLines = batchContent.split('\n').filter(l => /^- \[[ x/]\]/.test(l.trim()));
+        if (taskLines.length === 0) return;
+
+        const unchecked = taskLines.filter(l => /^- \[ \]/.test(l.trim()));
+        if (unchecked.length > 0) return;
+
+        const alreadyLinked = new Set<string>();
+        const allContent = content;
+        const linkRegex = /\[\[([^\]]+)\]\]/g;
+        let match: RegExpExecArray | null;
+        while ((match = linkRegex.exec(allContent)) !== null) {
+            alreadyLinked.add(match[1]);
+        }
+
+        const targetDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
+        const dueRoutines = this.routineEngine.fetchDueRoutines(targetDate);
+        const candidates = dueRoutines
+            .filter(r => r.isSrs)
+            .filter(r => !alreadyLinked.has(r.file.basename))
+            .sort((a, b) => (a.next_due ?? '').localeCompare(b.next_due ?? ''));
+
+        if (candidates.length === 0) return;
+
+        const batch = candidates.slice(0, max);
+
+        const formatStart = (value: number | undefined): string | null => {
+            if (typeof value !== 'number') return null;
+            const hh = Math.floor(value / 100);
+            const mm = value % 100;
+            if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || mm < 0 || mm > 59) return null;
+            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        };
+
+        const newLines = batch.map(r => {
+            const startText = formatStart(r.start);
+            const prefix = startText ? `${startText} ` : '';
+            const suffix = r.estimate ? ` (${r.estimate}m)` : '';
+            return `- [ ] ${prefix}[[${r.file.basename}]]${suffix}`;
+        });
+
+        const endLineIndex = editor.getValue().slice(0, endIdx).split('\n').length - 1;
+
+        const insertPos = { line: endLineIndex, ch: 0 };
+        editor.replaceRange(newLines.join('\n') + '\n', insertPos);
+
+        this.debugLog('SRS batch replenished', {
+            file: file.path,
+            addedCount: newLines.length,
+            remainingCandidates: candidates.length - batch.length,
+        });
     }
 
     async handleInsertRoutine(editor: Editor, view: MarkdownView): Promise<void> {
