@@ -6,6 +6,7 @@ import { computeStatusBarMetrics } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
+import { routineSortKey } from './service/routine-sort';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
@@ -1594,17 +1595,9 @@ export default class LlrPlugin extends Plugin {
             return [];
         }
 
-        // Sort priority: section (asc) > start (asc)
-        // Records with no section come first (treated as -Infinity)
-        const sortKey = (r: typeof dueRoutines[0]): [number, number] => {
-            const sec = r.section ?? -Infinity;
-            const start = r.start ?? -Infinity;
-            return [sec, start];
-        };
-
         const sorted = [...dueRoutines].sort((a, b) => {
-            const [as1, as2] = sortKey(a);
-            const [bs1, bs2] = sortKey(b);
+            const [as1, as2] = routineSortKey(a);
+            const [bs1, bs2] = routineSortKey(b);
             return as1 !== bs1 ? as1 - bs1 : as2 - bs2;
         });
 
