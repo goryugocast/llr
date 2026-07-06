@@ -14,6 +14,10 @@ export function batchEndMarker(tag: string): string {
     return `<!-- llr:${tag} end -->`;
 }
 
+export function batchDoneMarker(tag: string): string {
+    return `<!-- llr:${tag} done -->`;
+}
+
 export interface BatchCandidate {
     basename: string;
     next_due?: string;

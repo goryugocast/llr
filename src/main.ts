@@ -18,7 +18,7 @@ import { TaskParser } from './service/task-parser';
 import { TranslationKey, UILanguage, resolveLanguage, translate } from './i18n';
 import { DEFAULT_SETTINGS, LlrSettings, SectionDefinition, normalizeDailyNoteFolder, normalizeRoutineFolder, normalizeSectionDefinitions, parseSectionTimeToInt } from './service/settings';
 import { LlrSettingTab } from './view/settings-tab';
-import { SRS_BATCH_END, isSrsBatchAllComplete, collectLinkedBasenames, sortSrsCandidatesByOverdue, formatSrsTaskLine, buildSrsBatchBlock } from './service/srs-batch';
+import { SRS_BATCH_END, SRS_BATCH_DONE, isSrsBatchAllComplete, collectLinkedBasenames, sortSrsCandidatesByOverdue, formatSrsTaskLine, buildSrsBatchBlock } from './service/srs-batch';
 
 interface LlrPostActionContext {
     editor: Editor;
@@ -1720,7 +1720,17 @@ export default class LlrPlugin extends Plugin {
             todayStr
         );
 
-        if (candidates.length === 0) return;
+        if (candidates.length === 0) {
+            const endMarker = SRS_BATCH_END;
+            const endPos = content.indexOf(endMarker);
+            if (endPos !== -1) {
+                const endLine = content.slice(0, endPos).split('\n').length - 1;
+                const lineText = editor.getLine(endLine);
+                editor.setLine(endLine, lineText.replace(endMarker, SRS_BATCH_DONE));
+            }
+            this.debugLog('SRS batch all done — no more candidates');
+            return;
+        }
 
         const batch = candidates.slice(0, max);
         const newLines = batch.map(formatSrsTaskLine);
