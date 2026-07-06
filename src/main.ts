@@ -300,6 +300,18 @@ export default class LlrPlugin extends Plugin {
             }
         });
 
+        this.addCommand({
+            id: 'replenish-srs',
+            name: this.t('command.replenishSrs'),
+            icon: 'layers',
+            editorCallback: async (editor: Editor, view: MarkdownView) => {
+                await this.runCommandWithDebug('replenish-srs', this.t('command.replenishSrs'), async () => {
+                    this.debugLog('Command: Replenish SRS batch');
+                    await this.replenishSrsBatchIfNeeded(editor, view.file);
+                });
+            }
+        });
+
         this.migrateLegacySkipCommandHotkeys();
     }
 
