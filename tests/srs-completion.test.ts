@@ -207,6 +207,83 @@ describe('SRS completion (vault-wide)', () => {
             expect(results).toHaveLength(0);
         });
 
+        it('should pick up overdue SRS notes (next_due before today)', () => {
+            const overdueFile = makeFile('notes/Book/古い本.md');
+
+            mockApp.vault.getFolderByPath.mockReturnValue(null);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([overdueFile]);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 5, next_due: '2026-06-20' },
+            });
+
+            const today = new Date('2026-07-06T10:00:00');
+            const results = engine.fetchDueRoutines(today);
+
+            expect(results).toHaveLength(1);
+            expect(results[0].isSrs).toBe(true);
+            expect(results[0].next_due).toBe('2026-06-20');
+        });
+
+        it('should pick up SRS notes without next_due (never completed)', () => {
+            const newFile = makeFile('notes/Book/新しい本.md');
+
+            mockApp.vault.getFolderByPath.mockReturnValue(null);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([newFile]);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 3 },
+            });
+
+            const today = new Date('2026-07-06T10:00:00');
+            const results = engine.fetchDueRoutines(today);
+
+            expect(results).toHaveLength(1);
+            expect(results[0].isSrs).toBe(true);
+        });
+
+        it('should NOT pick up SRS notes with next_due in the future', () => {
+            const futureFile = makeFile('notes/Book/未来の本.md');
+
+            mockApp.vault.getFolderByPath.mockReturnValue(null);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([futureFile]);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: 10, next_due: '2026-07-15' },
+            });
+
+            const today = new Date('2026-07-06T10:00:00');
+            const results = engine.fetchDueRoutines(today);
+
+            expect(results).toHaveLength(0);
+        });
+
+        it('should pick up multiple overdue + no-due SRS notes together', () => {
+            const overdueFile = makeFile('notes/A.md');
+            const noDueFile = makeFile('notes/B.md');
+            const futureFile = makeFile('notes/C.md');
+
+            mockApp.vault.getFolderByPath.mockReturnValue(null);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([overdueFile, noDueFile, futureFile]);
+            mockApp.metadataCache.getFileCache.mockImplementation((file: TFile) => {
+                if ((file as any).path === 'notes/A.md') {
+                    return { frontmatter: { repeat: 5, next_due: '2026-06-25' } };
+                }
+                if ((file as any).path === 'notes/B.md') {
+                    return { frontmatter: { repeat: 1 } };
+                }
+                if ((file as any).path === 'notes/C.md') {
+                    return { frontmatter: { repeat: 10, next_due: '2026-07-20' } };
+                }
+                return null;
+            });
+
+            const today = new Date('2026-07-06T10:00:00');
+            const results = engine.fetchDueRoutines(today);
+
+            expect(results).toHaveLength(2);
+            expect(results.some(r => r.file.path === 'notes/A.md')).toBe(true);
+            expect(results.some(r => r.file.path === 'notes/B.md')).toBe(true);
+            expect(results.some(r => r.file.path === 'notes/C.md')).toBe(false);
+        });
+
         it('should not duplicate routine/ files already collected', () => {
             const routineFile = makeFile('routine/毎日の運動.md');
 

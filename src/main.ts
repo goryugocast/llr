@@ -966,6 +966,9 @@ export default class LlrPlugin extends Plugin {
                     trackedItems: currentSnapshot.size,
                 });
             }
+            if (activeView?.file?.path === file.path) {
+                await this.replenishSrsBatchIfNeeded(activeView.editor, file);
+            }
             return;
         }
 
