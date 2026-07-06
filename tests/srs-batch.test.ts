@@ -50,16 +50,32 @@ describe('sortSrsCandidatesByOverdue', () => {
         expect(sorted[1].basename).toBe('未来');
     });
 
-    it('next_due がない候補は最後に来る', () => {
+    it('next_due がない候補は最優先（一度も出ていないノート）', () => {
         const candidates = [
-            { basename: 'なし' },
             { basename: '過去', next_due: '2026-07-01' },
+            { basename: 'なし' },
+            { basename: '未来', next_due: '2026-07-10' },
         ];
 
         const sorted = sortSrsCandidatesByOverdue(candidates, '2026-07-06');
 
-        expect(sorted[0].basename).toBe('過去');
-        expect(sorted[1].basename).toBe('なし');
+        expect(sorted[0].basename).toBe('なし');
+        expect(sorted[1].basename).toBe('過去');
+        expect(sorted[2].basename).toBe('未来');
+    });
+
+    it('next_due なしが複数あっても overdue より先に来る', () => {
+        const candidates = [
+            { basename: '過去', next_due: '2026-06-20' },
+            { basename: 'なしA' },
+            { basename: 'なしB' },
+        ];
+
+        const sorted = sortSrsCandidatesByOverdue(candidates, '2026-07-06');
+
+        expect(sorted[0].basename).toBe('なしA');
+        expect(sorted[1].basename).toBe('なしB');
+        expect(sorted[2].basename).toBe('過去');
     });
 
     it('全部が同じ日なら順序は安定する', () => {
@@ -230,6 +246,24 @@ describe('SRS バッチ補充の統合シナリオ', () => {
 
         expect(batch).toHaveLength(1);
         expect(batch[0].basename).toBe('SRS_4');
+    });
+
+    it('next_due なしの候補が overdue より先に選ばれる', () => {
+        const alreadyLinked = new Set(['SRS_1']);
+        const allCandidates = [
+            { basename: 'SRS_1', next_due: '2026-07-01' },
+            { basename: 'SRS_新規' },
+            { basename: 'SRS_古い', next_due: '2026-06-20' },
+            { basename: 'SRS_最近', next_due: '2026-07-05' },
+        ];
+
+        const fresh = allCandidates.filter(c => !alreadyLinked.has(c.basename));
+        const sorted = sortSrsCandidatesByOverdue(fresh, '2026-07-06');
+        const batch = sorted.slice(0, 3);
+
+        expect(batch[0].basename).toBe('SRS_新規');
+        expect(batch[1].basename).toBe('SRS_古い');
+        expect(batch[2].basename).toBe('SRS_最近');
     });
 
     it('未完了があれば補充しない', () => {

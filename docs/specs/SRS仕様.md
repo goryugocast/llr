@@ -136,7 +136,7 @@ SRS ノートはデイリーノートに一度に全部出さず、`srsMaxDaily`
 
 ### バッチ内の優先順
 
-overdue（next_due が当日以前）のノートが先に来る。overdue 同士は next_due が古い順。overdue でないノート（当日が due のものを含まない）は overdue の後ろに、next_due の昇順で並ぶ。next_due がないノートは最後になる。
+next_due がないノート（一度も完了していない）が最優先。次に overdue（next_due が当日以前）のノートが古い順。最後に未来の due のノートが next_due の昇順で並ぶ。
 
 ### 補充の条件
 

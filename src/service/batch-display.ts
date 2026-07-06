@@ -40,10 +40,15 @@ export function sortCandidatesByOverdue(
     candidates: BatchCandidate[],
     todayStr: string
 ): BatchCandidate[] {
+    const priority = (c: BatchCandidate): number => {
+        if (!c.next_due) return 0;
+        if (c.next_due <= todayStr) return 1;
+        return 2;
+    };
     return [...candidates].sort((a, b) => {
-        const aOverdue = a.next_due && a.next_due <= todayStr ? 1 : 0;
-        const bOverdue = b.next_due && b.next_due <= todayStr ? 1 : 0;
-        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+        const ap = priority(a);
+        const bp = priority(b);
+        if (ap !== bp) return ap - bp;
         return (a.next_due ?? '').localeCompare(b.next_due ?? '');
     });
 }
