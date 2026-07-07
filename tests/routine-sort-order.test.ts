@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { routineSortKey } from '../src/service/routine-sort';
+import { routineSortKey, groupRoutineLinesWithSections } from '../src/service/routine-sort';
 
 describe('routineSortKey', () => {
     const sort = (items: { section?: number; start?: number }[]) =>
@@ -70,5 +70,70 @@ describe('routineSortKey', () => {
         const sorted = sort(items);
         expect(sorted[0].start).toBeUndefined();
         expect(sorted[1].start).toBe(800);
+    });
+});
+
+describe('groupRoutineLinesWithSections', () => {
+    it('セクション付き→セクションなしの間に空行を入れる', () => {
+        const items = [
+            { line: '- [ ] [[朝タスク]]', sectionHeading: '# 朝' },
+            { line: '- [ ] [[夜タスク]]', sectionHeading: '# 夜' },
+            { line: '- [ ] [[セクションなし]]', sectionHeading: null },
+        ];
+        const lines = groupRoutineLinesWithSections(items);
+        expect(lines).toEqual([
+            '# 朝',
+            '- [ ] [[朝タスク]]',
+            '# 夜',
+            '- [ ] [[夜タスク]]',
+            '',
+            '- [ ] [[セクションなし]]',
+        ]);
+    });
+
+    it('セクションなしが複数あっても空行は最初の1回だけ', () => {
+        const items = [
+            { line: '- [ ] [[夜タスク]]', sectionHeading: '# 夜' },
+            { line: '- [ ] [[タスクA]]', sectionHeading: null },
+            { line: '- [ ] [[タスクB]]', sectionHeading: null },
+        ];
+        const lines = groupRoutineLinesWithSections(items);
+        expect(lines).toEqual([
+            '# 夜',
+            '- [ ] [[夜タスク]]',
+            '',
+            '- [ ] [[タスクA]]',
+            '- [ ] [[タスクB]]',
+        ]);
+    });
+
+    it('全部セクション付きなら空行なし', () => {
+        const items = [
+            { line: '- [ ] [[朝タスク]]', sectionHeading: '# 朝' },
+            { line: '- [ ] [[夜タスク]]', sectionHeading: '# 夜' },
+        ];
+        const lines = groupRoutineLinesWithSections(items);
+        expect(lines).toEqual([
+            '# 朝',
+            '- [ ] [[朝タスク]]',
+            '# 夜',
+            '- [ ] [[夜タスク]]',
+        ]);
+    });
+
+    it('全部セクションなしなら見出しも空行もなし', () => {
+        const items = [
+            { line: '- [ ] [[タスクA]]', sectionHeading: null },
+            { line: '- [ ] [[タスクB]]', sectionHeading: null },
+        ];
+        const lines = groupRoutineLinesWithSections(items);
+        expect(lines).toEqual([
+            '- [ ] [[タスクA]]',
+            '- [ ] [[タスクB]]',
+        ]);
+    });
+
+    it('空配列なら空配列', () => {
+        expect(groupRoutineLinesWithSections([])).toEqual([]);
     });
 });

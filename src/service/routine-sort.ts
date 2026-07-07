@@ -3,3 +3,24 @@ export function routineSortKey(r: { section?: number; start?: number }): [number
     const start = r.start ?? -Infinity;
     return [sec, start];
 }
+
+export function groupRoutineLinesWithSections(
+    items: { line: string; sectionHeading: string | null }[]
+): string[] {
+    const output: string[] = [];
+    let currentHeading: string | null | undefined = undefined;
+
+    for (const item of items) {
+        if (item.sectionHeading !== currentHeading) {
+            if (item.sectionHeading !== null) {
+                output.push(item.sectionHeading);
+            } else if (currentHeading !== null && currentHeading !== undefined) {
+                output.push('');
+            }
+            currentHeading = item.sectionHeading;
+        }
+        output.push(item.line);
+    }
+
+    return output;
+}

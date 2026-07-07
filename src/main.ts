@@ -6,7 +6,7 @@ import { computeStatusBarMetrics } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
-import { routineSortKey } from './service/routine-sort';
+import { routineSortKey, groupRoutineLinesWithSections } from './service/routine-sort';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
@@ -1676,19 +1676,11 @@ export default class LlrPlugin extends Plugin {
             return `- [ ] ${prefix}[[${linkName}]]${suffix}`;
         };
 
-        const outputLines: string[] = [];
-        let currentLabel: string | null | undefined = undefined;
-
-        for (const r of sortedRoutines) {
-            const label = this.getRoutineSectionHeading(r.section);
-            if (label !== currentLabel) {
-                if (label !== null) {
-                    outputLines.push(label);
-                }
-                currentLabel = label;
-            }
-            outputLines.push(buildLine(r));
-        }
+        const grouped = sortedRoutines.map(r => ({
+            line: buildLine(r),
+            sectionHeading: this.getRoutineSectionHeading(r.section),
+        }));
+        const outputLines = groupRoutineLinesWithSections(grouped);
 
         if (srsBatch.length > 0) {
             outputLines.push('');
