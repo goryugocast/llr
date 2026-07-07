@@ -7,6 +7,7 @@ import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-p
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { routineSortKey, groupRoutineLinesWithSections } from './service/routine-sort';
+import { firstWikilink, isLineInSrsRegion, resolveOpenFocus } from './service/start-and-open';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
@@ -312,7 +313,58 @@ export default class LlrPlugin extends Plugin {
             }
         });
 
+        this.addCommand({
+            id: 'start-and-open-note',
+            name: this.t('command.startAndOpenNote'),
+            icon: 'play-square',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                void this.runCommandWithDebug('start-and-open-note', this.t('command.startAndOpenNote'), async () => {
+                    this.debugLog('Command: Start and Open Note');
+                    await this.handleStartAndOpenNote(editor, view);
+                });
+            }
+        });
+
         this.migrateLegacySkipCommandHotkeys();
+    }
+
+    /** コマンド経路: カーソル行を開始して、開始できたらリンク先ノートを開く。
+     * 設定 startAndOpenEnabled とは無関係に、明示コマンドとして常に開く。 */
+    private async handleStartAndOpenNote(editor: Editor, view: MarkdownView): Promise<void> {
+        const cursorLine = editor.getCursor().line;
+        const lineTextBefore = editor.getLine(cursorLine);
+        const wasUnstarted = this.getTaskLineState(lineTextBefore) === 'unstarted';
+        await this.handleToggleTask(editor, view, 'start');
+        if (!wasUnstarted) return;
+        // start が実際に適用された（デイリーノートで未着手→実行中になった）ときだけ開く。
+        if (!editor.getLine(cursorLine).startsWith('- [/]')) return;
+        await this.openLinkedNoteForLine(view, editor, cursorLine, lineTextBefore);
+    }
+
+    /** 開始した行の先頭リンク先ノートを、カーソル既定を解決して開く。リンクが無ければ何もしない。 */
+    private async openLinkedNoteForLine(
+        view: MarkdownView,
+        editor: Editor,
+        lineIndex: number,
+        lineText: string
+    ): Promise<void> {
+        const link = firstWikilink(lineText);
+        if (!link) return;
+        const sourcePath = view.file?.path ?? '';
+        const inSrsRegion = isLineInSrsRegion(editor.getValue(), lineIndex);
+        const frontmatterOpenFocus = this.readOpenFocus(link, sourcePath);
+        const active = resolveOpenFocus({ frontmatterOpenFocus, inSrsRegion });
+        this.debugLog('Start and open', { lineIndex, link, inSrsRegion, frontmatterOpenFocus, active });
+        await this.app.workspace.openLinkText(link, sourcePath, false, { active });
+    }
+
+    /** リンク先ノートの frontmatter open_focus（真偽値のみ）を読む。未指定なら undefined。 */
+    private readOpenFocus(link: string, sourcePath: string): boolean | undefined {
+        const linkpath = link.split('#')[0];
+        const file = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+        if (!file) return undefined;
+        const value = this.app.metadataCache.getFileCache(file)?.frontmatter?.open_focus;
+        return typeof value === 'boolean' ? value : undefined;
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
@@ -357,6 +409,7 @@ export default class LlrPlugin extends Plugin {
         const loaded: Record<string, unknown> | null = await this.loadData();
         const merged: LlrSettings = { ...DEFAULT_SETTINGS, ...(loaded ?? {}) };
         merged.checkboxOverrideEnabled = Boolean(loaded?.checkboxOverrideEnabled ?? merged.checkboxOverrideEnabled);
+        merged.startAndOpenEnabled = Boolean(loaded?.startAndOpenEnabled ?? merged.startAndOpenEnabled);
         merged.mobileLargeCheckboxEnabled = Boolean(loaded?.mobileLargeCheckboxEnabled ?? merged.mobileLargeCheckboxEnabled);
         merged.uiLanguage = (loaded?.uiLanguage === 'ja' || loaded?.uiLanguage === 'en')
             ? loaded.uiLanguage
@@ -389,6 +442,16 @@ export default class LlrPlugin extends Plugin {
 
     isMobileLargeCheckboxEnabled(): boolean {
         return this.settings.mobileLargeCheckboxEnabled;
+    }
+
+    isStartAndOpenEnabled(): boolean {
+        return this.settings.startAndOpenEnabled;
+    }
+
+    async setStartAndOpenEnabled(enabled: boolean): Promise<void> {
+        this.settings.startAndOpenEnabled = enabled;
+        await this.saveSettings();
+        this.debugLog(`Start and open ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     getUiLanguage(): UILanguage {
@@ -762,11 +825,20 @@ export default class LlrPlugin extends Plugin {
             resultPreview: result.content.slice(0, 120),
         });
 
+        // 短押しの開始（未着手 → 実行中）だったかを、行を書き換える前の状態で判定しておく。
+        const isShortStart = intent === 'short'
+            && this.getTaskLineState(lineText) === 'unstarted'
+            && result.content.startsWith('- [/]');
+
         await this.applyTaskResult(editor, view, targetLine, lineText, result, {
             placeCursorBeforeActualStart: this.shouldPlaceCursorBeforeActualStart(lineText, result),
         });
         await this.runPostLlrActionAdjustments(editor, view, 'checkbox press');
         this.scheduleUIUpdate();
+
+        if (isShortStart && this.settings.startAndOpenEnabled) {
+            await this.openLinkedNoteForLine(view, editor, targetLine, lineText);
+        }
     }
 
     private buildCheckboxPressOptionsForLine(

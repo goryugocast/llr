@@ -17,6 +17,7 @@ export interface LlrSettings {
     debugModeEnabled: boolean;
     estimateWarningEnabled: boolean;
     checkboxOverrideEnabled: boolean;
+    startAndOpenEnabled: boolean;
     mobileLargeCheckboxEnabled: boolean;
     uiLanguage: UILanguage;
     routineFolder: string;
@@ -32,6 +33,7 @@ export const DEFAULT_SETTINGS: LlrSettings = {
     debugModeEnabled: false,
     estimateWarningEnabled: true,
     checkboxOverrideEnabled: true,
+    startAndOpenEnabled: false,
     mobileLargeCheckboxEnabled: false,
     uiLanguage: 'auto',
     routineFolder: DEFAULT_ROUTINE_FOLDER,

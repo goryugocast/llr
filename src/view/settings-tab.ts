@@ -338,6 +338,15 @@ export class LlrSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName(this.plugin.t('settings.startAndOpen.name'))
+            .setDesc(this.plugin.t('settings.startAndOpen.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.isStartAndOpenEnabled())
+                .onChange(async (value) => {
+                    await this.plugin.setStartAndOpenEnabled(value);
+                }));
+
+        new Setting(containerEl)
             .setName(this.plugin.t('settings.dailyNoteFolder.name'))
             .setDesc(this.plugin.t('settings.dailyNoteFolder.desc'))
             .addSearch((search) => {
