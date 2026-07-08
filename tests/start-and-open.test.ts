@@ -4,6 +4,7 @@ import {
     isLineInSrsRegion,
     resolveOpenFocus,
     shouldOpenOnStart,
+    findStartedLineLinkingTo,
 } from '../src/service/start-and-open';
 import { SRS_BATCH_START, SRS_BATCH_END, SRS_BATCH_DONE } from '../src/service/srs-batch';
 
@@ -80,20 +81,43 @@ describe('isLineInSrsRegion', () => {
 });
 
 describe('resolveOpenFocus', () => {
-    it('frontmatter が true なら true（区間外でも）', () => {
-        expect(resolveOpenFocus({ frontmatterOpenFocus: true, inSrsRegion: false })).toBe(true);
+    it('frontmatter が true なら true', () => {
+        expect(resolveOpenFocus({ frontmatterOpenFocus: true })).toBe(true);
     });
 
-    it('frontmatter が false なら false（区間内でも）', () => {
-        expect(resolveOpenFocus({ frontmatterOpenFocus: false, inSrsRegion: true })).toBe(false);
+    it('frontmatter が false なら false（フォーカスしない＝ループ対象外）', () => {
+        expect(resolveOpenFocus({ frontmatterOpenFocus: false })).toBe(false);
     });
 
-    it('frontmatter 未指定で区間内なら true', () => {
-        expect(resolveOpenFocus({ inSrsRegion: true })).toBe(true);
+    it('frontmatter 未指定なら既定で true（常にフォーカス）', () => {
+        expect(resolveOpenFocus({})).toBe(true);
+    });
+});
+
+describe('findStartedLineLinkingTo', () => {
+    const content = [
+        '- [ ] [[未着手ノート]]',        // 0
+        '- [/] 09:00 [[実行中A]]',       // 1
+        '- [x] 08:00-08:10 [[完了B]]',   // 2
+        '- [/] 09:30 [[実行中C]]',       // 3
+    ].join('\n');
+
+    it('実行中かつリンクが一致する最初の行を返す', () => {
+        expect(findStartedLineLinkingTo(content, (l) => l === '実行中C')).toBe(3);
     });
 
-    it('frontmatter 未指定で区間外なら false', () => {
-        expect(resolveOpenFocus({ inSrsRegion: false })).toBe(false);
+    it('未着手・完了の行は対象にしない', () => {
+        expect(findStartedLineLinkingTo(content, (l) => l === '未着手ノート')).toBeNull();
+        expect(findStartedLineLinkingTo(content, (l) => l === '完了B')).toBeNull();
+    });
+
+    it('一致が無ければ null', () => {
+        expect(findStartedLineLinkingTo(content, () => false)).toBeNull();
+    });
+
+    it('リンクの無い実行中行は matches に null が渡る', () => {
+        const c = '- [/] 09:00 リンク無し';
+        expect(findStartedLineLinkingTo(c, (l) => l === null)).toBe(0);
     });
 });
 

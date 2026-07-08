@@ -43,10 +43,25 @@ export function isLineInSrsRegion(content: string, lineIndex: number, tag = 'srs
 }
 
 /** 開いたときカーソルを移すか（openLinkText の active）を決める。
- * frontmatter の open_focus があれば最優先。無ければ SRS 区間内なら true、区間外なら false。 */
-export function resolveOpenFocus(opts: { frontmatterOpenFocus?: boolean; inSrsRegion: boolean }): boolean {
+ * frontmatter の open_focus があれば最優先。無ければ既定で true（常に開いた先へカーソルを移す）。
+ * カーソルを移したノートは「開いて作業して閉じる」ループの対象になる。 */
+export function resolveOpenFocus(opts: { frontmatterOpenFocus?: boolean }): boolean {
     if (typeof opts.frontmatterOpenFocus === 'boolean') return opts.frontmatterOpenFocus;
-    return opts.inSrsRegion;
+    return true;
+}
+
+/** content 内で、実行中（`- [/]`）かつ先頭リンクが matches を満たす最初の行の index を返す。無ければ null。
+ * 開いた先ノートで完了操作をしたとき、開始元のデイリー行を特定するのに使う。 */
+export function findStartedLineLinkingTo(
+    content: string,
+    matches: (link: string | null) => boolean
+): number | null {
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].trimStart().startsWith('- [/]')) continue;
+        if (matches(firstWikilink(lines[i]))) return i;
+    }
+    return null;
 }
 
 /** 開始操作でノートを開くべきか。設定が有効かつ行にリンクがあるときだけ開く。 */

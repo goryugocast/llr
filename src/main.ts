@@ -7,7 +7,7 @@ import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-p
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { routineSortKey, groupRoutineLinesWithSections } from './service/routine-sort';
-import { firstWikilink, isLineInSrsRegion, resolveOpenFocus } from './service/start-and-open';
+import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './service/start-and-open';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
@@ -53,6 +53,9 @@ export default class LlrPlugin extends Plugin {
     private scheduleValidationTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
     private lastScheduleValidationError: Map<string, string> = new Map();
     private metadataChangedTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // Start and Open のループ用。開いた先ノートのパス → 開始元（デイリーノート）のパス。
+    // 開いた先で toggle したとき、開始元の実行中行を完了させてタブを閉じるのに使う。メモリ上のみ（再起動で消える）。
+    private startOpenBackrefs: Map<string, string> = new Map();
     private snapshots!: RoutineCompletionSnapshotStore;
     private dailyAutoInsert!: DailyNoteAutoInsertController;
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -334,30 +337,78 @@ export default class LlrPlugin extends Plugin {
         await this.handleToggleTask(editor, view, 'start', { openOnStart: 'always' });
     }
 
-    /** 開始した行の先頭リンク先ノートを、カーソル既定を解決して開く。リンクが無ければ何もしない。 */
+    /** 開始した行の先頭リンク先ノートを、カーソル既定を解決して開く。リンクが無ければ何もしない。
+     * カーソルを移す（active）ときは、開いた先で完了して閉じるループのために開始元を覚えておく。
+     * 第4引数 lineText は開始した物理行のテキスト（呼び出し側が先に取得済み）。 */
     private async openLinkedNoteForLine(
         view: MarkdownView,
-        editor: Editor,
+        _editor: Editor,
         lineIndex: number,
         lineText: string
     ): Promise<void> {
         const link = firstWikilink(lineText);
         if (!link) return;
         const sourcePath = view.file?.path ?? '';
-        const inSrsRegion = isLineInSrsRegion(editor.getValue(), lineIndex);
         const frontmatterOpenFocus = this.readOpenFocus(link, sourcePath);
-        const active = resolveOpenFocus({ frontmatterOpenFocus, inSrsRegion });
-        this.debugLog('Start and open', { lineIndex, link, inSrsRegion, frontmatterOpenFocus, active });
+        const active = resolveOpenFocus({ frontmatterOpenFocus });
+        this.debugLog('Start and open', { lineIndex, link, frontmatterOpenFocus, active });
         await this.app.workspace.openLinkText(link, sourcePath, false, { active });
+        if (active) {
+            const target = this.resolveLinkFile(link, sourcePath);
+            if (target) this.startOpenBackrefs.set(target.path, sourcePath);
+        }
+    }
+
+    /** wikilink（`#見出し` を含みうる）を実ファイルに解決する。無ければ null。 */
+    private resolveLinkFile(link: string, sourcePath: string): TFile | null {
+        const linkpath = link.split('#')[0];
+        return this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath) ?? null;
     }
 
     /** リンク先ノートの frontmatter open_focus（真偽値のみ）を読む。未指定なら undefined。 */
     private readOpenFocus(link: string, sourcePath: string): boolean | undefined {
-        const linkpath = link.split('#')[0];
-        const file = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+        const file = this.resolveLinkFile(link, sourcePath);
         if (!file) return undefined;
         const value = this.app.metadataCache.getFileCache(file)?.frontmatter?.open_focus;
         return typeof value === 'boolean' ? value : undefined;
+    }
+
+    /** 開いた先ノートで toggle したとき、開始元のデイリー実行中行を完了してそのタブを閉じる。
+     * 実行できたら true。対象外なら false（通常の toggle にフォールバック）。 */
+    private async tryCompleteAndCloseLoopNote(view: MarkdownView): Promise<boolean> {
+        const currentFile = view.file;
+        if (!currentFile || this.isDailyNoteFile(currentFile)) return false;
+        const sourcePath = this.startOpenBackrefs.get(currentFile.path);
+        if (!sourcePath) return false;
+
+        const sourceLeaf = this.app.workspace
+            .getLeavesOfType('markdown')
+            .find((l) => (l.view as MarkdownView)?.file?.path === sourcePath);
+        const sourceView = sourceLeaf?.view as MarkdownView | undefined;
+        const sourceEditor = sourceView?.editor;
+        if (!sourceLeaf || !sourceView || !sourceEditor) return false;
+
+        const matchedLine = findStartedLineLinkingTo(sourceEditor.getValue(), (link) => {
+            if (!link) return false;
+            return this.resolveLinkFile(link, sourcePath)?.path === currentFile.path;
+        });
+        if (matchedLine === null) {
+            // 開始元の実行中行が見つからない（すでに完了・削除等）。マップを掃除して通常動作に委ねる。
+            this.startOpenBackrefs.delete(currentFile.path);
+            return false;
+        }
+
+        this.debugLog('Loop complete-and-close', { current: currentFile.path, sourcePath, matchedLine });
+
+        // 開始元を通常の完了パイプラインで完了させる（ドリフト補正・@done・SRS成長を含む）。
+        sourceEditor.setCursor({ line: matchedLine, ch: 0 });
+        await this.handleToggleTask(sourceEditor, sourceView, 'complete');
+
+        // 開いていたノートのタブを閉じ、デイリーへフォーカスを戻す。
+        this.startOpenBackrefs.delete(currentFile.path);
+        view.leaf?.detach();
+        this.app.workspace.setActiveLeaf(sourceLeaf, { focus: true });
+        return true;
     }
 
     private migrateLegacySkipCommandHotkeys(): void {
@@ -1164,6 +1215,8 @@ export default class LlrPlugin extends Plugin {
         options?: { openOnStart?: 'ifEnabled' | 'always' }
     ) {
         this.debugLog('handleToggleTask entry', { forceAction });
+        // 開いた先ノートでの toggle は、開始元のデイリー行を完了してタブを閉じるループに回す。
+        if (await this.tryCompleteAndCloseLoopNote(view)) return;
         if (!this.ensureDailyNoteView(view, 'Toggle Task')) return;
 
         if (!forceAction) {
