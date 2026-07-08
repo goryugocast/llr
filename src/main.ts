@@ -331,14 +331,7 @@ export default class LlrPlugin extends Plugin {
     /** コマンド経路: カーソル行を開始して、開始できたらリンク先ノートを開く。
      * 設定 startAndOpenEnabled とは無関係に、明示コマンドとして常に開く。 */
     private async handleStartAndOpenNote(editor: Editor, view: MarkdownView): Promise<void> {
-        const cursorLine = editor.getCursor().line;
-        const lineTextBefore = editor.getLine(cursorLine);
-        const wasUnstarted = this.getTaskLineState(lineTextBefore) === 'unstarted';
-        await this.handleToggleTask(editor, view, 'start');
-        if (!wasUnstarted) return;
-        // start が実際に適用された（デイリーノートで未着手→実行中になった）ときだけ開く。
-        if (!editor.getLine(cursorLine).startsWith('- [/]')) return;
-        await this.openLinkedNoteForLine(view, editor, cursorLine, lineTextBefore);
+        await this.handleToggleTask(editor, view, 'start', { openOnStart: 'always' });
     }
 
     /** 開始した行の先頭リンク先ノートを、カーソル既定を解決して開く。リンクが無ければ何もしない。 */
@@ -1164,7 +1157,12 @@ export default class LlrPlugin extends Plugin {
         }
     }
 
-    async handleToggleTask(editor: Editor, view: MarkdownView, forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify') {
+    async handleToggleTask(
+        editor: Editor,
+        view: MarkdownView,
+        forceAction?: 'start' | 'complete' | 'interrupt' | 'duplicate' | 'retroComplete' | 'taskify',
+        options?: { openOnStart?: 'ifEnabled' | 'always' }
+    ) {
         this.debugLog('handleToggleTask entry', { forceAction });
         if (!this.ensureDailyNoteView(view, 'Toggle Task')) return;
 
@@ -1227,12 +1225,23 @@ export default class LlrPlugin extends Plugin {
         const shouldSkipAtDoneOnCurrentLine = forceAction === 'start'
             || (!forceAction && lineText.trim().startsWith('- [ ]'));
 
+        // 未着手 → 実行中の開始だったかを、行を書き換える前に判定しておく。
+        const becameStart = this.getTaskLineState(lineText) === 'unstarted'
+            && result.content.startsWith('- [/]');
+
         await this.applyTaskResult(editor, view, cursor.line, lineText, result, {
             placeCursorBeforeActualStart: this.shouldPlaceCursorBeforeActualStart(lineText, result),
         });
         await this.runPostLlrActionAdjustments(editor, view, 'toggle task', {
             skipAtDoneLineIndexes: shouldSkipAtDoneOnCurrentLine ? new Set([cursor.line]) : undefined,
         });
+
+        // 開始できたときだけ、リンク先ノートを開く。設定 startAndOpenEnabled が既定のゲート。
+        // 明示コマンド（start-and-open-note）は openOnStart='always' で設定を無視して開く。
+        const openMode = options?.openOnStart ?? 'ifEnabled';
+        if (becameStart && (openMode === 'always' || this.settings.startAndOpenEnabled)) {
+            await this.openLinkedNoteForLine(view, editor, cursor.line, lineText);
+        }
     }
 
     private resolveDefaultToggleDelegatedAction(lineText: string): 'taskify' | 'complete' | 'duplicate' | undefined {
