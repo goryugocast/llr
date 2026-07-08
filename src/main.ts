@@ -355,7 +355,7 @@ export default class LlrPlugin extends Plugin {
         const frontmatterOpenFocus = this.readOpenFocus(link, sourcePath);
         const active = resolveOpenFocus({ frontmatterOpenFocus, inSrsRegion });
         this.debugLog('Start and open', { lineIndex, link, inSrsRegion, frontmatterOpenFocus, active });
-        await this.app.workspace.openLinkText(link, sourcePath, true, { active });
+        await this.app.workspace.openLinkText(link, sourcePath, false, { active });
     }
 
     /** リンク先ノートの frontmatter open_focus（真偽値のみ）を読む。未指定なら undefined。 */
