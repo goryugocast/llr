@@ -31,8 +31,8 @@ describe('routineSortKey', () => {
 
     it('section 未設定同士は start 昇順', () => {
         const items = [
-            { section: undefined, start: 1400 },
-            { section: undefined, start: 800 },
+            { section: undefined as number | undefined, start: 1400 },
+            { section: undefined as number | undefined, start: 800 },
         ];
         const sorted = sort(items);
         expect(sorted[0].start).toBe(800);
@@ -123,8 +123,8 @@ describe('groupRoutineLinesWithSections', () => {
 
     it('全部セクションなしなら見出しも空行もなし', () => {
         const items = [
-            { line: '- [ ] [[タスクA]]', sectionHeading: null },
-            { line: '- [ ] [[タスクB]]', sectionHeading: null },
+            { line: '- [ ] [[タスクA]]', sectionHeading: null as string | null },
+            { line: '- [ ] [[タスクB]]', sectionHeading: null as string | null },
         ];
         const lines = groupRoutineLinesWithSections(items);
         expect(lines).toEqual([
