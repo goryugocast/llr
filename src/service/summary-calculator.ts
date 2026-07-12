@@ -36,6 +36,8 @@ export interface SummaryPresentationItem extends SummaryItem {
     role: SummaryItemRole;
     sectionLabel: string | null;
     warningRatio: number;
+    // sleep より下にあるが実行中なので表示する項目。見積り計算・時刻積み上げからは除外する
+    offPlan?: boolean;
 }
 
 export interface SummaryRenderGroup {
@@ -183,18 +185,18 @@ export function buildSummaryPresentation(
         .map((item) => toPresentationItem(item, 'done', options));
     const hasCompletedSleep = visibleItems.some((item) => item.isDone && options.isSleepItem(item));
     const sleepBoundaryLine = findSleepBoundaryLine(visibleItems, options.isSleepItem);
+    const incompleteItems = visibleItems.filter((item) => !item.isDone);
     const { futureItems, hiddenItems } = hasCompletedSleep
         ? {
-            futureItems: [],
-            hiddenItems: visibleItems
-                .filter((item) => !item.isDone)
+            // sleep 完了日は未来表示を閉じるが、実行中タスクだけは表示に残す（見積りには入れない）
+            futureItems: incompleteItems
+                .filter((item) => item.isRunning)
+                .map((item) => toPresentationItem(item, 'running', options, true)),
+            hiddenItems: incompleteItems
+                .filter((item) => !item.isRunning)
                 .map((item) => toPresentationItem(item, 'deferred', options)),
         }
-        : buildFutureItems(
-            visibleItems.filter((item) => !item.isDone),
-            sleepBoundaryLine,
-            options
-        );
+        : buildFutureItems(incompleteItems, sleepBoundaryLine, options);
     recomputeFutureDisplayTimes(futureItems, options.nowTime);
     refreshPresentationFields(futureItems, options);
 
@@ -305,14 +307,18 @@ function buildFutureItems(
     futureItems: SummaryPresentationItem[];
     hiddenItems: SummaryPresentationItem[];
 } {
-    const visibleFutureSource = sleepBoundaryLine === null
-        ? [...items]
-        : items.filter((item) => item.line <= sleepBoundaryLine);
-    const hiddenItems = sleepBoundaryLine === null
-        ? []
-        : items
-            .filter((item) => item.line > sleepBoundaryLine)
-            .map((item) => toPresentationItem(item, 'deferred', options));
+    const isBelowSleep = (item: SummaryItem): boolean =>
+        sleepBoundaryLine !== null && item.line > sleepBoundaryLine;
+
+    const visibleFutureSource = items.filter((item) => !isBelowSleep(item));
+    // sleep より下でも実行中のタスクは表示に残す（off-plan 扱い、見積りには入れない）
+    const offPlanRunning = items
+        .filter((item) => isBelowSleep(item) && item.isRunning)
+        .sort((a, b) => a.line - b.line)
+        .map((item) => toPresentationItem(item, 'running', options, true));
+    const hiddenItems = items
+        .filter((item) => isBelowSleep(item) && !item.isRunning)
+        .map((item) => toPresentationItem(item, 'deferred', options));
 
     const runningSource = visibleFutureSource.filter((item) => item.isRunning);
     const firstRunningLine = runningSource.length > 0
@@ -324,6 +330,7 @@ function buildFutureItems(
         for (const item of visibleFutureSource) {
             futureItems.push(toPresentationItem(item, 'future', options));
         }
+        futureItems.push(...offPlanRunning);
         return { futureItems, hiddenItems };
     }
 
@@ -337,7 +344,7 @@ function buildFutureItems(
         .sort((a, b) => a.line - b.line)
         .map((item) => toPresentationItem(item, 'future', options));
 
-    futureItems.push(...runningItems, ...preRunningItems, ...remainingItems);
+    futureItems.push(...runningItems, ...preRunningItems, ...remainingItems, ...offPlanRunning);
     return { futureItems, hiddenItems };
 }
 
@@ -356,13 +363,15 @@ function findSleepBoundaryLine(
 function toPresentationItem(
     item: SummaryItem,
     role: SummaryItemRole,
-    options: SummaryPresentationOptions
+    options: SummaryPresentationOptions,
+    offPlan = false
 ): SummaryPresentationItem {
     return {
         ...item,
         role,
         sectionLabel: options.resolveSectionLabel(item),
         warningRatio: options.resolveWarningRatio(item),
+        offPlan,
     };
 }
 
@@ -391,6 +400,8 @@ function buildPresentationHeader(
     let sleepRemainMin = 0;
     for (const item of headerItems) {
         if (item.duration <= 0) continue;
+        // off-plan（sleep より下の実行中）は見積り計算に入れない
+        if (item.offPlan) continue;
         if (options.isSleepItem(item)) {
             sleepRemainMin += item.duration;
         } else {
@@ -447,6 +458,19 @@ function recomputeFutureDisplayTimes(items: SummaryPresentationItem[], nowTime: 
 
     let plannedAnchorMinutes = nowMinutes;
     for (const item of items) {
+        if (item.offPlan) {
+            // sleep より下の実行中タスク。自分の開始時刻から見積り分を表示するが、
+            // 通常プランの積み上げ（plannedAnchorMinutes）はずらさない
+            const startTimeStr = item.times.length > 0 ? item.times[0] : nowTime;
+            const est = item.duration > 0 ? item.duration : 0;
+            const startAbs = resolveRunningStartAbsoluteMinutes(startTimeStr, nowMinutes);
+            const endAbs = est > 0 ? Math.max(nowMinutes, startAbs + est) : nowMinutes;
+            item.displayStartTime = startTimeStr;
+            item.displayEndTime = formatAbsoluteMinutes(endAbs);
+            item.isProjected = true;
+            item.sortStartMinute = startAbs;
+            continue;
+        }
         if (item.isRunning) {
             const startTimeStr = item.times.length > 0 ? item.times[0] : nowTime;
             item.displayStartTime = startTimeStr;

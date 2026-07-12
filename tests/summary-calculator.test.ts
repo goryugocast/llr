@@ -198,6 +198,76 @@ describe('computeSummaryData', () => {
         expect(presentation.header.wake).toBe('21:15');
     });
 
+    it('sleepより下でも実行中タスクはサイドバーに表示し、見積りには入れない', () => {
+        const lines = [
+            '- [ ] 取り残し (10m)',
+            '- [/] 実行中 20:00 - (20m)',
+            '- [ ] これから (15m)',
+            '- [ ] sleep (30m)',
+            '- [/] 夜更かし 20:10 - (25m)',
+            '- [ ] 後回し (5m)',
+        ];
+        const nowTime = '20:15';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+        const presentation = buildSummaryPresentation(data, {
+            nowTime,
+            isSleepItem: (item) => item.displayText === 'sleep',
+            resolveSectionLabel: () => '夜',
+            resolveWarningRatio: () => 0,
+        });
+
+        expect(presentation.futureGroups).toHaveLength(1);
+        expect(presentation.futureGroups[0].items.map((item) => item.displayText)).toEqual([
+            '実行中',
+            '取り残し',
+            'これから',
+            'sleep',
+            '夜更かし',
+        ]);
+        // 夜更かし(sleepより下・実行中)は表示されるが、他タスクの積み上げ時刻はずらさない
+        expect(presentation.futureGroups[0].items.map((item) => item.displayStartTime)).toEqual([
+            '20:00',
+            '20:20',
+            '20:30',
+            '20:45',
+            '20:10',
+        ]);
+        // 見積りには入らない: 実行中20 + 取り残し10 + これから15 = 45（sleepと夜更かしは除外）
+        expect(presentation.header.total).toBe('0h45m');
+        expect(presentation.header.end).toBe('21:00');
+        expect(presentation.header.wake).toBe('21:30');
+        // 後回し(sleepより下・未着手)は従来どおり隠す
+        expect(presentation.hiddenItems.map((item) => item.displayText)).toEqual(['後回し']);
+    });
+
+    it('完了済みsleepがある日でも実行中タスクはサイドバーに残す', () => {
+        const lines = [
+            '- [ ] 寝る前の片付け (15m)',
+            '- [x] sleep 00:27 - 11:03 (480m)',
+            '- [/] review 14:00 - (60m)',
+            '- [ ] Analyticsからの改善 (15m)',
+        ];
+        const nowTime = '15:11';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+        const presentation = buildSummaryPresentation(data, {
+            nowTime,
+            isSleepItem: (item) => item.displayText === 'sleep',
+            resolveSectionLabel: () => null,
+            resolveWarningRatio: () => 0,
+        });
+
+        expect(presentation.futureGroups.flatMap((group) => group.items).map((item) => item.displayText)).toEqual([
+            'review',
+        ]);
+        expect(presentation.hiddenItems.map((item) => item.displayText)).toEqual([
+            '寝る前の片付け',
+            'Analyticsからの改善',
+        ]);
+        // 実行中でも見積り計算には入れない
+        expect(presentation.header.total).toBe('-');
+        expect(presentation.header.end).toBe(data.header.end);
+    });
+
     it('タスク行がない場合はヘッダーが - になりアイテムが空', () => {
         const lines = ['# Header', 'Some text', ''];
         const nowTime = '10:00';
