@@ -217,20 +217,21 @@ describe('computeSummaryData', () => {
         });
 
         expect(presentation.futureGroups).toHaveLength(1);
+        // 夜更かし(sleepより下・実行中)は末尾ではなく、先頭の実行中グループに行順で並ぶ
         expect(presentation.futureGroups[0].items.map((item) => item.displayText)).toEqual([
             '実行中',
+            '夜更かし',
             '取り残し',
             'これから',
             'sleep',
-            '夜更かし',
         ]);
-        // 夜更かし(sleepより下・実行中)は表示されるが、他タスクの積み上げ時刻はずらさない
+        // 夜更かしは自分の開始時刻から表示するが、他タスクの積み上げ時刻はずらさない
         expect(presentation.futureGroups[0].items.map((item) => item.displayStartTime)).toEqual([
             '20:00',
+            '20:10',
             '20:20',
             '20:30',
             '20:45',
-            '20:10',
         ]);
         // 見積りには入らない: 実行中20 + 取り残し10 + これから15 = 45（sleepと夜更かしは除外）
         expect(presentation.header.total).toBe('0h45m');
@@ -238,6 +239,40 @@ describe('computeSummaryData', () => {
         expect(presentation.header.wake).toBe('21:30');
         // 後回し(sleepより下・未着手)は従来どおり隠す
         expect(presentation.hiddenItems.map((item) => item.displayText)).toEqual(['後回し']);
+    });
+
+    it('実行中がsleepより下にしかない場合も未来の先頭に表示する', () => {
+        const lines = [
+            '- [ ] これから (15m)',
+            '- [ ] sleep (30m)',
+            '- [/] 夜更かし 20:10 - (25m)',
+            '- [ ] 後回し (5m)',
+        ];
+        const nowTime = '20:15';
+        const data = computeSummaryData(lines, nowTime, calculateDuration);
+        const presentation = buildSummaryPresentation(data, {
+            nowTime,
+            isSleepItem: (item) => item.displayText === 'sleep',
+            resolveSectionLabel: () => null,
+            resolveWarningRatio: () => 0,
+        });
+
+        expect(presentation.futureGroups.flatMap((group) => group.items).map((item) => item.displayText)).toEqual([
+            '夜更かし',
+            'これから',
+            'sleep',
+        ]);
+        // 積み上げは現在時刻起点のまま。夜更かしはずらさない
+        expect(presentation.futureGroups.flatMap((group) => group.items).map((item) => item.displayStartTime)).toEqual([
+            '20:10',
+            '20:15',
+            '20:30',
+        ]);
+        expect(presentation.hiddenItems.map((item) => item.displayText)).toEqual(['後回し']);
+        // 見積りは これから15 のみ（sleep・夜更かしは除外）
+        expect(presentation.header.total).toBe('0h15m');
+        expect(presentation.header.end).toBe('20:30');
+        expect(presentation.header.wake).toBe('21:00');
     });
 
     it('完了済みsleepがある日でも実行中タスクはサイドバーに残す', () => {

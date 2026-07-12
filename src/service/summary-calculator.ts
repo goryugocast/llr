@@ -327,10 +327,11 @@ function buildFutureItems(
 
     const futureItems: SummaryPresentationItem[] = [];
     if (firstRunningLine === null) {
+        // 実行中は sleep より下のものも含めて未来の先頭に置く
+        futureItems.push(...offPlanRunning);
         for (const item of visibleFutureSource) {
             futureItems.push(toPresentationItem(item, 'future', options));
         }
-        futureItems.push(...offPlanRunning);
         return { futureItems, hiddenItems };
     }
 
@@ -344,7 +345,8 @@ function buildFutureItems(
         .sort((a, b) => a.line - b.line)
         .map((item) => toPresentationItem(item, 'future', options));
 
-    futureItems.push(...runningItems, ...preRunningItems, ...remainingItems, ...offPlanRunning);
+    // sleep より下の実行中も先頭の実行中グループに入れる（行番号は sleep より下なので必ず後ろに並ぶ）
+    futureItems.push(...runningItems, ...offPlanRunning, ...preRunningItems, ...remainingItems);
     return { futureItems, hiddenItems };
 }
 
