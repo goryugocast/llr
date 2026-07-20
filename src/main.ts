@@ -6,7 +6,7 @@ import { computeStatusBarMetrics } from './service/status-bar-calculator';
 import { parseRepeatExpression, parseScheduleExpression } from './service/yaml-parser';
 import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './service/routine-reschedule-marker';
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
-import { routineSortKey, groupRoutineLinesWithSections } from './service/routine-sort';
+import { routineSortKey, groupRoutineLinesWithSections, expandRoutineNotesBySection } from './service/routine-sort';
 import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './service/start-and-open';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
@@ -1788,7 +1788,8 @@ export default class LlrPlugin extends Plugin {
         const max = this.settings.srsMaxDaily;
         const srsBatch = max > 0 && srsSorted.length > max ? srsSorted.slice(0, max) : srsSorted;
 
-        const sortedRoutines = [...routineNotes].sort((a, b) => {
+        const expandedRoutines = expandRoutineNotesBySection(routineNotes);
+        const sortedRoutines = [...expandedRoutines].sort((a, b) => {
             const [as1, as2] = routineSortKey(a);
             const [bs1, bs2] = routineSortKey(b);
             return as1 !== bs1 ? as1 - bs1 : as2 - bs2;

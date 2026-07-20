@@ -192,6 +192,58 @@ describe('RoutineEngine', () => {
             expect(japanese?.start_before).toBe(7);
         });
 
+        it('readRoutineNote should parse section from supported formats', async () => {
+            const mockFile = { path: 'routine/section.md' } as TFile;
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: 700 },
+            });
+            const single = await engine.readRoutineNote(mockFile);
+            expect(single?.section).toEqual([700]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: [700, 1900] },
+            });
+            const flowArray = await engine.readRoutineNote(mockFile);
+            expect(flowArray?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: ['700', '1900'] },
+            });
+            const stringElements = await engine.readRoutineNote(mockFile);
+            expect(stringElements?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: [700, 700, 1900] },
+            });
+            const withDuplicate = await engine.readRoutineNote(mockFile);
+            expect(withDuplicate?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: [700, 'abc', 1900] },
+            });
+            const withInvalidElement = await engine.readRoutineNote(mockFile);
+            expect(withInvalidElement?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: [] },
+            });
+            const emptyArray = await engine.readRoutineNote(mockFile);
+            expect(emptyArray?.section).toBeUndefined();
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: ['abc', 'def'] },
+            });
+            const allInvalid = await engine.readRoutineNote(mockFile);
+            expect(allInvalid?.section).toBeUndefined();
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜' },
+            });
+            const unset = await engine.readRoutineNote(mockFile);
+            expect(unset?.section).toBeUndefined();
+        });
+
         it('should write repeat: 1 and advance to tomorrow when frontmatter is unparseable', async () => {
             const mockFile = { path: 'routine/unparseable.md' } as TFile;
             mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter: undefined });

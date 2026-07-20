@@ -35,7 +35,7 @@ export interface RoutineNote {
     estimate?: number;      // 省略可。展開時に (Xm) として付与
     start?: number;        // 省略可。HHmm 形式。展開時に単一時刻プレフィクスとして付与
     start_before?: number; // 省略可。next_due の何日前から表示するか（日数）
-    section?: number;      // 省略可。展開時のソート基準（時間帯の概念）。未設定は先頭
+    section?: number[];    // 省略可。展開時のソート基準（時間帯の概念）。複数指定は要素数だけ複製表示。未設定は先頭
     frequency: Frequency;
     next_due?: string;
     rollover?: boolean;
@@ -147,6 +147,24 @@ export class RoutineEngine {
         return value;
     }
 
+    private parseSectionElement(raw: unknown): number | undefined {
+        if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined;
+        if (typeof raw !== 'string') return undefined;
+        const normalized = normalizeAsciiDigits(raw).trim();
+        if (!normalized || Number.isNaN(Number(normalized))) return undefined;
+        return Number(normalized);
+    }
+
+    private parseSectionValue(raw: unknown): number[] | undefined {
+        const source = Array.isArray(raw) ? raw : [raw];
+        const values: number[] = [];
+        for (const item of source) {
+            const value = this.parseSectionElement(item);
+            if (value !== undefined && !values.includes(value)) values.push(value);
+        }
+        return values.length > 0 ? values : undefined;
+    }
+
     private parseStartBeforeValue(raw: unknown): number | undefined {
         if (typeof raw === 'number' && Number.isFinite(raw)) {
             const value = Math.trunc(raw);
@@ -240,7 +258,7 @@ export class RoutineEngine {
             estimate: typeof fm.estimate === 'number' ? fm.estimate : undefined,
             start: this.parseStartValue(fm.start),
             start_before: this.parseStartBeforeValue(fm.start_before),
-            section: typeof fm.section === 'number' ? fm.section : undefined,
+            section: this.parseSectionValue(fm.section),
             frequency,
             next_due: typeof fm.next_due === 'string' ? fm.next_due : undefined,
             rollover: this.resolveRollover(fm.rollover),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { routineSortKey, groupRoutineLinesWithSections } from '../src/service/routine-sort';
+import { routineSortKey, groupRoutineLinesWithSections, expandRoutineNotesBySection } from '../src/service/routine-sort';
 
 describe('routineSortKey', () => {
     const sort = (items: { section?: number; start?: number }[]) =>
@@ -70,6 +70,68 @@ describe('routineSortKey', () => {
         const sorted = sort(items);
         expect(sorted[0].start).toBeUndefined();
         expect(sorted[1].start).toBe(800);
+    });
+});
+
+describe('expandRoutineNotesBySection', () => {
+    it('section 未設定は1件のまま、section は undefined になる', () => {
+        const items = [{ name: 'A', section: undefined as number[] | undefined, start: 800 }];
+        const expanded = expandRoutineNotesBySection(items);
+        expect(expanded).toEqual([{ name: 'A', section: undefined, start: 800 }]);
+    });
+
+    it('section が単一要素の配列でも1件に展開される', () => {
+        const items = [{ name: 'A', section: [700], start: 800 }];
+        const expanded = expandRoutineNotesBySection(items);
+        expect(expanded).toEqual([{ name: 'A', section: 700, start: 800 }]);
+    });
+
+    it('section が複数要素の配列なら要素数だけ展開される', () => {
+        const items = [{ name: 'A', section: [700, 1900], start: 800 }];
+        const expanded = expandRoutineNotesBySection(items);
+        expect(expanded).toEqual([
+            { name: 'A', section: 700, start: 800 },
+            { name: 'A', section: 1900, start: 800 },
+        ]);
+    });
+
+    it('空配列は未設定と同じ扱いになる', () => {
+        const items = [{ name: 'A', section: [] as number[], start: 800 }];
+        const expanded = expandRoutineNotesBySection(items);
+        expect(expanded).toEqual([{ name: 'A', section: undefined, start: 800 }]);
+    });
+
+    it('複数ルーチンが混在しても各ルーチンごとに展開される', () => {
+        const items = [
+            { name: 'A', section: [700, 1900], start: 800 },
+            { name: 'B', section: undefined, start: 900 },
+            { name: 'C', section: [1200], start: 1000 },
+        ];
+        const expanded = expandRoutineNotesBySection(items);
+        expect(expanded).toEqual([
+            { name: 'A', section: 700, start: 800 },
+            { name: 'A', section: 1900, start: 800 },
+            { name: 'B', section: undefined, start: 900 },
+            { name: 'C', section: 1200, start: 1000 },
+        ]);
+    });
+
+    it('展開結果はそのまま routineSortKey でソートできる', () => {
+        const items = [
+            { name: 'A', section: [1900, 700], start: 800 },
+            { name: 'B', section: undefined, start: 600 },
+        ];
+        const expanded = expandRoutineNotesBySection(items);
+        const sorted = [...expanded].sort((a, b) => {
+            const [as1, as2] = routineSortKey(a);
+            const [bs1, bs2] = routineSortKey(b);
+            return as1 !== bs1 ? as1 - bs1 : as2 - bs2;
+        });
+        expect(sorted.map(i => [i.name, i.section])).toEqual([
+            ['A', 700],
+            ['A', 1900],
+            ['B', undefined],
+        ]);
     });
 });
 

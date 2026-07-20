@@ -551,7 +551,7 @@ describe('SRS completion (vault-wide)', () => {
             const routineNote = engine.readRoutineNote(mockFile)!;
             expect(routineNote.start).toBe(900);
             expect(routineNote.estimate).toBe(15);
-            expect(routineNote.section).toBe(1200);
+            expect(routineNote.section).toEqual([1200]);
             expect(routineNote.start_before).toBe(2);
 
             const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();

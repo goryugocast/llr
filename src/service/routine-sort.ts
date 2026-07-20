@@ -1,3 +1,20 @@
+export function expandRoutineNotesBySection<T extends { section?: number[] }>(
+    items: T[]
+): Array<Omit<T, 'section'> & { section: number | undefined }> {
+    const result: Array<Omit<T, 'section'> & { section: number | undefined }> = [];
+    for (const item of items) {
+        const { section, ...rest } = item;
+        if (!section || section.length === 0) {
+            result.push({ ...rest, section: undefined } as Omit<T, 'section'> & { section: number | undefined });
+            continue;
+        }
+        for (const value of section) {
+            result.push({ ...rest, section: value } as Omit<T, 'section'> & { section: number | undefined });
+        }
+    }
+    return result;
+}
+
 export function routineSortKey(r: { section?: number; start?: number }): [number, number] {
     const sec = r.section === undefined ? Infinity : r.section;
     const start = r.start ?? -Infinity;
