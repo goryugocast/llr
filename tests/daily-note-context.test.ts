@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     isDailyNoteMatch,
+    isFutureDailyNoteDate,
     resolveDailyNoteDate,
     resolveDailyNoteFolder,
     resolveMutationReferenceDate,
@@ -184,6 +185,34 @@ describe('daily-note-context', () => {
             settings(),
             parseByFormat,
         )).toBe(false);
+    });
+
+    // 未来ノートは state mutation の authority ではない（未来日付デイリーノートとルーチン基準日ポリシー 必須ルール B / D）。
+    // 素の完了・@done・リスケジュールマーカーの3経路は、すべてこの判定を通す。
+    describe('isFutureDailyNoteDate (state-mutation guard)', () => {
+        // ローカル時刻で組み立てる。判定は暦日単位なので、実行環境の TZ に依存させない。
+        const at = (year: number, month: number, day: number, hour = 0, minute = 0) =>
+            new Date(year, month - 1, day, hour, minute);
+
+        it('blocks a note dated after the runtime day', () => {
+            expect(isFutureDailyNoteDate(at(2026, 3, 1), at(2026, 2, 28, 9, 30))).toBe(true);
+        });
+
+        it('allows the runtime day itself regardless of the time of day', () => {
+            expect(isFutureDailyNoteDate(at(2026, 2, 28), at(2026, 2, 28, 23, 59))).toBe(false);
+        });
+
+        it('allows a past note so retroactive completion keeps working', () => {
+            expect(isFutureDailyNoteDate(at(2026, 2, 27), at(2026, 2, 28, 9, 30))).toBe(false);
+        });
+
+        it('treats the next calendar day as future even one minute away', () => {
+            expect(isFutureDailyNoteDate(at(2026, 3, 1, 0, 0), at(2026, 2, 28, 23, 59))).toBe(true);
+        });
+
+        it('allows files that are not daily notes (no parsed date)', () => {
+            expect(isFutureDailyNoteDate(null, at(2026, 2, 28))).toBe(false);
+        });
     });
 
     describe('resolveDailyNoteFolder', () => {

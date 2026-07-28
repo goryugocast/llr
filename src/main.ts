@@ -11,7 +11,7 @@ import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './ser
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
-import { isDailyNoteMatch, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
+import { isDailyNoteMatch, isFutureDailyNoteDate, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
 import { DailyNoteAutoInsertController } from './service/daily-note-auto-insert';
@@ -1109,6 +1109,11 @@ export default class LlrPlugin extends Plugin {
             ...previousSnapshot.keys(),
         ]);
 
+        // 未来ノートは state mutation の authority ではない（@done / リスケジュールマーカーと同じガード）。
+        // スナップショットの更新自体は続ける。止めると、その日が来たときに未処理ぶんを一斉に再生してしまう。
+        const isFutureNote = this.isFutureDailyNoteFile(file);
+        let futureBlockedCompletions = 0;
+
         for (const routinePath of routinePaths) {
             const current = currentSnapshot.get(routinePath) ?? this.snapshots.createEmptyEntry();
             const prev = previousSnapshot.get(routinePath) ?? this.snapshots.createEmptyEntry();
@@ -1121,6 +1126,21 @@ export default class LlrPlugin extends Plugin {
             if (!(routineFile instanceof TFile)) continue;
 
             const completionDelta = current.completedCount - prev.completedCount;
+
+            if (isFutureNote) {
+                if (completionDelta > 0) futureBlockedCompletions += 1;
+                this.debugLog('Routine completion ignored on a future daily note', {
+                    file: file.path,
+                    routinePath,
+                    completedCount: {
+                        from: prev.completedCount,
+                        to: current.completedCount,
+                        delta: completionDelta,
+                    },
+                });
+                continue;
+            }
+
             const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
             const suppressedCompletedSignatures = processedAtDoneCompletions.get(routinePath) ?? new Set<string>();
             const addedCompletedSignatures = completionDelta > 0
@@ -1158,6 +1178,11 @@ export default class LlrPlugin extends Plugin {
                 file.path,
                 completionRequest
             );
+        }
+
+        // チェックが付いたのに何も起きないのは分からないので、反映しなかったことだけ伝える。
+        if (futureBlockedCompletions > 0) {
+            this.showLlrNotice('LLR: 未来日のノートでの完了はルーチンに反映しません。当日に完了するか @done を使ってください。');
         }
 
         // SRS バッチ区間が全完了なら次のバッチを補充する
@@ -1600,15 +1625,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     private isFutureDailyNoteFile(file: TFile): boolean {
-        const noteDate = this.parseDailyNoteDate(file);
-        if (!noteDate) return false;
-
-        const normalizedNote = new Date(noteDate);
-        normalizedNote.setHours(0, 0, 0, 0);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return normalizedNote.getTime() > today.getTime();
+        return isFutureDailyNoteDate(this.parseDailyNoteDate(file), new Date());
     }
 
     private resolveSingleRoutineFileForLine(lineText: string, sourcePath: string): TFile | null {

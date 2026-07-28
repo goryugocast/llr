@@ -70,6 +70,28 @@ function toDateOnlyTime(date: Date): number {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+/**
+ * 対象ノートの日付が runtime today より未来か。
+ *
+ * 未来ノートは preview 専用で、ルーチン正本を書き換える authority を持たない。
+ * 素の完了検知 / `@done` / リスケジュールマーカーの3経路は、必ずこの判定で揃えて止める。
+ * 片方だけ clamp・片方だけ block にすると「経路によって next_due の動きが変わる」非対称バグになる。
+ * 詳細は docs/specs/未来日付デイリーノートとルーチン基準日ポリシー.md（必須ルール B / D）。
+ *
+ * デイリーノートとして解釈できないファイル（primaryDate が null）は未来ではない扱いにして、
+ * 既存の「日付が読めないなら runtime today を使う」経路をそのまま通す。
+ */
+export function isFutureDailyNoteDate(noteDate: Date | null, now: Date): boolean {
+    if (!noteDate) return false;
+    return toDateOnlyTime(noteDate) > toDateOnlyTime(now);
+}
+
+/**
+ * 状態更新に使う基準日。未来日は runtime today へ丸める。
+ *
+ * これは isFutureDailyNoteDate() で止めきれなかった経路のための二重防御であり、
+ * 未来ノートの完了を成立させるための仕組みではない。
+ */
 export function resolveMutationReferenceDate(primaryDate: Date | null, fallbackDate: Date): Date {
     if (!primaryDate) return new Date(fallbackDate);
     if (toDateOnlyTime(primaryDate) > toDateOnlyTime(fallbackDate)) {
