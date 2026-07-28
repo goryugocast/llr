@@ -582,7 +582,7 @@ describe('RoutineEngine', () => {
             expect(results[0].file.path).toBe('routine/forced-sticky.md');
         });
 
-        it('does not include repeating routines with no next_due', async () => {
+        it('starts a cycle-only routine on the target day when next_due is missing', async () => {
             const routineFile = makeFile('routine/no-next-due.md');
             mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
             mockApp.metadataCache.getFileCache.mockReturnValue({
@@ -590,9 +590,12 @@ describe('RoutineEngine', () => {
                     repeat: 'every 5 days',
                 },
             });
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
 
             const results = await engine.fetchDueRoutines(new Date('2026-02-27T12:00:00'));
-            expect(results).toHaveLength(0);
+            expect(results).toHaveLength(1);
+            expect(results[0].file.path).toBe('routine/no-next-due.md');
+            expect(updateSpy).not.toHaveBeenCalled();
         });
 
         it('includes a routine note when next_due is today even without explicit repeat', async () => {
@@ -689,6 +692,81 @@ describe('RoutineEngine', () => {
             expect(updateSpy).not.toHaveBeenCalled();
             expect(results).toHaveLength(1);
             expect(results[0].file.path).toBe('routine/lead-window-overdue.md');
+        });
+    });
+
+    // 2026-02-27 is a Friday; 2026-03-03 is a Tuesday.
+    describe('fetchDueRoutines initial due (no next_due)', () => {
+        const fetchWith = (frontmatter: Record<string, unknown>, targetIso: string) => {
+            const routineFile = makeFile('routine/initial-due.md');
+            mockApp.vault.getFolderByPath.mockReturnValue({ children: [routineFile] });
+            mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter });
+            return engine.fetchDueRoutines(new Date(targetIso));
+        };
+
+        it('shows a numeric daily repeat on the target day', async () => {
+            const results = await fetchWith({ repeat: 1 }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(1);
+        });
+
+        it('shows a string numeric repeat on the target day', async () => {
+            const results = await fetchWith({ repeat: '10' }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(1);
+        });
+
+        it('shows a completion-anchored repeat on the target day', async () => {
+            const results = await fetchWith({ repeat: '5日後' }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(1);
+        });
+
+        it('shows a routine with no repeat and no next_due every day', async () => {
+            const results = await fetchWith({}, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(1);
+        });
+
+        it('does not show repeat none without next_due', async () => {
+            const results = await fetchWith({ repeat: 0 }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(0);
+        });
+
+        it('waits for the first calendar occurrence of a weekday repeat', async () => {
+            const results = await fetchWith({ repeat: 'every week on tue' }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(0);
+        });
+
+        it('shows a weekday repeat on its first calendar occurrence', async () => {
+            const results = await fetchWith({ repeat: 'every week on tue' }, '2026-03-03T12:00:00');
+            expect(results).toHaveLength(1);
+            expect(results[0].next_due).toBe('2026-03-03');
+        });
+
+        it('shows a weekday repeat when the target day itself matches', async () => {
+            const results = await fetchWith({ repeat: '金' }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(1);
+            expect(results[0].next_due).toBe('2026-02-27');
+        });
+
+        it('applies start_before to the derived first occurrence', async () => {
+            const early = await fetchWith({ repeat: 'every week on tue', start_before: 3 }, '2026-02-27T12:00:00');
+            expect(early).toHaveLength(0);
+
+            const inWindow = await fetchWith({ repeat: 'every week on tue', start_before: 3 }, '2026-02-28T12:00:00');
+            expect(inWindow).toHaveLength(1);
+        });
+
+        it('waits for the first calendar occurrence of a monthly repeat', async () => {
+            const notYet = await fetchWith({ repeat: '毎月15日' }, '2026-02-27T12:00:00');
+            expect(notYet).toHaveLength(0);
+
+            const onDay = await fetchWith({ repeat: '毎月15日' }, '2026-03-15T12:00:00');
+            expect(onDay).toHaveLength(1);
+        });
+
+        it('does not write the derived due date back to the note', async () => {
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            await fetchWith({ repeat: 'every week on tue' }, '2026-03-03T12:00:00');
+            expect(updateSpy).not.toHaveBeenCalled();
+            expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
         });
     });
 });

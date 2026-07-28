@@ -671,6 +671,46 @@ function calculateNextDueFromSchedule(parsed: ParsedSchedule, baseDate: Date): s
 }
 
 /**
+ * A repeat rule that carries no calendar phase (`every N days/months/years` and the legacy
+ * interval forms). Its cycle can start on any date, so a routine without `next_due` starts today.
+ */
+function isCycleOnlyFrequency(frequency: Frequency): boolean {
+    switch (frequency.type) {
+        case 'daily':
+        case 'after':
+        case 'every':
+            return true;
+        case 'schedule': {
+            const kind = parseScheduleExpression(frequency.expression).kind;
+            return kind === 'interval_days' || kind === 'interval_months' || kind === 'interval_years';
+        }
+        default:
+            return false;
+    }
+}
+
+/**
+ * Due date to use for a routine that has no `next_due` yet (spec: ルーチンエンジン仕様 §3.x).
+ * Cycle-only rules start on the target date; calendar-bound rules (weekday, monthly day,
+ * nth weekday, yearly) resolve to their first occurrence on or after the target date.
+ * Returns null only for `none`, the one rule that means "do not show".
+ * The result is never written back to the note; it is derived on every read.
+ */
+export function resolveInitialDue(frequency: Frequency, targetDate: Date): string | null {
+    if (frequency.type === 'none') return null;
+
+    const targetStr = toDateString(targetDate);
+    try {
+        if (isCycleOnlyFrequency(frequency)) return targetStr;
+        // Search from the day before so an occurrence on the target date itself counts.
+        return calculateNextDue(frequency, addDays(targetDate, -1)) ?? targetStr;
+    } catch {
+        // Unparsable repeat: show the routine rather than hiding it silently.
+        return targetStr;
+    }
+}
+
+/**
  * Calculate the next due date based on frequency and base date.
  * `baseDate` must already be selected by the caller:
  * - completion-date anchor -> completion date

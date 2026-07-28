@@ -9,7 +9,7 @@
  */
 
 import { App, TFile } from 'obsidian';
-import { addDays, advanceDueUntil, calculateNextDue, fromDateString, normalizeAsciiDigits, normalizeRepeatExpression, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
+import { addDays, advanceDueUntil, calculateNextDue, fromDateString, normalizeAsciiDigits, normalizeRepeatExpression, resolveInitialDue, toDateString, type Frequency, usesCompletionAnchor, usesDueAnchor } from './yaml-parser';
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
@@ -312,21 +312,40 @@ export class RoutineEngine {
         return note.rollover ?? this.defaultRollover(note.frequency);
     }
 
-    private resolveDisplayDueDate(note: RoutineNote, targetDate: Date): string | null {
+    /**
+     * Single source of truth for "is this routine due on the target date?" (spec: §3.6).
+     *
+     * `displayDue` is the date the display logic compares against the target date;
+     * `nextDue` is the due date the caller should surface for the note (unchanged unless a
+     * disabled-rollover catch-up moved it). A null `displayDue` means "do not show".
+     * Nothing here writes to the note: a missing `next_due` is derived on every read.
+     */
+    private resolveEffectiveDue(note: RoutineNote, targetDate: Date): { displayDue: string | null; nextDue?: string } {
         const targetStr = toDateString(targetDate);
+        const base = note.next_due ?? resolveInitialDue(note.frequency, targetDate) ?? undefined;
 
-        if (!note.next_due) {
-            return note.frequency.type === 'none' ? null : targetStr;
-        }
+        if (!base) return { displayDue: null };
+        if (base >= targetStr) return { displayDue: base, nextDue: base };
 
-        if (note.next_due >= targetStr) return note.next_due;
-
+        // Overdue from here on.
         if (this.isRolloverEnabled(note)) {
-            return targetStr;
+            // Keep the missed occurrence: show it today without moving next_due.
+            return { displayDue: targetStr, nextDue: base };
         }
 
-        // Rollover disabled: advance the due date to the first occurrence on or after target.
-        return advanceDueUntil(note.frequency, note.next_due, targetStr, true);
+        const advanced = advanceDueUntil(note.frequency, base, targetStr, true);
+        if (advanced === null) return { displayDue: null, nextDue: base };
+
+        if (advanced !== note.next_due) {
+            this.emitDebugEvent('fetchDueRoutines:preview-catchup-next-due', {
+                file: note.file.path,
+                from: note.next_due ?? null,
+                to: advanced,
+                targetDate: targetStr,
+            });
+        }
+
+        return { displayDue: advanced, nextDue: advanced };
     }
 
     private shouldDisplayOnTargetDate(note: RoutineNote, targetDate: Date, displayDue: string | null): boolean {
@@ -342,35 +361,6 @@ export class RoutineEngine {
 
         const visibleFrom = toDateString(addDays(fromDateString(displayDue), -leadDays));
         return targetStr >= visibleFrom && targetStr <= displayDue;
-    }
-
-    private normalizeOverdueNextDueForPreview(note: RoutineNote, targetDate: Date): RoutineNote {
-        if (!note.next_due) return note;
-        if (note.frequency.type === 'none') return note;
-        if (this.isRolloverEnabled(note)) return note;
-
-        const targetStr = toDateString(targetDate);
-        if (note.next_due >= targetStr) return note;
-
-        // Rollover disabled and overdue: roll the due date forward to the first
-        // occurrence on or after target so the preview shows the upcoming slot.
-        const candidate = advanceDueUntil(note.frequency, note.next_due, targetStr, true);
-        if (candidate === null) return note;
-
-        if (candidate !== note.next_due) {
-            this.emitDebugEvent('fetchDueRoutines:preview-catchup-next-due', {
-                file: note.file.path,
-                from: note.next_due,
-                to: candidate,
-                targetDate: targetStr,
-            });
-            return {
-                ...note,
-                next_due: candidate,
-            };
-        }
-
-        return note;
     }
 
     /**
@@ -671,13 +661,14 @@ export class RoutineEngine {
 
             const note = this.readRoutineNote(child);
             if (!note) continue;
-            if (!note.next_due && (note.frequency.type === 'none' || note.repeatExplicit)) continue;
 
-            const normalizedNote = this.normalizeOverdueNextDueForPreview(note, today);
-            const displayDue = this.resolveDisplayDueDate(normalizedNote, today);
+            const { displayDue, nextDue } = this.resolveEffectiveDue(note, today);
+            if (!displayDue) continue;
 
-            if (this.shouldDisplayOnTargetDate(normalizedNote, today, displayDue)) {
-                results.push(normalizedNote);
+            const resolvedNote = nextDue === note.next_due ? note : { ...note, next_due: nextDue };
+
+            if (this.shouldDisplayOnTargetDate(resolvedNote, today, displayDue)) {
+                results.push(resolvedNote);
             }
         }
     }
