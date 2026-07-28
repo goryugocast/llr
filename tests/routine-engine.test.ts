@@ -405,6 +405,43 @@ describe('RoutineEngine', () => {
             expect(resolved?.path).toBe(`${DEFAULT_ROUTINE_FOLDER}/Test & Space.md`);
         });
 
+        it('does not write next_due when the checkbox is reverted within the grace period', async () => {
+            vi.useFakeTimers();
+            const mockFile = { path: 'routine/mistap.md', basename: 'mistap' } as unknown as TFile;
+            mockApp.metadataCache.getFirstLinkpathDest.mockReturnValue(mockFile);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: '5日後', next_due: '2026-02-22' },
+            });
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+
+            engine.scheduleUpdate(mockFile, 'src.md', { completionDate: new Date('2026-02-22T09:00:00') });
+            // Metadata changes arrive ~80ms after the edit, well inside the grace period.
+            await vi.advanceTimersByTimeAsync(100);
+            engine.scheduleUpdate(mockFile, 'src.md', null);
+
+            await vi.advanceTimersByTimeAsync(10000);
+            expect(updateSpy).not.toHaveBeenCalled();
+
+            vi.useRealTimers();
+        });
+
+        it('writes next_due once the grace period elapses', async () => {
+            vi.useFakeTimers();
+            const mockFile = { path: 'routine/committed.md', basename: 'committed' } as unknown as TFile;
+            mockApp.metadataCache.getFirstLinkpathDest.mockReturnValue(mockFile);
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { repeat: '5日後', next_due: '2026-02-22' },
+            });
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+
+            engine.scheduleUpdate(mockFile, 'src.md', { completionDate: new Date('2026-02-22T09:00:00') });
+            await vi.advanceTimersByTimeAsync(10000);
+
+            expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-02-27', repeat: undefined });
+
+            vi.useRealTimers();
+        });
+
         it('should properly cancel update when completionDate is null', () => {
             vi.useFakeTimers();
             const mockFile = { path: 'routine/cancel.md', basename: 'cancel' } as unknown as TFile;

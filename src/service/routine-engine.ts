@@ -13,7 +13,10 @@ import { addDays, advanceDueUntil, calculateNextDue, fromDateString, normalizeAs
 import { parseCutoffMinutes } from './day-cutoff';
 
 const DEFAULT_ROUTINE_FOLDER = 'routine';
-const DEBOUNCE_DELAY_MS = 0; // Debug phase: immediate update (may revert to delayed)
+// Grace period for undoing a mis-tapped checkbox. Metadata changes arrive ~80ms after the edit,
+// so a revert within this window cancels the pending write. flushAll() on unload still commits
+// anything outstanding, so a completion is never lost by closing Obsidian.
+const DEBOUNCE_DELAY_MS = 3000;
 const SRS_GROWTH_MIN = 2;
 const SRS_GROWTH_MAX = 3;
 
