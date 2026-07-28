@@ -33,6 +33,8 @@ describe('RoutineEngine', () => {
             vault: {
                 getFolderByPath: vi.fn(),
                 getMarkdownFiles: vi.fn().mockReturnValue([]),
+                read: vi.fn(),
+                modify: vi.fn(),
             }
         };
         engine = new RoutineEngine(mockApp as any);
@@ -879,6 +881,128 @@ describe('RoutineEngine', () => {
             await fetchWith({ repeat: 'every week on tue' }, '2026-03-03T12:00:00');
             expect(updateSpy).not.toHaveBeenCalled();
             expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+        });
+    });
+
+    // Spec: ルーチンエンジン仕様 §4.5
+    describe('updateNextDue frontmatter repair', () => {
+        const mockFile = { path: 'routine/broken.md' } as TFile;
+        let notices: string[];
+        let repairEngine: RoutineEngine;
+
+        beforeEach(() => {
+            notices = [];
+            repairEngine = new RoutineEngine(mockApp as any, {
+                onNotice: (message: string) => notices.push(message),
+            });
+            // Obsidian could not parse the frontmatter: this is what triggers the repair path.
+            mockApp.metadataCache.getFileCache.mockReturnValue({});
+        });
+
+        const repairedContent = (): string => {
+            expect(mockApp.vault.modify).toHaveBeenCalledTimes(1);
+            return mockApp.vault.modify.mock.calls[0][1] as string;
+        };
+
+        it('closes the block before a markdown heading instead of swallowing the body', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['---', 'repeat: 毎日', '# メモ', '参考: https://example.com', ''].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(repairedContent()).toBe(
+                ['---', 'repeat: 毎日', '---', '# メモ', '参考: https://example.com', ''].join('\n')
+            );
+            expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalled();
+        });
+
+        it('keeps indented values and list items inside the block', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['---', 'repeat: 毎日', 'section:', '  - 700', '  - 1900', 'tags:', '- home', '', '本文'].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(repairedContent()).toBe(
+                ['---', 'repeat: 毎日', 'section:', '  - 700', '  - 1900', 'tags:', '- home', '---', '', '本文'].join('\n')
+            );
+        });
+
+        it('closes the block at the first prose line', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['---', 'repeat: 毎日', 'これはメモです', '参考: https://example.com'].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(repairedContent()).toBe(
+                ['---', 'repeat: 毎日', '---', 'これはメモです', '参考: https://example.com'].join('\n')
+            );
+        });
+
+        it('closes the block at the blank line after the properties', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['---', 'repeat: 毎日', 'next_due: 2026-07-28', '', '本文'].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(repairedContent()).toBe(
+                ['---', 'repeat: 毎日', 'next_due: 2026-07-28', '---', '', '本文'].join('\n')
+            );
+        });
+
+        it('un-indents an opening "---" that has a closing one', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['  ---', 'repeat: 毎日', '---', '# メモ'].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(repairedContent()).toBe(['---', 'repeat: 毎日', '---', '# メモ'].join('\n'));
+        });
+
+        it('aborts without writing when the leading "---" is a horizontal rule', async () => {
+            mockApp.vault.read.mockResolvedValue(
+                ['---', '# タイトル', '本文', '参考: https://example.com'].join('\n')
+            );
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(mockApp.vault.modify).not.toHaveBeenCalled();
+            expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+            expect(notices).toEqual(['LLR: YAMLを修復できませんでした。next_due は更新していません']);
+        });
+
+        it('aborts when a list item comes before any key line', async () => {
+            mockApp.vault.read.mockResolvedValue(['---', '- 買い物', '- 掃除'].join('\n'));
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(mockApp.vault.modify).not.toHaveBeenCalled();
+            expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+            expect(notices).toHaveLength(1);
+        });
+
+        it('leaves a note whose frontmatter Obsidian already parsed untouched', async () => {
+            mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter: { repeat: '毎日' } });
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(mockApp.vault.read).not.toHaveBeenCalled();
+            expect(mockApp.vault.modify).not.toHaveBeenCalled();
+            expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalled();
+        });
+
+        it('leaves a note that does not start with "---" untouched', async () => {
+            mockApp.vault.read.mockResolvedValue(['# メモ', '参考: https://example.com'].join('\n'));
+
+            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+
+            expect(mockApp.vault.modify).not.toHaveBeenCalled();
+            expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalled();
+            expect(notices).toEqual([]);
         });
     });
 });

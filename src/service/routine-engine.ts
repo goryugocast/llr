@@ -3,9 +3,8 @@
  *
  * Obsidian-aware engine for the Routine feature.
  * Reads/updates YAML frontmatter on routine notes inside the `routine/` folder.
- * Implements debounce-based trigger: schedules YAML update after a configurable
- * delay (currently 0ms in debug phase; may be increased again later)
- * after task completion, cancels if reverted, and flushes on Obsidian close.
+ * Implements debounce-based trigger: schedules YAML update after DEBOUNCE_DELAY_MS
+ * following task completion, cancels if reverted, and flushes on Obsidian close.
  */
 
 import { App, TFile } from 'obsidian';
@@ -68,6 +67,38 @@ export function resolveDeferredDateByCutoff(now: Date, cutoffTimeHHmm = '0300'):
         target.setDate(target.getDate() + 1);
     }
     return target;
+}
+
+/** `key:` / `key: value` の形。行頭が空白・`#`・`-` のものはキー行として扱わない。 */
+const FRONTMATTER_KEY_LINE = /^[^\s#-][^:]*:(\s|$)/;
+
+/**
+ * Finds the last line belonging to an unclosed frontmatter block (spec: ルーチンエンジン仕様 §4.5).
+ *
+ * `lines[0]` is the opening `---`. Returns the index the closing `---` should follow, or null
+ * when no key line was found at all — that means the leading `---` never opened a frontmatter
+ * block, and the caller must not repair: any guess would move body text inside the YAML.
+ */
+export function findFrontmatterEnd(lines: string[]): number | null {
+    let lastFrontmatterLine = -1;
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim() === '') break;      // blank line closes the block
+        if (line.startsWith('#')) break;    // indistinguishable from a YAML comment; body wins
+
+        // Indented values and list items continue the key above them.
+        if (/^\s/.test(line) || line.startsWith('-')) {
+            if (lastFrontmatterLine === -1) break;  // nothing to continue
+            lastFrontmatterLine = i;
+            continue;
+        }
+
+        if (!FRONTMATTER_KEY_LINE.test(line)) break;  // prose: the block ended before it
+        lastFrontmatterLine = i;
+    }
+
+    return lastFrontmatterLine === -1 ? null : lastFrontmatterLine;
 }
 
 export class RoutineEngine {
@@ -416,14 +447,19 @@ export class RoutineEngine {
                 // Case 2: Unclosed "---" block
                 const secondDashIndex = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
                 if (secondDashIndex === -1) {
-                    // Try to find a reasonable place to close it (before first heading or empty line after properties)
-                    let lastPropertyLine = 0;
-                    for (let i = 1; i < lines.length; i++) {
-                        if (lines[i].includes(':')) lastPropertyLine = i;
-                        else if (lines[i].trim() !== '' && !lines[i].startsWith('#')) break;
-                        else if (lines[i].trim() === '') break;
+                    const frontmatterEnd = findFrontmatterEnd(lines);
+                    if (frontmatterEnd === null) {
+                        // The leading "---" does not open a frontmatter block (a horizontal rule, say).
+                        // Guessing a close would move body text inside the YAML, so write nothing at all.
+                        this.emitDebugEvent('updateNextDue:repair-aborted', {
+                            file: file.path,
+                            reason: 'no-property-line',
+                        });
+                        console.debug(`[LLR] Unclosed "---" with no property line; skipping ${file.path}`);
+                        this.emitNotice('LLR: YAMLを修復できませんでした。next_due は更新していません', 5000);
+                        return;
                     }
-                    lines.splice(lastPropertyLine + 1, 0, '---');
+                    lines.splice(frontmatterEnd + 1, 0, '---');
                     repairNeeded = true;
                 }
 
