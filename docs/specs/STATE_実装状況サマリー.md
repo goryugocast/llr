@@ -52,6 +52,8 @@
   - `repeat: none/no/0` による停止（`next_due` 削除）
   - 規則未設定時の `repeat: 1` 自動補完
   - `from due` による位相維持ルール
+  - `next_due` を持たないノートの実効期日導出（`resolveEffectiveDue` / `resolveInitialDue`）
+  - SRS growth（設定 `srsGrowthEnabled` で有効化。既定 off。routine フォルダ外の `repeat > 0` ノートを vault 全体から収集し、完了時に `repeat` を 2〜3 倍へ育てる）
 - `src/service/status-bar-calculator.ts`
   - ステータスバー集計ロジック
   - 行末時間表記のみ採用する見積抽出
@@ -130,11 +132,6 @@
 
 ## 2. Not Implemented
 
-### 0. SRS growth — **main では未実装（Draft / 実験ブランチのみ）**
-- 「完了すると `repeat` が 2〜3 倍に育つ」SRS growth（[[SRS仕様]]）は main には入っていない。
-- 実装・テスト（`srs-completion.test.ts`）は `srs/vault-wide` ブランチにある。folder-based 方式は比較検証の結果廃案（比較ブランチは削除済み）。
-- 前身の incubate 構想は未実装のまま SRS 仕様に吸収された（incubate の設計文書は削除済み）。
-
 ### A. Day Boundary / Archive
 - `Llr: Start New Day`
 - デイリーノート/作業ノートのアーカイブ・ロールオーバー一式
@@ -156,6 +153,12 @@
 - **重厚な専用ビュー**: テーブル中心の複雑UIは避け、サイドバーサマリーを中心にする。
 
 ## 4. Recent Milestones (抜粋)
+
+### 2026-07-28: `next_due` を持たないノートの表示
+- `repeat` が明示されていて `next_due` が無いノートを表示対象から外していた分岐を廃止。`repeat` から実効期日を導出するようにした（[[ルーチンエンジン仕様]] §3.x）。
+- 表示判定を `resolveEffectiveDue` に一本化（`resolveDisplayDueDate` と `normalizeOverdueNextDueForPreview` を統合）。
+- 隔週・隔月・N年ごとの初回は間隔を無視して最初の該当日を採る。`schedule: none` の停止扱いを `repeat` と対称化。判定に失敗したノートは全体を止めずその日に表示する。
+- `@done` の表示期間判定も実効期日を見るようにした。
 
 ### 2026-05-28: v0.2.1 bugfix
 - `every X days from completion` の `rollover` 既定を `true` に修正（0.2.0 で誤って `false` にしていた）。詳細は [[CHANGELOG]] を参照。

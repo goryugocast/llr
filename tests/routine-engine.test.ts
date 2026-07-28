@@ -338,6 +338,26 @@ describe('RoutineEngine', () => {
             expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-04-16', repeat: undefined });
         });
 
+        it('advances from the derived due date when @done is used on a note without next_due', async () => {
+            const mockFile = { path: 'routine/derived-done.md' } as TFile;
+            const routineNote = {
+                file: mockFile,
+                frequency: { type: 'schedule', expression: 'every week on thu' } as any,
+                start_before: 3,
+                repeatExplicit: true,
+            };
+
+            const updateSpy = vi.spyOn(engine, 'updateNextDue').mockResolvedValue();
+            // 2026-07-28 is a Tuesday; the derived occurrence is Thursday 2026-07-30.
+            await engine.processCompletion(
+                routineNote as any,
+                new Date('2026-07-28T09:00:00'),
+                { mode: 'advanceFromDue' }
+            );
+
+            expect(updateSpy).toHaveBeenCalledWith(mockFile, { nextDue: '2026-08-06', repeat: undefined });
+        });
+
         it('ignores @done mode outside the start_before window and falls back to normal completion logic', async () => {
             const mockFile = { path: 'routine/start-before-done-outside.md' } as TFile;
             const routineNote = {
@@ -760,6 +780,61 @@ describe('RoutineEngine', () => {
 
             const onDay = await fetchWith({ repeat: '毎月15日' }, '2026-03-15T12:00:00');
             expect(onDay).toHaveLength(1);
+        });
+
+        it('starts the phase of a biweekly repeat from the target date', async () => {
+            // 2026-08-03 is the first Monday on or after the target date.
+            const notYet = await fetchWith({ repeat: '隔週月曜' }, '2026-07-28T12:00:00');
+            expect(notYet).toHaveLength(0);
+
+            const firstOccurrence = await fetchWith({ repeat: '隔週月曜' }, '2026-08-03T12:00:00');
+            expect(firstOccurrence).toHaveLength(1);
+            expect(firstOccurrence[0].next_due).toBe('2026-08-03');
+
+            // Derived from a Tuesday, the first Monday must not skip a whole interval to 08-10.
+            const seenThroughLeadWindow = await fetchWith({ repeat: '隔週月曜', start_before: 10 }, '2026-07-28T12:00:00');
+            expect(seenThroughLeadWindow).toHaveLength(1);
+            expect(seenThroughLeadWindow[0].next_due).toBe('2026-08-03');
+        });
+
+        it('shows a biweekly repeat when the target day itself matches', async () => {
+            // 2026-08-02 is a Sunday, and startOfWeek is Sunday-based.
+            const results = await fetchWith({ repeat: '隔週日曜' }, '2026-08-02T12:00:00');
+            expect(results).toHaveLength(1);
+            expect(results[0].next_due).toBe('2026-08-02');
+        });
+
+        it('shows a multi-month repeat when the target day itself matches', async () => {
+            const results = await fetchWith({ repeat: 'every 2 months on day 1' }, '2026-09-01T12:00:00');
+            expect(results).toHaveLength(1);
+            expect(results[0].next_due).toBe('2026-09-01');
+        });
+
+        it('does not show legacy schedule none without next_due', async () => {
+            const results = await fetchWith({ schedule: 'none' }, '2026-02-27T12:00:00');
+            expect(results).toHaveLength(0);
+        });
+
+        it('shows a leap-day repeat on its first occurrence instead of every day', async () => {
+            const notYet = await fetchWith({ repeat: 'every 4 years on 02-29' }, '2026-07-28T12:00:00');
+            expect(notYet).toHaveLength(0);
+
+            const onDay = await fetchWith({ repeat: 'every 4 years on 02-29' }, '2028-02-29T12:00:00');
+            expect(onDay).toHaveLength(1);
+        });
+
+        it('does not let one unparsable repeat hide the other routines', async () => {
+            const broken = makeFile('routine/broken.md');
+            const healthy = makeFile('routine/healthy.md');
+            mockApp.vault.getFolderByPath.mockReturnValue({ children: [broken, healthy] });
+            mockApp.metadataCache.getFileCache.mockImplementation((file: TFile) => ({
+                frontmatter: file.path === 'routine/broken.md'
+                    ? { repeat: 'たまに', next_due: '2026-07-01' }
+                    : { repeat: 1, next_due: '2026-07-28' },
+            }));
+
+            const results = await engine.fetchDueRoutines(new Date('2026-07-28T12:00:00'));
+            expect(results.map(r => r.file.path)).toContain('routine/healthy.md');
         });
 
         it('does not write the derived due date back to the note', async () => {

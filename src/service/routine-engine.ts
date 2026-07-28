@@ -204,20 +204,31 @@ export class RoutineEngine {
         return advanceDueUntil(frequency, nextDue, completionDayStr, false);
     }
 
+    /**
+     * Due date to reason about on a given date: the frontmatter value when present, otherwise the
+     * derived first occurrence (spec: §3.x). Display, `@done` gating and lead-window checks must all
+     * use this so a routine without `next_due` behaves the same as one with it. Never written back.
+     */
+    resolveDueForDate(note: RoutineNote, targetDate: Date): string | undefined {
+        return note.next_due ?? resolveInitialDue(note.frequency, this.normalizeToDateOnly(targetDate)) ?? undefined;
+    }
+
     private shouldAdvanceFromCurrentDue(
         note: RoutineNote,
         completionDate: Date,
         mode: RoutineCompletionMode
     ): boolean {
         if (mode !== 'advanceFromDue') return false;
-        if (!note.next_due) return false;
+
+        const due = this.resolveDueForDate(note, completionDate);
+        if (!due) return false;
 
         const leadDays = note.start_before ?? 0;
         if (leadDays <= 0) return false;
 
         const completionDay = toDateString(this.normalizeToDateOnly(completionDate));
-        const visibleFrom = toDateString(addDays(fromDateString(note.next_due), -leadDays));
-        return completionDay >= visibleFrom && completionDay <= note.next_due;
+        const visibleFrom = toDateString(addDays(fromDateString(due), -leadDays));
+        return completionDay >= visibleFrom && completionDay <= due;
     }
 
     /**
@@ -280,6 +291,12 @@ export class RoutineEngine {
             return { type: 'schedule', expression: normalized };
         }
         if (typeof rawSchedule === 'string' && rawSchedule.trim().length > 0) {
+            // Legacy `schedule` must fold the stop values the same way `repeat` does,
+            // otherwise a stopped routine falls through to the "show it" side.
+            const normalized = rawSchedule.trim().toLowerCase();
+            if (normalized === 'none' || normalized === 'no') {
+                return { type: 'none' };
+            }
             return { type: 'schedule', expression: rawSchedule };
         }
         if (rawFrequency !== undefined && rawFrequency !== null) {
@@ -478,8 +495,10 @@ export class RoutineEngine {
 
             const isDueAnchored = usesDueAnchor(frequency);
             const shouldAdvanceFromDue = this.shouldAdvanceFromCurrentDue(routineNote, completionDay, requestedMode);
-            const newNextDue = shouldAdvanceFromDue && next_due
-                ? calculateNextDue(frequency, fromDateString(next_due))
+            // `@done` closes the occurrence the user can currently see, which may be a derived one.
+            const effectiveDue = next_due ?? resolveInitialDue(frequency, completionDay) ?? undefined;
+            const newNextDue = shouldAdvanceFromDue && effectiveDue
+                ? calculateNextDue(frequency, fromDateString(effectiveDue))
                 : isDueAnchored
                     ? this.calculateNextDueForDueAnchor(frequency, next_due, completionDay)
                     : calculateNextDue(frequency, completionDay);
@@ -662,7 +681,20 @@ export class RoutineEngine {
             const note = this.readRoutineNote(child);
             if (!note) continue;
 
-            const { displayDue, nextDue } = this.resolveEffectiveDue(note, today);
+            let displayDue: string | null;
+            let nextDue: string | undefined;
+            try {
+                ({ displayDue, nextDue } = this.resolveEffectiveDue(note, today));
+            } catch (e) {
+                // One broken note must not empty the whole insert. Show it so the breakage
+                // is visible instead of silently dropping it (same stance as resolveInitialDue).
+                this.emitDebugEvent('fetchDueRoutines:resolve-failed', {
+                    file: note.file.path,
+                    error: e instanceof Error ? e.message : String(e),
+                });
+                displayDue = toDateString(today);
+                nextDue = note.next_due;
+            }
             if (!displayDue) continue;
 
             const resolvedNote = nextDue === note.next_due ? note : { ...note, next_due: nextDue };

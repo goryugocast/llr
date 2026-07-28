@@ -984,14 +984,18 @@ export default class LlrPlugin extends Plugin {
     }
 
     private shouldApplyAtDoneToRoutine(routineNote: RoutineNote | null, completionDate: Date): routineNote is RoutineNote {
-        if (!routineNote?.next_due) return false;
+        if (!routineNote) return false;
+
+        // Use the effective due date so a routine shown from a derived occurrence honours @done too.
+        const due = this.routineEngine.resolveDueForDate(routineNote, completionDate);
+        if (!due) return false;
 
         const leadDays = routineNote.start_before ?? 0;
         if (leadDays <= 0) return false;
 
         const completionDay = moment(completionDate).format('YYYY-MM-DD');
-        const visibleFrom = moment(routineNote.next_due).subtract(leadDays, 'days').format('YYYY-MM-DD');
-        return completionDay >= visibleFrom && completionDay <= routineNote.next_due;
+        const visibleFrom = moment(due).subtract(leadDays, 'days').format('YYYY-MM-DD');
+        return completionDay >= visibleFrom && completionDay <= due;
     }
 
     private getSortedSectionBoundaries(): Array<{ value: number; label: string }> {

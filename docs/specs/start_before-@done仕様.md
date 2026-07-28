@@ -34,14 +34,15 @@
 - タスクが完了済みかどうかは問わない。
 
 ### 3. 表示期間
-- `visible_from = next_due - start_before`
-- `visible_until = next_due`
+- `visible_from = effective_due - start_before`
+- `visible_until = effective_due`
 - `visible_from <= action_base_date <= visible_until`
 - この条件を満たすときだけ `@done` を有効とする。
+- `effective_due` は frontmatter の `next_due`。無ければ `repeat` から導出した実効期日を使う（[[ルーチンエンジン仕様]] §3.x）。表示側と `@done` 側で同じ日付を見るため、`next_due` を持たないノートでも前倒し表示中の `@done` が効く。
 
 ### 4. 発動時の意味
 - 通常の完了日基準再計算ではなく、「今見えている回を済ませた」と解釈する。
-- 具体的には、**現在の `next_due` を基準に次の1回へ進める**。
+- 具体的には、**現在の実効期日を基準に次の1回へ進める**。
 - これにより、前倒し表示で見えている今週ぶんを、due 前に終えた時点で来週ぶんへ送れる。
 - この解釈は未着手タスクにも使えるので、「今週はやらない」と決めた時点で `@done` によりその回を閉じられる。
 

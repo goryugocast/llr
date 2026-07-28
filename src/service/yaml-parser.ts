@@ -674,19 +674,8 @@ function calculateNextDueFromSchedule(parsed: ParsedSchedule, baseDate: Date): s
  * A repeat rule that carries no calendar phase (`every N days/months/years` and the legacy
  * interval forms). Its cycle can start on any date, so a routine without `next_due` starts today.
  */
-function isCycleOnlyFrequency(frequency: Frequency): boolean {
-    switch (frequency.type) {
-        case 'daily':
-        case 'after':
-        case 'every':
-            return true;
-        case 'schedule': {
-            const kind = parseScheduleExpression(frequency.expression).kind;
-            return kind === 'interval_days' || kind === 'interval_months' || kind === 'interval_years';
-        }
-        default:
-            return false;
-    }
+function isCycleOnlyKind(kind: ParsedSchedule['kind']): boolean {
+    return kind === 'interval_days' || kind === 'interval_months' || kind === 'interval_years';
 }
 
 /**
@@ -701,9 +690,27 @@ export function resolveInitialDue(frequency: Frequency, targetDate: Date): strin
 
     const targetStr = toDateString(targetDate);
     try {
-        if (isCycleOnlyFrequency(frequency)) return targetStr;
-        // Search from the day before so an occurrence on the target date itself counts.
-        return calculateNextDue(frequency, addDays(targetDate, -1)) ?? targetStr;
+        switch (frequency.type) {
+            case 'daily':
+            case 'after':
+            case 'every':
+                return targetStr;
+
+            case 'schedule': {
+                const parsed = parseScheduleExpression(frequency.expression);
+                if (parsed.kind === 'none') return null;
+                if (isCycleOnlyKind(parsed.kind)) return targetStr;
+
+                // A routine that has never been due has no phase yet, so `隔週` / `隔月` / `N年ごと`
+                // must not skip ahead by a whole interval: collapse the interval and take the first
+                // calendar occurrence. Searching from the day before makes the target date itself count.
+                const withoutPhase = ('interval' in parsed ? { ...parsed, interval: 1 } : parsed) as ParsedSchedule;
+                return calculateNextDueFromSchedule(withoutPhase, addDays(targetDate, -1));
+            }
+
+            default:
+                return calculateNextDue(frequency, addDays(targetDate, -1)) ?? targetStr;
+        }
     } catch {
         // Unparsable repeat: show the routine rather than hiding it silently.
         return targetStr;
