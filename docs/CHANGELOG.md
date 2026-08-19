@@ -14,6 +14,9 @@
 ## Git History Snapshot
 
 ### 2026-08-19
+- Bump version to 0.4.0 (`a8837b6`)
+- Expand external view regression coverage (`f20aece`)
+- Refresh generated changelog (`2d7ee0d`)
 - Handle external views safely (`f0fc887`)
 ### 2026-07-28
 - Stop future daily notes from advancing routine state (`317ad2b`)
@@ -106,7 +109,4 @@
 - Use English Summary View screenshot for README (`3702dd7`)
 - Replace README screenshots with English versions (`144a5d9`)
 - Rewrite README with full restructure (`83592fd`)
-- Add GitHub Release workflow with artifact attestation (`35ae7e8`)
-- Address Obsidian portal lint warnings (`5c021c1`)
-- Improve spec findability for user FAQs (`c985532`)
 
