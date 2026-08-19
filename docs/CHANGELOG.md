@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-07-05
+- Generated: 2026-08-19
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,14 +13,73 @@
 
 ## Git History Snapshot
 
+### 2026-08-19
+- Handle external views safely (`f0fc887`)
+### 2026-07-28
+- Stop future daily notes from advancing routine state (`317ad2b`)
+- Stop the frontmatter repair from swallowing body text (`a8b9d41`)
+- Restore the 3s grace period for mis-tapped checkboxes (`5759401`)
+- Restore the undo grace period for routine completion (`05cf906`)
+- Fix regressions found in the initial-due audit (`564d2a8`)
+- Derive an initial due date for routines without next_due (`eed3411`)
+### 2026-07-20
+- Implement multi-section routine expansion for sorting (`f55c00d`)
+- Update spec docs for multi-section routine expansion (`2ac9bd6`)
+### 2026-07-12
+- Fix position of off-plan running tasks in future section (`069d00c`)
+- Display running tasks below sleep boundary in sidebar, exclude from estimates (`453331d`)
+### 2026-07-09
+- Bump version to 0.3.0 (`92b3953`)
+- Fix implicit any type errors in routine-sort-order tests (`cfcb39d`)
+### 2026-07-08
+- Implement start-and-open loop: complete linked note and close tab (`8dc4ded`)
+- Consolidate start-and-open logic into handleToggleTask (`07c666c`)
+- Adjust start-and-open to respect active tab handling with open_focus (`5d99390`)
+- Fix start-and-open to always open in new tab regardless of existing tabs (`f4506bf`)
+### 2026-07-07
+- Implement start-and-open-note command with SRS-aware cursor control (`599d41c`)
+- Add Start and Open feature specification (`50a3e8c`)
+- Add blank line between last section and section-less routines (`ea0cee8`)
+- Add done marker spec, manual command spec, and completion edge case docs (`8e37f5f`)
+### 2026-07-06
+- Mark SRS batch as done when no candidates remain (`aa36a02`)
+- Add edge case tests for SRS batch completion with memo lines (`6b9bc5a`)
+- Add replenish-srs command to command palette (`d6aef72`)
+- Fix SRS batch replenishment after plugin reload (`0b55276`)
+- Simplify SRS note due-date determination logic (`f8c2176`)
+- Update SRS vault-wide sort order implementation and tests (`9639ef2`)
+- Move section-less routines after sectioned ones in daily note sort order (`df67dce`)
+- Simplify HTML comment markers for SRS batch display (`b452955`)
+- Extract generic batch display logic into reusable module (`f4f6a5d`)
+- Refactor SRS batch logic into pure functions with comprehensive tests (`eb80688`)
+- Implement SRS batch loading with markers and auto-refill (`c3f5b01`)
 ### 2026-07-05
+- Bump version to 0.2.3 (`9841722`)
+- Fix startup contention with Templater on daily note creation (`8119bd8`)
+- Fix retry logic to avoid file read conflicts after content exists (`c06a729`)
+- Add SRS section to README and remove absorbed incubate docs (`44f3362`)
+- Update SRS docs: add usage section and reflect current branch state (`a806db9`)
+- Bump version to 0.2.2 (`3ce9da0`)
 - Support slash-containing daily note formats (year/month subfolders) (`47d9774`)
+### 2026-05-30
+- Unify routine due catch-up loops into advanceDueUntil (`431ec69`)
 ### 2026-07-02
 - Fix remaining doc drift: unavailable commands, stale toggle matrix, orphan setting (`2052dde`)
 - Sync specs, README, and docs index with the current implementation (`ae6900b`)
 - Split main.ts and inject SummaryView settings via delegate (`3ccecf0`)
+### 2026-07-01
+- Insert a blank line before SRS notes in daily note insertion (`bc5dc03`)
 ### 2026-06-30
+- Give SRS settings their own section heading (`a3fb2b6`)
+- Move SRS settings under Advanced section (`b11b8b9`)
+- Add srsMaxDaily setting to limit SRS notes per day (`34aa3b5`)
+- Place SRS notes at bottom of daily note insertion (`5180780`)
 - Update SRS spec for vault-wide approach and overdue growth (`eead4ad`)
+- Update SRS spec for vault-wide approach and overdue growth (`502ad6a`)
+- SRS overdue growth: use elapsed days when longer than repeat (`4d4c7a1`)
+- Add srsGrowthEnabled setting and routine/ subfolder exclusion (`af8cc02`)
+- SRS recognition: vault-wide by repeat field instead of srs/ folder (`a1c7046`)
+- Implement SRS completion with folder-based recognition (`ed03179`)
 - Add utility function tests for yaml-parser module (`ea1e016`)
 - Remove dead code and add 34 tests for uncovered branches (`696a73d`)
 - Add 80 tests to cover untested pure-function branches (`0a1d907`)
@@ -50,60 +109,4 @@
 - Add GitHub Release workflow with artifact attestation (`35ae7e8`)
 - Address Obsidian portal lint warnings (`5c021c1`)
 - Improve spec findability for user FAQs (`c985532`)
-- Sync v0.2.0 specs and add version notes (`e62f892`)
-- Fix completion-anchored schedule rollover default (`3d9ba15`)
-- Release v0.2.0: bump version after trial/current merge (`2213c83`)
-### 2026-05-20
-- Clean up temporary worktree (`0b69e2a`)
-### 2026-05-19
-- Track worktree directory for Claude Code session state (`49db766`)
-### 2026-05-16
-- Update worktree submodule to latest commits (`f5bb749`)
-- Release v0.1.9: fix minAppVersion and plugin name for community portal (`2ce8a1a`)
-- Add Claude Code worktree submodules (`45cee22`)
-- Show notes with no repeat and no next_due every day (`e09383a`)
-### 2026-05-15
-- Default repeat to every day when not explicitly set (`40eabfb`)
-### 2026-04-30
-- Refactor rollover check to use helper method (`927d373`)
-### 2026-04-15
-- trial/current: cleanup and refactoring (`a9f9cc0`)
-- Release v0.1.8: bot-clean lint pass over full ruleset (`f8818d2`)
-- Refactor summary view, async handlers, and UI improvements for 0.1.8 release (`5360740`)
-- Fix eslint no-period-abbreviations in summary-view labels (`515cfd0`)
-- Document build/deploy/reload workflow for trial/current branch (`052e53a`)
-- Fix ESLint configuration and async/await issues (`cbab5b7`)
-- Release v0.1.7: pass obsidian-releases bot lint scan (`11a127c`)
-- Remove async/await from synchronous handlers and fix settings headings (`b3b9826`)
-- Release v0.1.6: bump version to ship this-binding fix from 0.1.5 (`e80d693`)
-- docs: exclude CLAUDE.md from version control (`653e16c`)
-- Fix no-base-to-string violations in summary-view.ts (`9bfb487`)
-- Remove forced disk write in completeTask (`a7353f8`)
-- Add git pre-commit hook and deploy script (`aa968e7`)
-- Apply obsidianmd eslint rule fixes (`c75fd59`)
-- Fix debug Notice deferral to prevent iOS tap suppression (v0.1.4) (`4a6fd02`)
-- Defer debug notice display to avoid suppressing iOS click events (`6060bda`)
-- Force immediate disk write after completeTask to prevent iCloud revert on iOS (`27ff963`)
-- Revert to v0.1.0 command structure with improved UI labels (`b3a300b`)
-- Refactor: Simplify TypeScript type handling and improve code clarity (`6db7bad`)
-- Add elementAtHeight as Strategy 3 for better line position resolution (`74968dd`)
-- Refactor and clean up TypeScript code for improved maintainability (`0882ebe`)
-- Capitalize UI labels and fix async handling in command callbacks (`1dd2e04`)
-- Use elementAtHeight for fold-aware line calculation (`e81e559`)
-- Fix this-binding and type safety issues from lint refactor (`74dee4e`)
-- Replace coordinate-based fallback with DOM index + visibleRanges strategy (`e5a14de`)
-- Fix type safety and simplify Daily Notes plugin access with optional chaining (`f96ea6b`)
-- Fix cursor placement when task has no preceding text (`527e40e`)
-### 2026-04-14
-- Remove unnecessary async from handle methods and their callbacks (`2a564a8`)
-- Rename cursor placement symbols to reflect actual intent (`0904490`)
-- Add ESLint setup and fix lint issues in trial/current (`2740b3f`)
-- Add ESLint setup with Obsidian plugin rules (`173b7ac`)
-- Clean up cursor spec and dead code (`dcad092`)
-- Fix remaining ESLint issues from Obsidian bot scan (`3b95d8a`)
-- Fix cursor position on task start/complete (`bbd1639`)
-- Add ESLint configuration for strict TypeScript linting (`a104535`)
-- Add Obsidian bot review workflow rule to CLAUDE.md (`826392e`)
-- Fix ESLint issues flagged by Obsidian community plugin bot (`c105578`)
-- Fix ESLint issues flagged by Obsidian community plugin bot (`404d3ab`)
 
