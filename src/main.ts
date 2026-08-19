@@ -11,7 +11,7 @@ import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './ser
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
-import { isRefreshableView } from './view/refreshable-view';
+import { requestRefreshIfSupported } from './view/refreshable-view';
 import { isDailyNoteMatch, isFutureDailyNoteDate, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
@@ -607,9 +607,7 @@ export default class LlrPlugin extends Plugin {
         });
 
         const summaryView = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)[0]?.view;
-        if (isRefreshableView(summaryView)) {
-            void summaryView.requestRefresh();
-        }
+        requestRefreshIfSupported(summaryView);
     }
 
     private syncMobileLargeCheckboxClass(): void {
@@ -705,7 +703,7 @@ export default class LlrPlugin extends Plugin {
         // Hide when no markdown file is open
         if (!view?.file) {
             this.statusBar.setText('');
-            if (isRefreshableView(summaryView)) void summaryView.requestRefresh();
+            requestRefreshIfSupported(summaryView);
             return;
         }
 
