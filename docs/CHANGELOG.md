@@ -14,6 +14,8 @@
 ## Git History Snapshot
 
 ### 2026-08-19
+- Document the 0.4.0 release (`2850939`)
+- Refresh changelog for 0.4.0 (`efca36d`)
 - Bump version to 0.4.0 (`a8837b6`)
 - Expand external view regression coverage (`f20aece`)
 - Refresh generated changelog (`2d7ee0d`)
@@ -107,6 +109,4 @@
 - Add English orientation note at top of docs/index.md (`c087696`)
 - Rewrite README in pure English (`d5c7a84`)
 - Use English Summary View screenshot for README (`3702dd7`)
-- Replace README screenshots with English versions (`144a5d9`)
-- Rewrite README with full restructure (`83592fd`)
 
