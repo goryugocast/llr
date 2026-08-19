@@ -11,6 +11,7 @@ import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './ser
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
+import { isRefreshableView } from './view/refreshable-view';
 import { isDailyNoteMatch, isFutureDailyNoteDate, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
@@ -605,8 +606,8 @@ export default class LlrPlugin extends Plugin {
             to: normalized,
         });
 
-        const summaryView = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)[0]?.view as SummaryView | undefined;
-        if (summaryView) {
+        const summaryView = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)[0]?.view;
+        if (isRefreshableView(summaryView)) {
             void summaryView.requestRefresh();
         }
     }
@@ -699,12 +700,12 @@ export default class LlrPlugin extends Plugin {
     /** Parse the active Markdown note and update status bar items and sidebar view */
     private updateUI(): void {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        const summaryView = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)[0]?.view as SummaryView;
+        const summaryView = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)[0]?.view;
 
         // Hide when no markdown file is open
         if (!view?.file) {
             this.statusBar.setText('');
-            if (summaryView) void summaryView.requestRefresh();
+            if (isRefreshableView(summaryView)) void summaryView.requestRefresh();
             return;
         }
 
@@ -831,6 +832,7 @@ export default class LlrPlugin extends Plugin {
     ): Promise<void> {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || !view.editor) return;
+        if (!this.ensureDailyNoteView(view, 'Checkbox operation')) return;
 
         const editor = view.editor;
         if (lineIndex === null) {

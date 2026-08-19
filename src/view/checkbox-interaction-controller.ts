@@ -116,6 +116,11 @@ export class CheckboxInteractionController {
 
     onDocumentClick(ev: MouseEvent): void {
         if (!this.delegate.isOverrideEnabled()) return;
+        // 通常ノートでは capture phase でイベントを横取りせず、Obsidian の標準操作に任せる。
+        if (!this.delegate.isEditableMarkdownView()) {
+            this.delegate.updateUI();
+            return;
+        }
         // モーダル（設定画面など）の中で発生したクリックには干渉しない
         if (ev.target instanceof Element && ev.target.closest('.modal-container')) return;
 
