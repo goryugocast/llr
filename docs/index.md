@@ -6,7 +6,8 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 このファイルを最初の参照点にする。
 
 ## まず読む（最短導線）
-- [CHANGELOG](CHANGELOG.md): リリースごとの変更サマリー
+- [CHANGELOG](CHANGELOG.md): Git履歴から生成した変更一覧
+- [0.4.0 リリースノート](releases/0.4.0.md): 今回の新機能・改善・修正
 - [オープンベータ案内](open-beta.md): いま何を試してほしいかの短い案内
 - [ベータチェックリスト](beta-checklist.md): 実地テスト前の最小確認
 - [ベータ確認スナップショット](beta-verification.md): いま何を確認済みか
@@ -25,6 +26,7 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 | トピック | 正本 |
 |---|---|
 | `repeat` 文法・`next_due` 計算・今日の表示判定 | [ルーチンエンジン仕様](specs/ルーチンエンジン仕様.md) |
+| `section` の単一・複数指定と展開 | [ルーチンノートFrontmatter仕様](specs/ルーチンノートFrontmatter仕様.md) §6 |
 | `rollover` 既定値の表 | [ルーチンノートFrontmatter仕様](specs/ルーチンノートFrontmatter仕様.md) §5 |
 | `@done` / `→done` の意味と発動条件 | [start_before-@done仕様](specs/start_before-@done仕様.md) |
 | `@日付` による先送り | [routine-reschedule-marker仕様](specs/routine-reschedule-marker仕様.md) |
@@ -99,7 +101,7 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [start_before-@done仕様](specs/start_before-@done仕様.md): 前倒し中の `@done` で次回送り
 - [routine-reschedule-marker仕様](specs/routine-reschedule-marker仕様.md): `@MMDD` で routine 先送り
 - [未来日付デイリーノートとルーチン基準日ポリシー](specs/未来日付デイリーノートとルーチン基準日ポリシー.md): future-clamp 方針
-- [SRS仕様](specs/SRS仕様.md): 完了で `repeat` が育つ SRS growth（draft、main 未実装。`srs/vault-wide` ブランチで実装・テスト済み、実運用検証中。使い方はこの仕様書の「使い方」節）
+- [SRS仕様](specs/SRS仕様.md): 完了で `repeat` が育つ SRS growth（設定で有効化する実験機能。使い方はこの仕様書の「使い方」節）
 
 ## Design（設計思想）
 - [設計思想](specs/設計思想.md)
@@ -114,4 +116,4 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [CHANGELOG](CHANGELOG.md)
 
 ---
-最終更新: 2026-07-02
+最終更新: 2026-08-19

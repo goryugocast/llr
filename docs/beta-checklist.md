@@ -8,9 +8,9 @@ LLR を実地で試す前や、ひと区切りの確認に使う最小チェッ�
 - `Toggle Task`
   - `- [ ]` から開始できる
   - `- [/]` から完了できる
-- `Start Task (Force)`
+- `Start Task`
   - 未着手行や平文行を開始形に寄せられる
-- `Stop Task (Force)`
+- `Complete Task`
   - 実行中行を完了形にできる
 - `Skip Task (Log Only)`
   - `- [ ]` と `- skip:` を相互変換できる
@@ -25,7 +25,7 @@ LLR を実地で試す前や、ひと区切りの確認に使う最小チェッ�
 
 1. デイリーノートに未着手タスクを 2-3 個書く
 2. `Toggle Task` で開始と完了を試す
-3. `Start Task (Force)` と `Stop Task (Force)` を 1 回ずつ試す
+3. `Start Task` と `Complete Task` を 1 回ずつ試す
 4. `Skip Task (Log Only)` を往復する
 5. `Insert Routine` で当日分を挿入する
 6. `Open Summary View` を開いて表示を確認する

@@ -4,8 +4,8 @@
 
 - incubate 構想（前身の設計文書。内容をこの仕様に吸収して削除済み）を引き継ぎ、対話で練り直した結果をまとめたもの
 - 2026-06-30 の対話で方向が固まった
-- Status: Draft（`srs/vault-wide` ブランチで実装・テスト済み、実運用で検証中）
-- **main ブランチには未実装。** `srsGrowthEnabled` 設定も成長ロジックも main のコードには存在しない。実装（vault-wide 方式）とテスト（`tests/srs-completion.test.ts` ほか）は `srs/vault-wide` ブランチにある
+- Status: Experimental / Implemented（main に実装・テスト済み、設定の既定値は OFF）
+- `srsGrowthEnabled` を有効にしたときだけ vault-wide 方式の収集・成長処理を実行する。テストは `tests/srs-completion.test.ts` ほかに置く
 
 ## 何をするか
 

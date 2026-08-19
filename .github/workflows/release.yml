@@ -70,7 +70,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --generate-notes \
-            main.js manifest.json styles.css
+          NOTES_FILE="docs/releases/${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              --notes "$(cat "$NOTES_FILE")" \
+              main.js manifest.json styles.css
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              main.js manifest.json styles.css
+          fi

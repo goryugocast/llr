@@ -116,6 +116,16 @@ start_before: 2         # show 2 days before next_due
 ---
 ```
 
+To place the same routine in more than one part of the day, use an array. LLR expands one task line per value while keeping every line linked to the same routine note:
+
+```yaml
+section: [700, 1900]    # insert under both the 7:00 and 19:00 section headers
+```
+
+`next_due` is optional for repeating routines. When it is absent, LLR derives the first effective due date from `repeat`; the stored `next_due` is created only after completion.
+
+Future daily notes are safe to preview: LLR can show which routines belong there, but it will not advance `next_due` or consume `@done` / reschedule markers until that date is current.
+
 A few `repeat` patterns:
 
 - `1` / `3` — `every day` / `every 3 days`
@@ -157,6 +167,7 @@ Run `Open Summary View` for a sidebar overview of the day.
 - Tasks stacked: completed → running → upcoming
 - `EST. TOTAL` and `EST. FINISH` updated dynamically as the day progresses
 - Tasks tagged `summary_role: sleep` are excluded from the main totals; a separate sleep-aware finish time is shown alongside
+- A running task remains visible even when it sits below the sleep boundary, but it stays excluded from totals and is grouped with the other running tasks
 - Click a row to jump to that line in the editor; click a `[[wikilink]]` to open the linked note
 - Section dividers driven by the `Routine Sections` setting (time + label pairs)
 
@@ -172,6 +183,7 @@ Register `Toggle Task` in Obsidian's **Mobile Toolbar** (the icon row above the 
 - **Long press** on a checkbox (~450 ms) — auxiliary actions (start aligned to the previous completion's end time, or revert one step while keeping the estimate)
 - Haptic feedback included; long-press absorbs the subsequent click to avoid double-firing
 - Enable `Large Mobile Checkboxes` in settings for a bigger tap target
+- Checkbox override applies only inside a daily-note Markdown editor. Normal notes, non-Markdown views, sidebars, and modals keep Obsidian's standard behavior.
 
 ---
 

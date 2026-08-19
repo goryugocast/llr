@@ -3,6 +3,27 @@
 オープンベータ公開準備の確認メモ。
 ここでは「確認済み」と「まだ手元で見たいもの」を分けて残す。
 
+## 2026-08-19（v0.4.0）
+
+### 自動確認
+
+- `npm run typecheck`: OK
+- `npm run lint`: OK
+- `npm test -- --run`: OK（497 passed / 1 skipped）
+- `npm run build`: OK
+- Desktop / Mobile 配置と `obsidian plugin:reload id=llr`: OK
+
+### 今回追加した回帰境界
+
+- 通常ノート・モーダル・override OFF ではチェックイベントを横取りしない
+- デイリーノートのチェックボックスは従来どおり LLR が処理する
+- summary leaf が更新非対応の view を持つ場合は例外なく無視する
+
+### 手元または報告環境で継続確認したいもの
+
+- Windows 11 + Excalidraw で、起動直後に描画が空白にならないこと
+- モバイルで `section` 複数指定の各行を操作したときの使い心地
+
 ## 2026-03-31
 
 ### 自動確認
@@ -17,8 +38,8 @@
 ### 手元で見たいもの
 
 - `Toggle Task`
-- `Start Task (Force)`
-- `Stop Task (Force)`
+- `Start Task`
+- `Complete Task`
 - `Skip Task (Log Only)`
 - `Insert Routine`
 - `Open Summary View`
