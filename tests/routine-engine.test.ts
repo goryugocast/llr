@@ -227,6 +227,26 @@ describe('RoutineEngine', () => {
             const compactCommaSeparated = await engine.readRoutineNote(mockFile);
             expect(compactCommaSeparated?.section).toEqual([700, 1900]);
 
+            for (const section of ['７００，１９００', '700 1900', '700/1900', '[700, 1900]']) {
+                mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                    frontmatter: { repeat: '毎週月曜', section },
+                });
+                const broadlySeparated = await engine.readRoutineNote(mockFile);
+                expect(broadlySeparated?.section).toEqual([700, 1900]);
+            }
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: ['700, 1900', 2100] },
+            });
+            const mixedFormats = await engine.readRoutineNote(mockFile);
+            expect(mixedFormats?.section).toEqual([700, 1900, 2100]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: '7:00, 午後7時30分' },
+            });
+            const humanTimeFormats = await engine.readRoutineNote(mockFile);
+            expect(humanTimeFormats?.section).toEqual([700, 1930]);
+
             mockApp.metadataCache.getFileCache.mockReturnValueOnce({
                 frontmatter: { repeat: '毎週月曜', section: [700, 700, 1900] },
             });

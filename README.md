@@ -116,10 +116,10 @@ start_before: 2         # show 2 days before next_due
 ---
 ```
 
-To place the same routine in more than one part of the day, use an array. LLR expands one task line per value while keeping every line linked to the same routine note:
+To place the same routine in more than one part of the day, provide multiple section values (a comma-separated string or an array). LLR expands one task line per value while keeping every line linked to the same routine note:
 
 ```yaml
-section: [700, 1900]    # insert under both the 7:00 and 19:00 section headers
+section: 700, 1900      # insert under both the 7:00 and 19:00 section headers
 ```
 
 `next_due` is optional for repeating routines. When it is absent, LLR derives the first effective due date from `repeat`; the stored `next_due` is created only after completion.

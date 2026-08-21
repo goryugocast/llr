@@ -184,22 +184,59 @@ export class RoutineEngine {
     private parseSectionElement(raw: unknown): number | undefined {
         if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined;
         if (typeof raw !== 'string') return undefined;
-        const normalized = normalizeAsciiDigits(raw).trim();
-        if (!normalized || Number.isNaN(Number(normalized))) return undefined;
-        return Number(normalized);
+        const normalized = normalizeAsciiDigits(raw)
+            .replace(/：/g, ':')
+            .trim()
+            .replace(/^["']|["']$/g, '');
+        const time = normalized.match(/^(?:(午前|午後)\s*)?(\d{1,2})(?:(?::|時)\s*(\d{1,2})\s*分?)?\s*(am|pm)?$/i);
+        if (time && (time[1] || time[3] !== undefined || time[4])) {
+            let hour = Number(time[2]);
+            const minute = Number(time[3] ?? 0);
+            const meridiem = time[1] ?? time[4]?.toLowerCase();
+            if (meridiem) {
+                if (hour < 1 || hour > 12) return undefined;
+                if (meridiem === '午後' || meridiem === 'pm') hour = hour === 12 ? 12 : hour + 12;
+                if (meridiem === '午前' || meridiem === 'am') hour = hour === 12 ? 0 : hour;
+            }
+            if (hour < 0 || hour > 29 || minute < 0 || minute > 59) return undefined;
+            return hour * 100 + minute;
+        }
+        const value = Number(normalized);
+        if (!normalized || !Number.isFinite(value)) return undefined;
+        return value;
     }
 
     private parseSectionValue(raw: unknown): number[] | undefined {
-        const source = Array.isArray(raw)
-            ? raw
-            : typeof raw === 'string'
-                ? raw.split(',')
-                : [raw];
         const values: number[] = [];
-        for (const item of source) {
+
+        const addValue = (item: unknown): void => {
             const value = this.parseSectionElement(item);
             if (value !== undefined && !values.includes(value)) values.push(value);
-        }
+        };
+
+        const append = (item: unknown): void => {
+            if (Array.isArray(item)) {
+                item.forEach(append);
+                return;
+            }
+
+            if (typeof item === 'string') {
+                // Obsidian's metadata cache may expose an unquoted YAML value such as
+                // `section: 700, 1900` as one string. Accept common list separators and
+                // lightweight wrappers so the frontmatter remains forgiving to authors.
+                const unwrapped = item.trim().replace(/^[\[\]{}()]+|[\[\]{}()]+$/g, '').trim();
+                const tokens = unwrapped
+                    .split(/[\s,，、;；/／|｜]+/u)
+                    .map(token => token.trim())
+                    .filter(Boolean);
+                for (const token of tokens) addValue(token);
+                return;
+            }
+
+            addValue(item);
+        };
+
+        append(raw);
         return values.length > 0 ? values : undefined;
     }
 
