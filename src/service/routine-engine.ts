@@ -190,7 +190,11 @@ export class RoutineEngine {
     }
 
     private parseSectionValue(raw: unknown): number[] | undefined {
-        const source = Array.isArray(raw) ? raw : [raw];
+        const source = Array.isArray(raw)
+            ? raw
+            : typeof raw === 'string'
+                ? raw.split(',')
+                : [raw];
         const values: number[] = [];
         for (const item of source) {
             const value = this.parseSectionElement(item);

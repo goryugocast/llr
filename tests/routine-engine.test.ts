@@ -216,6 +216,18 @@ describe('RoutineEngine', () => {
             expect(stringElements?.section).toEqual([700, 1900]);
 
             mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: '700, 1900' },
+            });
+            const commaSeparated = await engine.readRoutineNote(mockFile);
+            expect(commaSeparated?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { repeat: '毎週月曜', section: '700,1900' },
+            });
+            const compactCommaSeparated = await engine.readRoutineNote(mockFile);
+            expect(compactCommaSeparated?.section).toEqual([700, 1900]);
+
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
                 frontmatter: { repeat: '毎週月曜', section: [700, 700, 1900] },
             });
             const withDuplicate = await engine.readRoutineNote(mockFile);

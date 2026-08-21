@@ -91,7 +91,7 @@
   - `{{llr-routines}}`
   - `<!-- llr:insert-routine -->`
 - `Routine Sections` 設定（時刻 + ラベル）に基づき、`H1` 見出しでグルーピング。
-- ルーチンノートの `section` は単一値に加えて配列を受け付ける。`section: [700, 1900]` のように指定すると、同じルーチンを複数の見出しへ1行ずつ展開する。
+- ルーチンノートの `section` は単一値・配列・カンマ区切りを受け付ける。`section: [700, 1900]` や `section: 700, 1900` のように指定すると、同じルーチンを複数の見出しへ1行ずつ展開する。
 
 ### F. Settings UI (Implemented subset)
 - `UI Language`（auto / ja / en。設定画面とコマンド名の表示言語）
