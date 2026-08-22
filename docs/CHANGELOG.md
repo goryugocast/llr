@@ -14,6 +14,8 @@
 ## Git History Snapshot
 
 ### 2026-08-22
+- Correct plugin version to 0.4.1 (`630c825`)
+- Refresh changelog for 0.5.0 (`3ff7f10`)
 - Bump plugin version to 0.5.0 (`f36f634`)
 ### 2026-08-21
 - Broaden routine section value parsing (`b3f9956`)
@@ -107,6 +109,4 @@
 ### 2026-05-28
 - Drop plugin-name prefix from description; remove README TODO comment (`497747d`)
 - Consolidate version history into CHANGELOG.md (`dc29c03`)
-- Refactor changelog structure and update specs documentation (`2db389c`)
-- Fix completion-anchored routine rollover bug (`064e90c`)
 
