@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-08-19
+- Generated: 2026-08-22
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,13 @@
 
 ## Git History Snapshot
 
+### 2026-08-22
+- Bump plugin version to 0.5.0 (`f36f634`)
+### 2026-08-21
+- Broaden routine section value parsing (`b3f9956`)
+- Support comma-separated routine sections (`47435fb`)
 ### 2026-08-19
+- Refresh changelog after release docs (`859a2f4`)
 - Document the 0.4.0 release (`2850939`)
 - Refresh changelog for 0.4.0 (`efca36d`)
 - Bump version to 0.4.0 (`a8837b6`)
@@ -103,10 +109,4 @@
 - Consolidate version history into CHANGELOG.md (`dc29c03`)
 - Refactor changelog structure and update specs documentation (`2db389c`)
 - Fix completion-anchored routine rollover bug (`064e90c`)
-### 2026-05-27
-- Update plugin name to match Obsidian portal display (`57adc24`)
-### 2026-05-22
-- Add English orientation note at top of docs/index.md (`c087696`)
-- Rewrite README in pure English (`d5c7a84`)
-- Use English Summary View screenshot for README (`3702dd7`)
 
