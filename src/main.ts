@@ -20,6 +20,7 @@ import { TaskParser } from './service/task-parser';
 import { TranslationKey, UILanguage, resolveLanguage, translate } from './i18n';
 import { DEFAULT_SETTINGS, LlrSettings, SectionDefinition, normalizeDailyNoteFolder, normalizeRoutineFolder, normalizeSectionDefinitions, parseSectionTimeToInt } from './service/settings';
 import { LlrSettingTab } from './view/settings-tab';
+import { compareSectionBoundaries, resolveSectionLabel } from './service/section-timeline';
 import { SRS_BATCH_END, SRS_BATCH_DONE, isSrsBatchAllComplete, collectLinkedBasenames, sortSrsCandidatesByOverdue, formatSrsTaskLine, buildSrsBatchBlock } from './service/srs-batch';
 
 interface LlrPostActionContext {
@@ -1005,7 +1006,7 @@ export default class LlrPlugin extends Plugin {
                 return value === null ? null : { value, label: def.label };
             })
             .filter((x): x is { value: number; label: string } => !!x)
-            .sort((a, b) => a.value - b.value || a.label.localeCompare(b.label, 'ja'));
+            .sort(compareSectionBoundaries);
     }
 
     private getRoutineSectionHeading(section: number | undefined): string | null {
@@ -1013,15 +1014,8 @@ export default class LlrPlugin extends Plugin {
         const boundaries = this.getSortedSectionBoundaries();
         if (boundaries.length === 0) return null;
 
-        let selected: { value: number; label: string } | null = null;
-        for (const boundary of boundaries) {
-            if (section >= boundary.value) {
-                selected = boundary;
-                continue;
-            }
-            break;
-        }
-        return selected ? `# ${selected.label}` : null;
+        const label = resolveSectionLabel(section, boundaries);
+        return label === null ? null : `# ${label}`;
     }
 
     onunload() {

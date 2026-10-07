@@ -97,7 +97,7 @@
 - `UI Language`（auto / ja / en。設定画面とコマンド名の表示言語）
 - `Estimate Warning`（残り見積りに基づく予定警告表示）
 - `Routine Folder`（ルーチンノート置き場。フォルダ候補サジェスト付き）
-- `Routine Sections`（時刻 `HHmm` + ラベル、入力/削除/自動ソート）
+- `Routine Sections`（時刻 `HHmm` + ラベル、入力/削除/自動ソート）。設定・ルーチン挿入・サマリーの見出し判定は03:00基準の時系列を共有し、00:00〜02:59は夜の後に続く
 - `Debug mode`（Notice + trace JSONL。詳細設定/互換性セクション）
 - `Editor Checkbox Override`（チェックボックス短押し/長押し上書きの ON/OFF）
 - `Daily Note Folder (fallback)`（Daily Notes プラグインの folder が空のときだけ使う予備値）

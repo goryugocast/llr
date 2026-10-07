@@ -1,3 +1,5 @@
+import { sectionTimelineMinute } from './section-timeline';
+
 export function expandRoutineNotesBySection<T extends { section?: number[] }>(
     items: T[]
 ): Array<Omit<T, 'section'> & { section: number | undefined }> {
@@ -16,8 +18,8 @@ export function expandRoutineNotesBySection<T extends { section?: number[] }>(
 }
 
 export function routineSortKey(r: { section?: number; start?: number }): [number, number] {
-    const sec = r.section === undefined ? Infinity : r.section;
-    const start = r.start ?? -Infinity;
+    const sec = r.section === undefined ? Infinity : sectionTimelineMinute(r.section);
+    const start = r.start === undefined ? -Infinity : sectionTimelineMinute(r.start);
     return [sec, start];
 }
 
