@@ -97,7 +97,7 @@ describe('logical-day section timeline', () => {
             const ak = routineSortKey(a), bk = routineSortKey(b);
             return ak[0] - bk[0] || ak[1] - bk[1];
         });
-        expect(sorted.map(d => d.name)).toEqual(['Morning', 'Night', 'Sleep', 'Late1', 'Tie', 'Late2', 'None']);
+        expect(sorted.map(d => d.name)).toEqual(['Morning', 'Night', 'Late1', 'Tie', 'Late2', 'Sleep', 'None']);
         const withinNight = [{ section: 2100, start: 0 }, { section: 2100, start: 2300 }];
         expect(routineSortKey(withinNight[0])[1]).toBeGreaterThan(routineSortKey(withinNight[1])[1]);
     });
@@ -125,6 +125,32 @@ describe('logical-day section timeline', () => {
         expect(await plugin.buildRoutineInsertLines(new Date('2026-10-07T12:00:00Z'))).toEqual([
             '# Morning', '- [ ] 06:00 [[Morning]]', '# Night', '- [ ] 21:00 [[Night]]', '# Late', '- [ ] 00:00 [[Late]]',
         ]);
+    });
+
+    it('keeps midnight tasks visible and estimated before an existing section:2400 sleep boundary', async () => {
+        const { plugin } = makePlugin({ sectionDefinitions: definitions });
+        await plugin.loadSettings();
+        plugin.routineEngine = { fetchDueRoutines: () => [
+            { file: { basename: 'Sleep' }, section: [2400], estimate: 480 },
+            { file: { basename: 'Late' }, section: [0], start: 0, estimate: 10 },
+            { file: { basename: 'Last' }, section: [259], start: 259, estimate: 10 },
+            { file: { basename: 'Night' }, section: [2100], estimate: 10 },
+            { file: { basename: 'Morning' }, section: [600], estimate: 10 },
+        ] };
+        const lines = await plugin.buildRoutineInsertLines(new Date('2026-10-07T12:00:00Z'));
+        expect(lines.filter(line => line.startsWith('- '))).toEqual([
+            '- [ ] [[Morning]] (10m)', '- [ ] [[Night]] (10m)',
+            '- [ ] 00:00 [[Late]] (10m)', '- [ ] 02:59 [[Last]] (10m)', '- [ ] [[Sleep]] (480m)',
+        ]);
+        const view = summaryView(plugin);
+        const presentation = buildSummaryPresentation(computeSummaryData(lines, '23:50', calculateDuration), {
+            nowTime: '23:50', isSleepItem: item => item.text.includes('[[Sleep]]'), resolveWarningRatio: () => 0,
+            resolveSectionLabel: item => view.resolveSectionLabelForItem({ ...item, displayStartTime: item.displayStartTime! }),
+        });
+        expect(presentation.hiddenItems).toEqual([]);
+        expect(presentation.futureGroups.flatMap(group => group.items).map(item => item.text)).toEqual(lines.filter(line => line.startsWith('- ')));
+        expect(presentation.header.total).toBe('0h40m');
+        expect(presentation.header.wake).toBeDefined();
     });
 
     it('keeps completed summary groups in morning → night → midnight order and future execution in note order', async () => {

@@ -18,7 +18,11 @@ export function expandRoutineNotesBySection<T extends { section?: number[] }>(
 }
 
 export function routineSortKey(r: { section?: number; start?: number }): [number, number] {
-    const sec = r.section === undefined ? Infinity : sectionTimelineMinute(r.section);
+    // Extended sections explicitly reserve trailing slots (notably sleep at 2400).
+    // Keep them after every clock-time section, including 00:00–02:59, so the
+    // summary's sleep boundary cannot hide newly inserted midnight tasks.
+    const sec = r.section === undefined ? Infinity
+        : sectionTimelineMinute(r.section) + (r.section >= 2400 ? 1440 : 0);
     const start = r.start === undefined ? -Infinity : sectionTimelineMinute(r.start);
     return [sec, start];
 }
