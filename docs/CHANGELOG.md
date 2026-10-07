@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-08-22
+- Generated: 2026-10-07
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,12 @@
 
 ## Git History Snapshot
 
+### 2026-10-07
+- Prepare the 0.4.2 section ordering release (`18b3d16`)
+- Keep extended sleep sections after midnight routines (`11d4ed8`)
+- Align section ordering with the existing logical day (`706e605`)
 ### 2026-08-22
+- Refresh changelog for 0.4.1 (`0e5d11c`)
 - Correct plugin version to 0.4.1 (`630c825`)
 - Refresh changelog for 0.5.0 (`3ff7f10`)
 - Bump plugin version to 0.5.0 (`f36f634`)
@@ -104,9 +109,4 @@
 - Document module layout and main.ts split plan (`70f484b`)
 - Remove dead type aliases and unused binding (`2db5707`)
 - Extract debug logging into DebugLog service (`a92a368`)
-- Close type-check gate hole and dedup date/text utilities (`88b34c1`)
-- Implement daily note folder fallback configuration (`a65b3a3`)
-### 2026-05-28
-- Drop plugin-name prefix from description; remove README TODO comment (`497747d`)
-- Consolidate version history into CHANGELOG.md (`dc29c03`)
 
