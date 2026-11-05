@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { ReflectionExpansionState } from '../src/service/reflection-expansion';
 
 describe('ReflectionExpansionState', () => {
+    it('can start with visible memos while retaining individual and global overrides', () => {
+        const state = new ReflectionExpansionState(true);
+        expect(state.isOpen('first')).toBe(true);
+        state.setOpen('first', false);
+        expect(state.isOpen('first')).toBe(false);
+        expect(state.isOpen('later')).toBe(true);
+        state.setAll(false);
+        expect(state.isOpen('later')).toBe(false);
+    });
+
     it('starts closed and uses an all-open default for current and future keys', () => {
         const state = new ReflectionExpansionState();
 

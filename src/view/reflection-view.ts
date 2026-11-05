@@ -1,5 +1,6 @@
 import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
+import { renderReflectionTask } from './reflection-task-list';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -23,7 +24,11 @@ export class ReflectionView extends ItemView {
     private nextButton!: HTMLButtonElement;
     private index: DayEntry[] = [];
     private visible: DayEntry[] = [];
-    private readonly expansion = new ReflectionExpansionState();
+    private expansion = new ReflectionExpansionState();
+    private readonly timelineExpansion = this.expansion;
+    private readonly taskExpansion = new ReflectionExpansionState(true);
+    private displayMode: 'timeline' | 'tasks' = 'timeline';
+    private readonly modeButtons = new Map<'timeline' | 'tasks', HTMLButtonElement>();
     private expandButton!: HTMLButtonElement;
     private readonly detailSetters = new WeakMap<HTMLDetailsElement, { key: string; setOpen: (open: boolean) => Promise<void> }>();
     private isSettingAllDetails = false;
@@ -62,7 +67,15 @@ export class ReflectionView extends ItemView {
         this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
-        const tools = toolbar.createDiv('llr-reflection-tools');
+        const controls = toolbar.createDiv('llr-reflection-display-controls');
+        const modes = controls.createDiv({ cls: 'llr-reflection-modes', attr: { role: 'group', 'aria-label': '表示方法' } });
+        for (const [mode, label] of [['tasks', 'タスク'], ['timeline', 'タイムライン']] as const) {
+            const button = modes.createEl('button', { cls: 'llr-reflection-mode', text: label, attr: { 'aria-pressed': String(this.displayMode === mode) } });
+            button.toggleClass('is-active', this.displayMode === mode);
+            button.onclick = () => this.enqueue(() => this.setDisplayMode(mode));
+            this.modeButtons.set(mode, button);
+        }
+        const tools = controls.createDiv('llr-reflection-tools');
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
@@ -158,6 +171,31 @@ export class ReflectionView extends ItemView {
         }
         if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
         this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    private async setDisplayMode(mode: 'timeline' | 'tasks') {
+        if (mode === this.displayMode) return;
+        const date = this.dateInput.value;
+        const oldMode = this.displayMode;
+        const oldExpansion = this.expansion;
+        this.displayMode = mode;
+        this.expansion = mode === 'tasks' ? this.taskExpansion : this.timelineExpansion;
+        let sections: HTMLElement[];
+        try { sections = await Promise.all(this.visible.map(day => this.makeDay(day))); }
+        catch (error) { this.displayMode = oldMode; this.expansion = oldExpansion; throw error; }
+        if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
+        this.sections.forEach(section => this.releaseDay(section));
+        this.sections.clear();
+        this.daysEl.empty();
+        sections.forEach((section, i) => { this.sections.set(this.visible[i].date, section); this.daysEl.append(section); });
+        this.contentEl.toggleClass('is-task-view', mode === 'tasks');
+        this.modeButtons.forEach((button, value) => {
+            button.toggleClass('is-active', value === mode);
+            button.setAttribute('aria-pressed', String(value === mode));
+        });
+        this.updateEdges();
+        await this.jump(date);
+        this.syncExpandButton();
     }
 
     private async moveDay(direction: -1 | 1) {
@@ -316,6 +354,37 @@ export class ReflectionView extends ItemView {
         if (this.closed) return section;
         const component = this.addChild(new Component());
         this.dayComponents.set(section, component);
+        if (this.displayMode === 'tasks') {
+            const list = section.createDiv('llr-reflection-tasks');
+            const occurrences = new Map<string, number>();
+            for (const task of timeline.tasks) {
+                const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
+                const occurrence = occurrences.get(signature) ?? 0;
+                occurrences.set(signature, occurrence + 1);
+                await renderReflectionTask(list, day, task, occurrence, component, {
+                    expansion: this.expansion,
+                    renderMarkdown: (el, markdown, child) => this.renderMarkdown(el, markdown, day, child),
+                    registerDetails: (details, summary, key, setOpen) => {
+                        this.detailSetters.set(details, { key, setOpen });
+                        summary.onclick = event => {
+                            if (event.target instanceof Element && event.target.closest('a')) return;
+                            event.preventDefault();
+                            this.enqueue(async () => {
+                                const anchor = { key: summary.dataset.anchor ?? '', offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
+                                const open = !details.open;
+                                this.expansion.setOpen(key, open);
+                                await setOpen(open);
+                                this.restoreAnchor(anchor);
+                                this.anchor = this.captureAnchor();
+                                this.syncExpandButton();
+                            });
+                        };
+                    },
+                });
+            }
+            return section;
+        }
+
         const blocks = reflectionDisplayBlocks(timeline.blocks);
         const layout = buildReflectionAxisLayout(blocks);
         const axis = section.createDiv('llr-reflection-axis');

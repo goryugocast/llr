@@ -719,3 +719,29 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
     .llr-reflection-toolbar { padding: 8px; }
     .llr-reflection-day h2 { padding: 12px 0 8px; }
 }
+
+/* Reflection shares one navigation shell for tasks and the equal-hour overview. */
+.llr-reflection-toolbar { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 0; }
+.llr-reflection-display-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.llr-reflection-modes { display: flex; gap: 16px; }
+.llr-reflection button.llr-reflection-mode {
+    height: 32px; padding: 0 0 6px; border: 0; border-bottom: 2px solid transparent;
+    border-radius: 0; box-shadow: none; background: transparent;
+    color: var(--text-muted); font-family: var(--font-interface); font-size: var(--font-ui-small);
+}
+.llr-reflection button.llr-reflection-mode:hover { color: var(--text-normal); }
+.llr-reflection button.llr-reflection-mode.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); font-weight: var(--font-semibold); }
+.llr-reflection-tasks { font-size: 17px; }
+.llr-reflection-task-entry { margin: 0 0 4px; padding: 0; border: 0; background: transparent; }
+.llr-reflection-task-heading { list-style: none; }
+.llr-reflection-task-heading::-webkit-details-marker { display: none; }
+.llr-reflection-task-heading .llr-row-bottom { height: auto !important; min-height: 24px !important; }
+.llr-reflection-task-heading .llr-task-name { white-space: normal !important; overflow-wrap: anywhere; }
+.llr-reflection-task-heading .llr-task-name > p { margin: 0; }
+.llr-reflection-task-memo { margin: 6px 22px 12px 16px; }
+.llr-reflection-task-entry > .llr-reflection-task-memo { font-size: 17px; }
+.llr-reflection-task-heading:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
+.llr-reflection-task-entry:not(details) .llr-reflection-task-heading { cursor: default; }
+@container (max-width: 480px) {
+    .llr-reflection-toolbar { padding-bottom: 0; }
+}

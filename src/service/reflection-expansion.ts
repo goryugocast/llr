@@ -1,6 +1,6 @@
 /** Tracks the open state of reflection sections by stable view key. */
 export class ReflectionExpansionState {
-    private defaultOpen = false;
+    constructor(private defaultOpen = false) {}
     private readonly overrides = new Map<string, boolean>();
 
     isOpen(key: string): boolean {
