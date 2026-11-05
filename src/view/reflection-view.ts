@@ -1,4 +1,4 @@
-import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
+import { Component, ItemView, MarkdownRenderer, Menu, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
 import { renderReflectionTask } from './reflection-task-list';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
@@ -25,10 +25,7 @@ export class ReflectionView extends ItemView {
     private index: DayEntry[] = [];
     private visible: DayEntry[] = [];
     private expansion = new ReflectionExpansionState();
-    private readonly timelineExpansion = this.expansion;
-    private readonly taskExpansion = new ReflectionExpansionState(true);
     private displayMode: 'timeline' | 'tasks' = 'timeline';
-    private readonly modeButtons = new Map<'timeline' | 'tasks', HTMLButtonElement>();
     private expandButton!: HTMLButtonElement;
     private readonly detailSetters = new WeakMap<HTMLDetailsElement, { key: string; setOpen: (open: boolean) => Promise<void> }>();
     private isSettingAllDetails = false;
@@ -46,6 +43,17 @@ export class ReflectionView extends ItemView {
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
     getIcon() { return 'history'; }
+
+    onPaneMenu(menu: Menu, source: string): void {
+        super.onPaneMenu(menu, source);
+        // Keep the provisional display switch in the existing pane menu. A new
+        // permanent tab row (or wide-view entry) has not been approved.
+        for (const [mode, label, icon] of [['tasks', 'タスク', 'list-checks'], ['timeline', 'タイムライン', 'history']] as const) {
+            menu.addItem(item => item.setTitle(label).setIcon(icon)
+                .setChecked(this.displayMode === mode)
+                .onClick(() => this.enqueue(() => this.setDisplayMode(mode))));
+        }
+    }
 
     onOpen(): Promise<void> {
         this.closed = false;
@@ -67,15 +75,7 @@ export class ReflectionView extends ItemView {
         this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
-        const controls = toolbar.createDiv('llr-reflection-display-controls');
-        const modes = controls.createDiv({ cls: 'llr-reflection-modes', attr: { role: 'group', 'aria-label': '表示方法' } });
-        for (const [mode, label] of [['tasks', 'タスク'], ['timeline', 'タイムライン']] as const) {
-            const button = modes.createEl('button', { cls: 'llr-reflection-mode', text: label, attr: { 'aria-pressed': String(this.displayMode === mode) } });
-            button.toggleClass('is-active', this.displayMode === mode);
-            button.onclick = () => this.enqueue(() => this.setDisplayMode(mode));
-            this.modeButtons.set(mode, button);
-        }
-        const tools = controls.createDiv('llr-reflection-tools');
+        const tools = toolbar.createDiv('llr-reflection-tools');
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
@@ -177,22 +177,16 @@ export class ReflectionView extends ItemView {
         if (mode === this.displayMode) return;
         const date = this.dateInput.value;
         const oldMode = this.displayMode;
-        const oldExpansion = this.expansion;
         this.displayMode = mode;
-        this.expansion = mode === 'tasks' ? this.taskExpansion : this.timelineExpansion;
         let sections: HTMLElement[];
         try { sections = await Promise.all(this.visible.map(day => this.makeDay(day))); }
-        catch (error) { this.displayMode = oldMode; this.expansion = oldExpansion; throw error; }
+        catch (error) { this.displayMode = oldMode; throw error; }
         if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
         this.sections.forEach(section => this.releaseDay(section));
         this.sections.clear();
         this.daysEl.empty();
         sections.forEach((section, i) => { this.sections.set(this.visible[i].date, section); this.daysEl.append(section); });
         this.contentEl.toggleClass('is-task-view', mode === 'tasks');
-        this.modeButtons.forEach((button, value) => {
-            button.toggleClass('is-active', value === mode);
-            button.setAttribute('aria-pressed', String(value === mode));
-        });
         this.updateEdges();
         await this.jump(date);
         this.syncExpandButton();
@@ -357,31 +351,15 @@ export class ReflectionView extends ItemView {
         if (this.displayMode === 'tasks') {
             const list = section.createDiv('llr-reflection-tasks');
             const occurrences = new Map<string, number>();
-            for (const task of timeline.tasks) {
+            for (const task of timeline.tasks.filter(task => task.kind === 'task')) {
                 const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                 const occurrence = occurrences.get(signature) ?? 0;
                 occurrences.set(signature, occurrence + 1);
                 await renderReflectionTask(list, day, task, occurrence, component, {
-                    expansion: this.expansion,
                     renderMarkdown: (el, markdown, child) => this.renderMarkdown(el, markdown, day, child),
-                    registerDetails: (details, summary, key, setOpen) => {
-                        this.detailSetters.set(details, { key, setOpen });
-                        summary.onclick = event => {
-                            if (event.target instanceof Element && event.target.closest('a')) return;
-                            event.preventDefault();
-                            this.enqueue(async () => {
-                                const anchor = { key: summary.dataset.anchor ?? '', offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
-                                const open = !details.open;
-                                this.expansion.setOpen(key, open);
-                                await setOpen(open);
-                                this.restoreAnchor(anchor);
-                                this.anchor = this.captureAnchor();
-                                this.syncExpandButton();
-                            });
-                        };
-                    },
                 });
             }
+            if (!list.childElementCount && timeline.tasks.length) section.createEl('p', { text: 'タスクの記録がありません。', cls: 'llr-reflection-empty' });
             return section;
         }
 
@@ -443,7 +421,7 @@ export class ReflectionView extends ItemView {
         const textSize = Number.parseFloat(style.fontSize) || 16;
         const lineHeight = Number.parseFloat(style.lineHeight) || textSize * 1.5;
         const spacing = Number.parseFloat(style.getPropertyValue('--size-4-1')) || 4;
-        return Math.max(lineHeight + spacing * 2, Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 44 : 32);
+        return Math.max(lineHeight + spacing * 2, Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 44 : 40);
     }
 
     private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number) {
@@ -452,7 +430,7 @@ export class ReflectionView extends ItemView {
             const step = parent.createDiv('llr-reflection-time-step');
             step.style.height = `calc(${(next - cursor) / 60} * var(--llr-reflection-hour-height))`;
             step.dataset.anchor = `${day.date}:time:${cursor}`;
-            if (cursor % 120 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: String(Math.floor(cursor / 60) % 24) });
+            if (cursor % 120 === 0) step.createSpan({ cls: 'llr-reflection-hour llr-reflection-gap-hour', text: String(Math.floor(cursor / 60) % 24) });
             cursor = next;
         }
     }
@@ -510,10 +488,11 @@ export class ReflectionView extends ItemView {
             const end = interval?.endMinute ?? block.endMinute ?? start;
             const track = row.createDiv({ cls: 'llr-reflection-hour-track', attr: { 'aria-hidden': 'true' } });
             for (const tick of reflectionOverviewTicks(start, end)) {
-                const mark = track.createSpan({ cls: 'llr-reflection-hour llr-reflection-axis-tick', text: tick.label });
+                const mark = track.createSpan({ cls: 'llr-reflection-axis-tick' });
+                mark.createSpan({ cls: 'llr-reflection-hour llr-reflection-axis-label', text: tick.label });
                 mark.dataset.minute = String(tick.minute);
                 mark.dataset.anchor = `${day.date}:time:${tick.minute}`;
-                mark.style.top = `calc(${tick.fraction * 100}% + var(--llr-reflection-hour-height) / 2)`;
+                mark.style.top = `${tick.fraction * 100}%`;
             }
         };
         if (!block.tasks.length) {
@@ -541,11 +520,14 @@ export class ReflectionView extends ItemView {
             if (details.open) {
                 bodyComponent = component.addChild(new Component());
                 const occurrences = new Map<string, number>();
-                for (const task of block.tasks) {
+                for (const [index, task] of block.tasks.entries()) {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
-                    await this.makeRecord(records, day, task, occurrence, bodyComponent);
+                    // A plain representative title is already the accordion heading.
+                    // Keep linked titles in the record so their navigation is not lost.
+                    const repeatTitle = index !== 0 || task.title !== block.title || /\[|<|https?:\/\//.test(task.title);
+                    await this.makeRecord(records, day, task, occurrence, bodyComponent, repeatTitle);
                 }
             }
         };
@@ -572,9 +554,9 @@ export class ReflectionView extends ItemView {
                 }
                 details.open = !details.open;
                 this.expansion.setOpen(key, details.open);
-                const scrollTop = this.scroller.scrollTop;
+                const revision = this.userScrollRevision;
                 await fill();
-                if (this.scroller.scrollTop === scrollTop) this.restoreAnchor(anchor);
+                if (revision === this.userScrollRevision) this.restoreAnchor(anchor);
                 this.anchor = this.captureAnchor();
                 this.syncExpandButton();
             });
@@ -591,6 +573,7 @@ export class ReflectionView extends ItemView {
     private syncExpandButton() {
         this.syncCurrentDay();
         if (!this.expandButton) return;
+        this.expandButton.hidden = this.displayMode === 'tasks';
         const keys = this.getDetailKeys();
         this.expandButton.disabled = this.isSettingAllDetails || keys.length === 0;
         const allOpen = keys.length > 0 && !this.expansion.shouldOpenAll(keys);
@@ -626,13 +609,13 @@ export class ReflectionView extends ItemView {
         }
     }
 
-    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
+    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component, showTitle = true) {
         const record = parent.createDiv('llr-reflection-record');
         record.dataset.status = task.status;
         record.toggleClass('has-memo', !!task.supplement);
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
-        const head = record.createDiv('llr-reflection-record-head');
-        if (task.kind !== 'memo') {
+        if (task.kind !== 'memo' && showTitle) {
+            const head = record.createDiv('llr-reflection-record-head');
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
         if (task.kind !== 'memo' && task.actualStart) {
