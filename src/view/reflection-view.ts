@@ -81,8 +81,6 @@ export class ReflectionView extends ItemView {
         });
         viewportObserver.observe(this.scroller);
         this.register(() => viewportObserver.disconnect());
-        this.scroller.setAttribute('role', 'region');
-        this.scroller.setAttribute('aria-label', '日付をまたぐ振り返り');
         this.scroller.tabIndex = 0;
         this.pastButton = this.scroller.createEl('button', { cls: 'llr-reflection-edge', text: '↑ 過去の記録' });
         this.pastButton.onclick = () => this.requestExtend(-1);
