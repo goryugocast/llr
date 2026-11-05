@@ -38,6 +38,39 @@ describe('buildReflectionTimeline', () => {
         expect(assigned.sort()).toEqual([0, 1, 2]);
     });
 
+    it('uses actual time instead of planned time and never invents an interval from a plan alone', () => {
+        const result = buildReflectionTimeline([
+            '- [x] 02:30 afternoon work 14:10 - 14:40',
+            '- [x] 07:00 planned only',
+        ].join('\n'));
+
+        expect(result.tasks[0].startMinute).toBe(850);
+        expect(result.tasks[0].endMinute).toBe(880);
+        expect(result.blocks.some(block => block.startMinute === 14 * 60)).toBe(true);
+        expect(result.blocks.some(block => block.startMinute === 2 * 60)).toBe(false);
+        expect(result.tasks[1].actualStart).toBe('');
+        expect(result.tasks[1].startMinute).toBeNull();
+        expect(result.tasks[1].endMinute).toBeNull();
+        expect(result.withoutActualInterval).toContain(result.tasks[1].id);
+        expect(result.blocks.find(block => block.title === '実績時刻のない記録')?.tasks).toContainEqual(result.tasks[1]);
+    });
+
+    it('splits representative runs but assigns an overlapping source task only once', () => {
+        const result = buildReflectionTimeline([
+            '- [x] B 09:00 - 11:00',
+            '- [x] A 08:00 - 12:00',
+        ].join('\n'));
+
+        const runs = result.blocks.filter(block => block.startMinute !== null);
+        expect(runs.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
+            [480, 540, 'A'], [540, 660, 'B'], [660, 720, 'A'],
+        ]);
+        expect(runs.map(block => block.tasks.map(task => task.id))).toEqual([[], [1, 0], []]);
+        const assigned = runs.flatMap(block => block.tasks.map(task => task.id));
+        expect(assigned.sort()).toEqual([0, 1]);
+        expect(new Set(assigned).size).toBe(assigned.length);
+    });
+
     it('keeps the cutoff-crossing hour on one absolute axis and treats nested bullets as supplements', () => {
         const result = buildReflectionTimeline([
             '- [x] cutoff 02:30 - 03:30',

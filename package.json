@@ -12,7 +12,8 @@
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
-    "changelog:update": "bash scripts/update_changelog.sh"
+    "changelog:update": "bash scripts/update_changelog.sh",
+    "test:reflection:obsidian": "node scripts/test_reflection_runtime.mjs"
   },
   "keywords": [
     "obsidian",
