@@ -38,6 +38,8 @@ async function checkReflectionRuntime() {
     const host = document.createElement('section');
     host.className = 'llr-reflection';
     host.style.cssText = 'position:fixed;left:-10000px;width:600px;';
+    host.style.fontSize = getComputedStyle(view.scroller).fontSize;
+    host.style.lineHeight = getComputedStyle(view.scroller).lineHeight;
     document.body.append(host);
     const originalExpansion = view.expansion;
     const originalDaysEl = view.daysEl;
@@ -66,6 +68,21 @@ async function checkReflectionRuntime() {
         });
         const task = makeTask(0, 600, '[[Reflection test reference|見出しの別名]]', 'インデントなしの**大切なメモ**\n\n次の段落と[[Reflection test reference|補足の別名]]。\n\n- [x] 読んだ\n- [ ] 後で読む\n\n```md\n[[コード中の記法]]\n- [x] example\n```');
         const block = { id: 0, title: task.title, startMinute: 600, endMinute: 780, tasks: [task] };
+        const responsive = host.createDiv('llr-reflection');
+        responsive.style.width = '314px';
+        const responsiveScroll = responsive.createDiv('llr-reflection-scroll');
+        await view.makeBlock(responsiveScroll, day, { ...block, id: 99 }, 99, component);
+        const responsiveRow = responsive.querySelector('.llr-reflection-row');
+        const responsiveSummary = responsive.querySelector('summary');
+        const responsiveName = responsive.querySelector('.llr-reflection-name');
+        assert(getComputedStyle(responsiveScroll).fontSize === '17px', 'Narrow panes must use the LLR sidebar text size.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Narrow panes must reserve only 40px before the title.');
+        assert(Math.abs(responsiveRow.getBoundingClientRect().height - responsiveSummary.getBoundingClientRect().height * 3) < 1, 'Narrow panes must keep the same hour scale for all three hours.');
+        responsive.style.width = '700px';
+        assert(getComputedStyle(responsiveScroll).fontSize === getComputedStyle(responsive).fontSize, 'Wide panes must keep native note typography.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 88) < 1, 'Wide panes must preserve the original gutter.');
+        assert(Math.abs(responsiveRow.getBoundingClientRect().height - responsiveSummary.getBoundingClientRect().height * 3) < 1, 'Resizing must update the hour scale without redrawing the records.');
+        responsive.remove();
         const secondTask = makeTask(1, 780, '別の記録', '二つ目の本文');
         const secondBlock = { id: 1, title: secondTask.title, startMinute: 780, endMinute: 840, tasks: [secondTask] };
         const firstKey = key;
@@ -235,7 +252,8 @@ async function checkReflectionRuntime() {
             app.vault.cachedRead = originalRead;
             if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
         }
-        return { passed: true, checks: ['single-row date navigation without duplicate input', 'plain representative heading and whole-row toggling', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
+        return { passed: true, checks: ['single-row date navigation without duplicate input',
+            'narrow-pane typography, gutter and responsive hour geometry', 'plain representative heading and whole-row toggling', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;
         view.expansion = originalExpansion;

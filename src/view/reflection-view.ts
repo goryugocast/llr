@@ -1,5 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
-import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks, reflectionTimeHeight } from '../service/reflection-axis-layout';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -370,18 +370,18 @@ export class ReflectionView extends ItemView {
     }
 
     private hourHeight(): number {
-        const style = getComputedStyle(document.body);
-        const textSize = Number.parseFloat(style.getPropertyValue('--font-text-size')) || 16;
-        const lineHeight = textSize * (Number.parseFloat(style.getPropertyValue('--line-height-normal')) || 1.5);
+        const style = getComputedStyle(this.scroller);
+        const textSize = Number.parseFloat(style.fontSize) || 16;
+        const lineHeight = Number.parseFloat(style.lineHeight) || textSize * 1.5;
         const spacing = Number.parseFloat(style.getPropertyValue('--size-4-1')) || 4;
-        return Math.max(Math.ceil(lineHeight + spacing * 2), Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 44 : 32);
+        return Math.max(lineHeight + spacing * 2, Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 44 : 32);
     }
 
     private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number) {
         for (let cursor = start; cursor < end;) {
             const next = Math.min(end, (Math.floor(cursor / 60) + 1) * 60);
             const step = parent.createDiv('llr-reflection-time-step');
-            step.style.height = `${reflectionTimeHeight(next - cursor, this.hourHeight())}px`;
+            step.style.height = `calc(${(next - cursor) / 60} * var(--llr-reflection-hour-height))`;
             step.dataset.anchor = `${day.date}:time:${cursor}`;
             if (cursor % 120 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: String(Math.floor(cursor / 60) % 24) });
             cursor = next;
@@ -433,8 +433,7 @@ export class ReflectionView extends ItemView {
         row.toggleClass('is-time-band', isTimed);
         row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
-        row.style.setProperty('--llr-reflection-header-height', `${this.hourHeight()}px`);
-        if (isTimed) row.style.minHeight = `${reflectionTimeHeight(displayDuration, this.hourHeight())}px`;
+        if (isTimed) row.style.minHeight = `calc(${displayDuration / 60} * var(--llr-reflection-hour-height))`;
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
         const makeTicks = () => {
             if (!isTimed || block.startMinute === null) return;
@@ -445,7 +444,7 @@ export class ReflectionView extends ItemView {
                 const mark = track.createSpan({ cls: 'llr-reflection-hour llr-reflection-axis-tick', text: tick.label });
                 mark.dataset.minute = String(tick.minute);
                 mark.dataset.anchor = `${day.date}:time:${tick.minute}`;
-                mark.style.top = `calc(${tick.fraction * 100}% + ${this.hourHeight() / 2}px)`;
+                mark.style.top = `calc(${tick.fraction * 100}% + var(--llr-reflection-hour-height) / 2)`;
             }
         };
         if (!block.tasks.length) {
