@@ -215,6 +215,11 @@ export class CheckboxInteractionController {
         const lineIndex = this.resolveLineIndex(view.editor, checkbox, { x, y });
         if (lineIndex === null) return null;
 
+        // The coordinates/CodeMirror fallback may resolve a nearby YAML line.
+        // Never dispatch a task action unless the actual editor line is a Markdown task.
+        const sourceLine = view.editor.getLine(lineIndex);
+        if (!/^\s*(?:[-*+]|\d+[.)])\s+\[[^\]\r\n]\](?:\s|$)/.test(sourceLine)) return null;
+
         return { checkbox, lineIndex };
     }
 
@@ -231,14 +236,17 @@ export class CheckboxInteractionController {
     private getCheckboxElement(target: EventTarget | null, x?: number, y?: number): HTMLElement | null {
         if (!(target instanceof Element)) return null;
 
-        // 1. 直接的なヒット（エディタ内に限定）
-        const direct = target.closest('.markdown-source-view .task-list-item-checkbox, .markdown-source-view input[type="checkbox"]');
+        // Properties use their own checkboxes; leave frontmatter edits to Obsidian.
+        if (target.closest('.metadata-container, .metadata-property, .frontmatter-container, .cm-hmd-frontmatter')) return null;
+
+        // Only task checkboxes inside the Markdown editor, never arbitrary inputs.
+        const direct = target.closest('.markdown-source-view .task-list-item-checkbox, .markdown-source-view .HyperMD-task-line input[type="checkbox"], .markdown-source-view .task-list-item input[type="checkbox"]');
         if (direct instanceof HTMLElement) return direct;
 
         // 2. 行内フォールバックは、チェックボックス近傍だけに限定する
         const line = target.closest('.HyperMD-task-line, .cm-line, .task-list-item');
         if (line instanceof HTMLElement) {
-            const nested = line.querySelector('.task-list-item-checkbox, input[type="checkbox"]');
+            const nested = line.querySelector('.task-list-item-checkbox, .HyperMD-task-line input[type="checkbox"], .task-list-item input[type="checkbox"]');
             if (nested instanceof HTMLElement && typeof x === 'number' && typeof y === 'number') {
                 const fallbackPadding = Platform.isMobile ? 6 : 3;
                 if (this.isCoordInsideElement(x, y, nested, fallbackPadding)) {

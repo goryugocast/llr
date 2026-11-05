@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Notice, moment, setIcon }
 import { SummaryItem, SummaryPresentation, SummaryRenderGroup, buildSummaryPresentation, computeSummaryData } from '../service/summary-calculator';
 import { calculateDuration } from '../service/time-calculator';
 import type { DailyNoteSettings } from '../service/daily-note-context';
+import { resolveSectionLabel } from '../service/section-timeline';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -12,7 +13,7 @@ export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
  */
 export interface SummaryViewDelegate {
     getRoutineFolder(): string;
-    /** parseSectionTimeToInt 済み・時刻昇順のセクション境界。 */
+    /** parseSectionTimeToInt 済み・日付境界で正規化した時刻順のセクション境界。 */
     getSectionBoundaries(): Array<{ value: number; label: string }>;
     /** Daily Notes プラグイン設定（LLR のフォルダ補完込み）。main.ts の getDailyNoteSettings() と同一。 */
     getDailyNoteSettings(): DailyNoteSettings;
@@ -362,18 +363,7 @@ export class SummaryView extends ItemView {
         const defs = this.delegate.getSectionBoundaries();
         if (defs.length === 0) return null;
 
-        let selected: string | null = null;
-        for (const def of defs) {
-            if (value >= def.value) {
-                selected = def.label;
-                continue;
-            }
-            break;
-        }
-        if (selected !== null) return selected;
-
-        // After midnight, wrap to the final section until the first section starts.
-        return defs[defs.length - 1]?.label ?? null;
+        return resolveSectionLabel(value, defs, true);
     }
 
     private renderSectionDivider(

@@ -1,5 +1,6 @@
 import { normalizePath } from 'obsidian';
 import type { UILanguage } from '../i18n';
+import { compareSectionBoundaries } from './section-timeline';
 
 /**
  * プラグイン設定の型・既定値・正規化。
@@ -74,7 +75,7 @@ export function normalizeSectionDefinitions(input: unknown): SectionDefinition[]
     normalized.sort((a, b) => {
         const av = parseSectionTimeToInt(a.time) ?? Number.MAX_SAFE_INTEGER;
         const bv = parseSectionTimeToInt(b.time) ?? Number.MAX_SAFE_INTEGER;
-        return av - bv || a.label.localeCompare(b.label, 'ja');
+        return compareSectionBoundaries({ value: av, label: a.label }, { value: bv, label: b.label });
     });
 
     return normalized;

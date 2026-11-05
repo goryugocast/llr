@@ -14,7 +14,7 @@
 - `振り返りを開く`（command ID: `open-reflection-view`）と履歴アイコンで中央タブを開く。既存サイドバーとは独立。
 - 日付をまたぐ上下スクロール、時間帯代表と元タスク・直下補足の展開、日付ジャンプ・今日・元ノートへの移動。
 - 実績時刻だけで代表を選び、時刻なし・0分・SRS・日跨ぎも保持。更新・日付追加時は閲覧位置と展開状態を維持する。
-- 詳細契約: [[REFLECTION_振り返り]]。Obsidian実機での表示・操作確認は未実施。
+- 詳細契約: [[REFLECTION_振り返り]]。デスクトップObsidianで起動、過去日追加、展開、タブ復帰時の位置保持を確認済み。モバイル実機と見た目の最終評価は未確認。
 
 ### A. Core Commands
 - `Open Summary View`
@@ -103,7 +103,7 @@
 - `UI Language`（auto / ja / en。設定画面とコマンド名の表示言語）
 - `Estimate Warning`（残り見積りに基づく予定警告表示）
 - `Routine Folder`（ルーチンノート置き場。フォルダ候補サジェスト付き）
-- `Routine Sections`（時刻 `HHmm` + ラベル、入力/削除/自動ソート）
+- `Routine Sections`（時刻 `HHmm` + ラベル、入力/削除/自動ソート）。設定・ルーチン挿入・サマリーの見出し判定は03:00基準の時系列を共有し、00:00〜02:59は夜の後に続く
 - `Debug mode`（Notice + trace JSONL。詳細設定/互換性セクション）
 - `Editor Checkbox Override`（チェックボックス短押し/長押し上書きの ON/OFF）
 - `Daily Note Folder (fallback)`（Daily Notes プラグインの folder が空のときだけ使う予備値）

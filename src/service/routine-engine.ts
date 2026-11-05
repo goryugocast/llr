@@ -187,7 +187,9 @@ export class RoutineEngine {
         const normalized = normalizeAsciiDigits(raw)
             .replace(/：/g, ':')
             .trim()
-            .replace(/^["']|["']$/g, '');
+            .replace(/^["']|["']$/g, '')
+            // Whole-hour Japanese notation omits minutes (e.g. 午後7時).
+            .replace(/時$/, '時0分');
         const time = normalized.match(/^(?:(午前|午後)\s*)?(\d{1,2})(?:(?::|時)\s*(\d{1,2})\s*分?)?\s*(am|pm)?$/i);
         if (time && (time[1] || time[3] !== undefined || time[4])) {
             let hour = Number(time[2]);

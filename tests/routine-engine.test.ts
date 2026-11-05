@@ -194,6 +194,21 @@ describe('RoutineEngine', () => {
             expect(japanese?.start_before).toBe(7);
         });
 
+        it.each([
+            ['7時', 700],
+            ['午前7時', 700],
+            ['午後7時', 1900],
+            ['午前12時', 0],
+            ['午後12時', 1200],
+            ['24時', 2400],
+        ])('parses whole-hour section %s as %i', (section, expected) => {
+            mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+                frontmatter: { section },
+            });
+            const note = engine.readRoutineNote({ path: 'routine/section.md' } as TFile);
+            expect(note?.section).toEqual([expected]);
+        });
+
         it('readRoutineNote should parse section from supported formats', async () => {
             const mockFile = { path: 'routine/section.md' } as TFile;
 
