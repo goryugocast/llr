@@ -9,6 +9,7 @@ import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from
 import { routineSortKey, groupRoutineLinesWithSections, expandRoutineNotesBySection } from './service/routine-sort';
 import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './service/start-and-open';
 import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { ReflectionView, VIEW_TYPE_REFLECTION } from './view/reflection-view';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
 import { requestRefreshIfSupported } from './view/refreshable-view';
@@ -116,6 +117,14 @@ export default class LlrPlugin extends Plugin {
             VIEW_TYPE_SUMMARY,
             (leaf) => new SummaryView(leaf, summaryDelegate)
         );
+        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings()));
+        this.addRibbonIcon('history', '振り返りを開く', () => { void this.activateReflectionView(); });
+        this.addCommand({
+            id: 'open-reflection-view',
+            name: '振り返りを開く',
+            icon: 'history',
+            callback: () => { void this.activateReflectionView(); },
+        });
 
         this.addRibbonIcon('list-checks', this.t('ribbon.openSummary'), () => {
             void this.activateView();
@@ -663,6 +672,16 @@ export default class LlrPlugin extends Plugin {
             this.statusBarDebounce = null;
             this.updateUI();
         }, 500);
+    }
+
+    private async activateReflectionView() {
+        const workspace = this.app.workspace;
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_REFLECTION)[0];
+        if (!leaf) {
+            leaf = workspace.getLeaf('tab');
+            await leaf.setViewState({ type: VIEW_TYPE_REFLECTION, active: true });
+        }
+        await workspace.revealLeaf(leaf);
     }
 
     private async activateView() {

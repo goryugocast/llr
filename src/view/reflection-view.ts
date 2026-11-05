@@ -1,0 +1,336 @@
+import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, moment } from 'obsidian';
+import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
+import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
+
+export const VIEW_TYPE_REFLECTION = 'llr-reflection-view';
+interface DayEntry { date: string; file: TFile | null }
+interface Anchor { key: string; offset: number; top: number; day?: string; dayOffset?: number }
+
+/** Read-only central timeline. No task mutation or running-task auto-follow. */
+export class ReflectionView extends ItemView {
+    private scroller!: HTMLElement;
+    private daysEl!: HTMLElement;
+    private dateInput!: HTMLInputElement;
+    private pastButton!: HTMLButtonElement;
+    private nextButton!: HTMLButtonElement;
+    private index: DayEntry[] = [];
+    private visible: DayEntry[] = [];
+    private readonly expanded = new Set<string>();
+    private pending = Promise.resolve();
+    private closed = false;
+    private timer: ReturnType<typeof setTimeout> | null = null;
+    private dirty = new Set<string>();
+    private anchor: Anchor | null = null;
+    private readonly sections = new Map<string, HTMLElement>();
+    private sourceLeaf: WorkspaceLeaf | null = null;
+    private readonly extending = new Set<number>();
+
+    constructor(leaf: WorkspaceLeaf, private readonly getSettings: () => DailyNoteSettings) { super(leaf); }
+    getViewType() { return VIEW_TYPE_REFLECTION; }
+    getDisplayText() { return '振り返り'; }
+    getIcon() { return 'history'; }
+
+    onOpen(): Promise<void> {
+        this.closed = false;
+        this.contentEl.empty();
+        this.contentEl.addClass('llr-reflection');
+        const toolbar = this.contentEl.createDiv('llr-reflection-toolbar');
+        toolbar.createEl('strong', { text: '振り返り' });
+        const actions = toolbar.createDiv('llr-reflection-actions');
+        this.dateInput = actions.createEl('input', { type: 'date', attr: { 'aria-label': '日付へ移動' } });
+        this.dateInput.max = this.today();
+        this.dateInput.value = this.today();
+        this.dateInput.onchange = () => {
+            const date = this.dateInput.value;
+            this.enqueue(() => this.jump(date));
+        };
+        actions.createEl('button', { text: '今日へ' }).onclick = () => this.enqueue(() => this.jump(this.today()));
+        this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
+        this.scroller.setAttribute('role', 'region');
+        this.scroller.setAttribute('aria-label', '日付をまたぐ振り返り');
+        this.scroller.tabIndex = 0;
+        this.pastButton = this.scroller.createEl('button', { cls: 'llr-reflection-edge', text: '↑ 過去の記録' });
+        this.pastButton.onclick = () => this.requestExtend(-1);
+        this.daysEl = this.scroller.createDiv('llr-reflection-days');
+        this.nextButton = this.scroller.createEl('button', { cls: 'llr-reflection-edge', text: '新しい記録 ↓' });
+        this.nextButton.onclick = () => this.requestExtend(1);
+        this.registerDomEvent(this.scroller, 'scroll', () => {
+            if (!this.scroller.clientHeight) return;
+            this.anchor = this.captureAnchor();
+            if (this.scroller.scrollTop < 160) this.requestExtend(-1);
+            else if (this.scroller.scrollTop + this.scroller.clientHeight > this.scroller.scrollHeight - 160) {
+                this.requestExtend(1);
+            }
+        });
+        const changed = (file: TFile) => {
+            this.dirty.add(file.path);
+            this.scheduleRefresh();
+        };
+        this.registerEvent(this.app.vault.on('modify', file => { if (file instanceof TFile) changed(file); }));
+        this.registerEvent(this.app.vault.on('create', file => { if (file instanceof TFile) changed(file); }));
+        this.registerEvent(this.app.vault.on('delete', file => { if (file instanceof TFile) changed(file); }));
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+            this.dirty.add(oldPath);
+            if (file instanceof TFile) changed(file);
+        }));
+        this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
+            if (leaf === this.leaf) {
+                requestAnimationFrame(() => { if (!this.closed) this.restoreAnchor(this.anchor); });
+                this.scheduleRefresh();
+            }
+        }));
+        this.enqueue(() => this.jump(this.today()));
+        return Promise.resolve();
+    }
+
+    onClose(): Promise<void> {
+        this.closed = true;
+        if (this.timer) clearTimeout(this.timer);
+        return Promise.resolve();
+    }
+
+    private today(): string { return moment().subtract(3, 'hours').format('YYYY-MM-DD'); }
+
+    private enqueue(work: () => Promise<void>) {
+        this.pending = this.pending.then(async () => { if (!this.closed) await work(); }).catch(error => {
+            console.error('[LLR] Reflection read failed', error);
+            if (!this.closed) new Notice('振り返りを読み込めませんでした。再度開いてください。');
+        });
+    }
+
+    private rebuildIndex() {
+        const settings = this.getSettings();
+        const dates = new Map<string, DayEntry>();
+        for (const file of this.app.vault.getMarkdownFiles()) {
+            const date = resolveDailyNoteDate(file, settings, (text, format) => {
+                const parsed = moment(text, format, true);
+                return parsed.isValid() ? parsed.toDate() : null;
+            });
+            if (!date) continue;
+            const key = moment(date).format('YYYY-MM-DD');
+            if (key <= this.today()) dates.set(key, { date: key, file });
+        }
+        if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
+        this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    private async jump(date: string) {
+        if (!moment(date, 'YYYY-MM-DD', true).isValid()) return;
+        date = date > this.today() ? this.today() : date;
+        this.rebuildIndex();
+        if (!this.index.some(day => day.date === date)) {
+            this.index.push({ date, file: null });
+            this.index.sort((a, b) => a.date.localeCompare(b.date));
+        }
+        const existing = this.sections.get(date);
+        if (!existing) {
+            const at = this.index.findIndex(day => day.date === date);
+            const days = this.index.slice(Math.max(0, at - 2), at + 3);
+            const sections = await Promise.all(days.map(day => this.makeDay(day)));
+            if (this.closed) return;
+            this.visible = days;
+            this.sections.clear();
+            this.daysEl.empty();
+            sections.forEach((section, i) => { this.sections.set(days[i].date, section); this.daysEl.append(section); });
+            this.updateEdges();
+        }
+        this.dateInput.value = date;
+        this.dateInput.max = this.today();
+        const section = this.sections.get(date);
+        if (section) this.scroller.scrollTop += section.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
+        this.anchor = this.captureAnchor();
+    }
+
+    private requestExtend(direction: -1 | 1) {
+        if (this.extending.has(direction)) return;
+        this.extending.add(direction);
+        this.enqueue(async () => {
+            try { await this.extend(direction); } finally { this.extending.delete(direction); }
+        });
+    }
+
+    private async extend(direction: -1 | 1) {
+        if (!this.visible.length) return;
+        this.rebuildIndex();
+        const first = this.visible[0].date, last = this.visible[this.visible.length - 1].date;
+        const candidates = direction < 0 ? this.index.filter(day => day.date < first).slice(-5) : this.index.filter(day => day.date > last).slice(0, 5);
+        if (!candidates.length) { this.updateEdges(); return; }
+        const sections = await Promise.all(candidates.map(day => this.makeDay(day)));
+        if (this.closed) return;
+        // Capture after I/O: the reader may have moved while files were loading.
+        const anchor = this.captureAnchor();
+        sections.forEach((section, i) => this.sections.set(candidates[i].date, section));
+        if (direction < 0) { this.daysEl.prepend(...sections); this.visible.unshift(...candidates); }
+        else { this.daysEl.append(...sections); this.visible.push(...candidates); }
+        // Bound DOM/body data while allowing either edge to be reloaded later.
+        if (this.visible.length > 35) {
+            const removed = direction < 0 ? this.visible.splice(35) : this.visible.splice(0, this.visible.length - 35);
+            for (const day of removed) { this.sections.get(day.date)?.remove(); this.sections.delete(day.date); }
+        }
+        this.updateEdges();
+        this.restoreAnchor(anchor);
+        this.anchor = this.captureAnchor();
+    }
+
+    private updateEdges() {
+        if (!this.visible.length) return;
+        this.pastButton.disabled = !this.index.some(day => day.date < this.visible[0].date);
+        this.pastButton.textContent = this.pastButton.disabled ? 'ここからが最初の記録' : '↑ 過去の記録';
+        this.nextButton.disabled = this.visible[this.visible.length - 1].date >= this.today();
+        this.nextButton.textContent = this.nextButton.disabled ? 'ここまでが今日の記録' : '新しい記録 ↓';
+        this.daysEl.querySelectorAll('.llr-reflection-gap').forEach(el => el.remove());
+        for (let i = 1; i < this.visible.length; i++) {
+            const gap = moment(this.visible[i].date).diff(moment(this.visible[i - 1].date), 'days') - 1;
+            if (gap > 0) {
+                const label = document.createElement('div');
+                label.className = 'llr-reflection-gap'; label.textContent = `${gap}日間 デイリーノートなし`;
+                this.sections.get(this.visible[i].date)?.before(label);
+            }
+        }
+    }
+
+    private scheduleRefresh() {
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+            this.timer = null;
+            this.enqueue(() => this.refresh());
+        }, 500);
+    }
+
+    private async refresh() {
+        this.dateInput.max = this.today();
+        this.rebuildIndex();
+        const dirty = this.dirty;
+        this.dirty = new Set();
+        const updates: Array<{ day: DayEntry; section: HTMLElement }> = [];
+        for (const day of this.visible) {
+            const next = this.index.find(entry => entry.date === day.date) ?? { date: day.date, file: null };
+            if (next.file?.path !== day.file?.path || (day.file && dirty.has(day.file.path))) {
+                updates.push({ day: next, section: await this.makeDay(next) });
+            }
+        }
+        if (this.closed) return;
+        const anchor = this.captureAnchor();
+        for (const { day, section } of updates) {
+            this.sections.get(day.date)?.replaceWith(section);
+            this.sections.set(day.date, section);
+            this.visible[this.visible.findIndex(entry => entry.date === day.date)] = day;
+        }
+        this.updateEdges();
+        this.restoreAnchor(anchor);
+        this.anchor = this.captureAnchor();
+    }
+
+    private captureAnchor(): Anchor | null {
+        if (this.scroller.clientHeight === 0) return this.anchor;
+        const top = this.scroller.getBoundingClientRect().top;
+        const elements = Array.from(this.daysEl.querySelectorAll<HTMLElement>('[data-anchor]'));
+        const element = elements.find(el => el.getBoundingClientRect().bottom > top);
+        if (!element) return null;
+        const day = element.dataset.anchor?.slice(0, 10);
+        const heading = day ? this.sections.get(day)?.querySelector('h2') : null;
+        return { key: element.dataset.anchor ?? '', offset: element.getBoundingClientRect().top - top, top: this.scroller.scrollTop, day, dayOffset: heading ? heading.getBoundingClientRect().top - top : undefined };
+    }
+
+    private restoreAnchor(anchor: Anchor | null) {
+        if (!anchor || this.scroller.clientHeight === 0) return;
+        const element = Array.from(this.daysEl.querySelectorAll<HTMLElement>('[data-anchor]')).find(el => el.dataset.anchor === anchor.key);
+        if (element) this.scroller.scrollTop += element.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.offset;
+        else {
+            const heading = anchor.day ? this.sections.get(anchor.day)?.querySelector('h2') : null;
+            if (heading && anchor.dayOffset !== undefined) this.scroller.scrollTop += heading.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.dayOffset;
+            else this.scroller.scrollTop = anchor.top;
+        }
+    }
+
+    private async makeDay(day: DayEntry): Promise<HTMLElement> {
+        const section = document.createElement('section');
+        section.className = 'llr-reflection-day';
+        const heading = section.createEl('h2', { text: moment(day.date).format('M月D日（ddd）') });
+        heading.dataset.anchor = day.date;
+        if (day.date === this.today()) heading.createEl('small', { text: '今日' });
+        if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
+        const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file));
+        if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
+        const occurrences = new Map<number | null, number>();
+        for (const block of timeline.blocks) {
+            const occurrence = occurrences.get(block.startMinute) ?? 0;
+            occurrences.set(block.startMinute, occurrence + 1);
+            this.makeBlock(section, day, block, occurrence);
+        }
+        return section;
+    }
+
+    private makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number) {
+        const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
+        const row = section.createDiv('llr-reflection-row');
+        row.createDiv({ cls: 'llr-reflection-hour', text: block.startMinute === null ? '時刻なし' : this.clock(block.startMinute) });
+        const height = Math.min(180, Math.max(62, ((block.endMinute ?? 0) - (block.startMinute ?? 0)) * 0.6));
+        row.style.setProperty('--llr-reflection-height', `${height}px`);
+        // A long activity can represent separated bands but its original appears only once.
+        if (!block.tasks.length) {
+            const overview = row.createDiv('llr-reflection-block');
+            const title = overview.createDiv({ cls: 'llr-reflection-block-title', text: block.title });
+            title.dataset.anchor = key;
+            return;
+        }
+        const details = row.createEl('details', { cls: 'llr-reflection-block' });
+        const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
+        summary.dataset.anchor = key;
+        summary.createSpan({ text: block.title, cls: 'llr-reflection-name' });
+        summary.createSpan({ text: `${block.tasks.length}件`, cls: 'llr-reflection-count' });
+        const records = details.createDiv('llr-reflection-records');
+        const fill = () => {
+            records.empty();
+            if (details.open) {
+                const occurrences = new Map<string, number>();
+                block.tasks.forEach(task => {
+                    const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
+                    const occurrence = occurrences.get(signature) ?? 0;
+                    occurrences.set(signature, occurrence + 1);
+                    this.makeRecord(records, day, task, occurrence);
+                });
+            }
+        };
+        details.open = this.expanded.has(key);
+        fill();
+        summary.onclick = event => {
+            event.preventDefault();
+            let anchor = this.captureAnchor();
+            if (anchor && records.querySelector(`[data-anchor]`) && Array.from(records.querySelectorAll<HTMLElement>('[data-anchor]')).some(el => el.dataset.anchor === anchor?.key)) {
+                anchor = { key, offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
+            }
+            details.open = !details.open;
+            if (details.open) this.expanded.add(key); else this.expanded.delete(key);
+            fill();
+            this.restoreAnchor(anchor);
+            this.anchor = this.captureAnchor();
+        };
+    }
+
+    private makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number) {
+        const record = parent.createDiv('llr-reflection-record');
+        record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
+        const head = record.createDiv('llr-reflection-record-head');
+        head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
+        head.createSpan({ text: `[${task.status === 'plain' ? '・' : task.status}] ${task.title}` });
+        head.createEl('button', { text: '元ノートへ', cls: 'llr-reflection-source' }).onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
+        if (task.supplement) record.createDiv({ cls: 'llr-reflection-supplement', text: task.supplement });
+    }
+
+    private clock(minute: number): string {
+        const time = minute % 1440;
+        return `${String(Math.floor(time / 60)).padStart(2, '0')}:${String(time % 60).padStart(2, '0')}${minute >= 1440 ? '⁺' : ''}`;
+    }
+
+    private async openSource(file: TFile, line: number) {
+        if (!this.sourceLeaf || !this.app.workspace.getLeavesOfType('markdown').includes(this.sourceLeaf)) this.sourceLeaf = this.app.workspace.getLeaf('tab');
+        await this.sourceLeaf.openFile(file, { eState: { line } });
+        const view = this.sourceLeaf.view;
+        if (view instanceof MarkdownView) {
+            view.editor.setCursor({ line, ch: 0 });
+            view.editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
+        }
+        await this.app.workspace.revealLeaf(this.sourceLeaf);
+    }
+}
