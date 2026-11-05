@@ -100,6 +100,13 @@ async function checkReflectionRuntime() {
         const top = element => element.getBoundingClientRect().top;
         assert(Math.abs(top(steps[1]) - top(steps[0]) - view.hourHeight()) < 1 && Math.abs(top(steps[2]) - top(steps[1]) - view.hourHeight()) < 1, 'Collapsed hourly positions must remain equally spaced, including unlabeled hours.');
         assert(Math.abs(host.querySelector('.llr-reflection-row').getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'A three-hour overview must occupy exactly three cells.');
+        host.addClass('is-reading-list');
+        assert(getComputedStyle(host.querySelector('.llr-reflection-hour-track')).display === 'none', 'List reading must hide the proportional hour track.');
+        assert(getComputedStyle(host.querySelector('.llr-reflection-name > p')).whiteSpace === 'normal', 'List reading must wrap long activity names.');
+        assert(host.querySelector('.llr-reflection-reading-time').textContent === '10:00–10:30', 'A list heading for a single matching record must use its actual interval, not the overview hours.');
+        assert(host.querySelector('.llr-reflection-row').getBoundingClientRect().height < 3 * view.hourHeight(), 'List reading must not reserve three hours of blank vertical space.');
+        host.removeClass('is-reading-list');
+
         assert(!host.querySelector('.llr-reflection-duration'), 'Representative headings must not duplicate actual duration metadata.');
         assert(steps.every(step => !step.querySelector('.llr-reflection-continuation-name')), 'Continued hours must not repeat the activity heading.');
         assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::before').left === '56px', 'The activity surface must begin after the independent time axis.');
