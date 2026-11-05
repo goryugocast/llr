@@ -13,6 +13,7 @@ export class ReflectionView extends ItemView {
     private scroller!: HTMLElement;
     private daysEl!: HTMLElement;
     private dateInput!: HTMLInputElement;
+    private currentDayLabel!: HTMLElement;
     private pastButton!: HTMLButtonElement;
     private nextButton!: HTMLButtonElement;
     private index: DayEntry[] = [];
@@ -42,7 +43,7 @@ export class ReflectionView extends ItemView {
         this.contentEl.empty();
         this.contentEl.addClass('llr-reflection');
         const toolbar = this.contentEl.createDiv('llr-reflection-toolbar');
-        toolbar.createEl('strong', { text: '振り返り' });
+        this.currentDayLabel = toolbar.createEl('strong', { text: '振り返り', attr: { 'aria-label': '閲覧中の日付' } });
         const actions = toolbar.createDiv('llr-reflection-actions');
         this.dateInput = actions.createEl('input', { type: 'date', attr: { 'aria-label': '日付へ移動' } });
         this.dateInput.max = this.today();
@@ -56,6 +57,11 @@ export class ReflectionView extends ItemView {
         this.expandButton.disabled = true;
         this.expandButton.onclick = () => this.enqueue(() => this.setAllDetails(this.expansion.shouldOpenAll(this.getDetailKeys())));
         this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
+        const viewportObserver = new ResizeObserver(() => {
+            if (this.scroller.clientHeight) this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
+        });
+        viewportObserver.observe(this.scroller);
+        this.register(() => viewportObserver.disconnect());
         this.scroller.setAttribute('role', 'region');
         this.scroller.setAttribute('aria-label', '日付をまたぐ振り返り');
         this.scroller.tabIndex = 0;
@@ -73,6 +79,7 @@ export class ReflectionView extends ItemView {
         this.registerDomEvent(this.scroller, 'scroll', () => {
             if (!this.scroller.clientHeight || this.isSettingAllDetails) return;
             this.anchor = this.captureAnchor();
+            this.syncCurrentDay();
             if (this.scroller.scrollTop < 160) this.requestExtend(-1);
             else if (this.scroller.scrollTop + this.scroller.clientHeight > this.scroller.scrollHeight - 160) {
                 this.requestExtend(1);
@@ -284,16 +291,19 @@ export class ReflectionView extends ItemView {
         const layout = buildReflectionAxisLayout(timeline.blocks);
         const axis = section.createDiv('llr-reflection-axis');
         const occurrences = new Map<number | null, number>();
-        const renderBlock = async (parent: HTMLElement, index: number) => {
+        const renderBlock = async (parent: HTMLElement, index: number, interval?: { startMinute: number; endMinute: number }) => {
             const block = timeline.blocks[index];
             const occurrence = occurrences.get(block.startMinute) ?? 0;
             occurrences.set(block.startMinute, occurrence + 1);
-            await this.makeBlock(parent, day, block, occurrence, component);
+            await this.makeBlock(parent, day, block, occurrence, component, interval);
         };
         if (layout.segments.some(segment => segment.kind === 'activity')) {
             for (const segment of layout.segments) {
-                if (segment.kind === 'gap') this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute, false);
-                else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex);
+                if (segment.kind === 'gap') {
+                    // Empty leading/trailing hours add no reading value. Keep only internal gaps.
+                    const activities = layout.segments.filter(item => item.kind === 'activity');
+                    if (activities.some(item => item.endMinute <= segment.startMinute) && activities.some(item => item.startMinute >= segment.endMinute)) this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute, false);
+                } else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex, segment);
             }
         }
         const points = layout.segments.filter(segment => segment.kind === 'point');
@@ -301,6 +311,11 @@ export class ReflectionView extends ItemView {
             const pointList = section.createDiv('llr-reflection-point-list');
             pointList.createDiv({ cls: 'llr-reflection-section-label', text: '時刻だけの記録' });
             for (const point of points) if (point.blockIndex !== undefined) await renderBlock(pointList, point.blockIndex);
+        }
+        if (layout.outsideDay.length) {
+            const continuation = section.createDiv('llr-reflection-outside-day');
+            continuation.createDiv({ cls: 'llr-reflection-section-label', text: 'このノートの日界後の記録' });
+            for (const index of layout.outsideDay) await renderBlock(continuation, index);
         }
         if (layout.untimed.length) {
             const untimed = section.createDiv('llr-reflection-untimed');
@@ -335,18 +350,25 @@ export class ReflectionView extends ItemView {
         return Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 48 : 32;
     }
 
-    private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number, activity: boolean) {
-        for (let cursor = start; cursor < end;) {
-            const next = Math.min(end, (Math.floor(cursor / 60) + 1) * 60);
-            const step = parent.createDiv('llr-reflection-time-step');
-            const height = `${reflectionTimeHeight(next - cursor, this.hourHeight())}px`;
-            step.style.height = height;
-            step.style.setProperty('--llr-reflection-step-height', height);
-            step.dataset.anchor = `${day.date}:time:${cursor}`;
-            if (cursor % 60 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: formatReflectionClock(cursor) });
-            if (activity) step.createSpan('llr-reflection-time-mark');
-            cursor = next;
-        }
+    private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number, activity: boolean, height?: number) {
+        if (end <= start) return;
+        const step = parent.createDiv(activity ? 'llr-reflection-time-step is-compressed' : 'llr-reflection-time-step is-gap');
+        step.style.height = `${height ?? 28}px`;
+        step.dataset.anchor = `${day.date}:time:${start}`;
+        if (activity) step.createSpan('llr-reflection-time-mark');
+        else step.createSpan({ cls: 'llr-reflection-gap-label', text: `${formatReflectionClock(start)}–${formatReflectionClock(end)} 記録なし` });
+    }
+
+    private syncCurrentDay() {
+        if (!this.currentDayLabel || !this.scroller.clientHeight) return;
+        const top = this.scroller.getBoundingClientRect().top;
+        const day = this.visible.find(entry => {
+            const rect = this.sections.get(entry.date)?.getBoundingClientRect();
+            return rect && rect.bottom > top + 24;
+        });
+        if (!day) return;
+        this.currentDayLabel.textContent = `${moment(day.date).format('M月D日')}（${['日', '月', '火', '水', '木', '金', '土'][moment(day.date).day()]}）`;
+        if (document.activeElement !== this.dateInput) this.dateInput.value = day.date;
     }
 
     private async renderHeading(parent: HTMLElement, day: DayEntry, title: string, component: Component) {
@@ -357,18 +379,20 @@ export class ReflectionView extends ItemView {
         return name;
     }
 
-    private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component) {
+    private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component, interval?: { startMinute: number; endMinute: number }) {
         const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
         const row = section.createDiv('llr-reflection-row');
         const duration = Math.max(0, (block.endMinute ?? block.startMinute ?? 0) - (block.startMinute ?? 0));
+        const displayDuration = interval ? interval.endMinute - interval.startMinute : duration;
         const isTimed = block.startMinute !== null && duration > 0;
         row.toggleClass('is-time-band', isTimed);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
-        row.style.setProperty('--llr-reflection-header-height', `${isTimed ? reflectionTimeHeight(Math.min(duration, 60), this.hourHeight()) : this.hourHeight()}px`);
+        row.style.setProperty('--llr-reflection-header-height', `${isTimed ? Math.max(this.hourHeight(), reflectionTimeHeight(Math.min(displayDuration, 60), this.hourHeight())) : this.hourHeight()}px`);
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
         const tail = () => {
             if (isTimed && block.startMinute !== null && block.endMinute !== null) {
-                this.makeTimeSpace(row, day, Math.min(block.endMinute, block.startMinute + 60), block.endMinute, true);
+                const remainingHeight = reflectionTimeHeight(displayDuration, this.hourHeight()) - this.hourHeight();
+                if (remainingHeight > 0) this.makeTimeSpace(row, day, block.startMinute + 60, interval?.endMinute ?? block.endMinute, true, remainingHeight);
             }
         };
         if (!block.tasks.length) {
@@ -383,9 +407,18 @@ export class ReflectionView extends ItemView {
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
         summary.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
-        const name = await this.renderHeading(summary, day, block.title, component);
-        if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());
         const chevron = summary.createSpan({ cls: 'llr-reflection-chevron', attr: { 'aria-hidden': 'true' } });
+        const name = await this.renderHeading(summary, day, block.title, component);
+        // Representative bands are rounded to hours. Never present their length as actual work.
+        const matching = block.tasks.filter(task => task.title === block.title && task.startMinute !== null && task.endMinute !== null && task.endMinute > task.startMinute);
+        const representative = matching.length === 1 ? matching[0] : null;
+        if (duration > 60 && representative && representative.startMinute !== null && representative.endMinute !== null) {
+            const actualMinutes = representative.endMinute - representative.startMinute;
+            const hours = Math.floor(actualMinutes / 60), minutes = actualMinutes % 60;
+            const label = `${hours ? `${hours}時間` : ''}${minutes ? `${minutes}分` : ''}`;
+            summary.createSpan({ cls: 'llr-reflection-duration', text: `実績${label}${interval && representative.endMinute > interval.endMinute ? ` · ${formatReflectionClock(representative.endMinute)}まで` : ''}` });
+        }
+        if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());
         const records = details.createDiv('llr-reflection-records');
         let bodyComponent: Component | null = null;
         const fill = async () => {
@@ -439,6 +472,7 @@ export class ReflectionView extends ItemView {
     }
 
     private syncExpandButton() {
+        this.syncCurrentDay();
         if (!this.expandButton) return;
         const keys = this.getDetailKeys();
         this.expandButton.disabled = this.isSettingAllDetails || keys.length === 0;
@@ -474,13 +508,17 @@ export class ReflectionView extends ItemView {
     private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
         const record = parent.createDiv('llr-reflection-record');
         record.dataset.status = task.status;
+        record.toggleClass('has-memo', !!task.supplement);
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
         const head = record.createDiv('llr-reflection-record-head');
         if (task.kind !== 'memo') {
             head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
-        head.createEl('button', { text: '元ノートへ', cls: 'llr-reflection-source' }).onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
+        const source = head.createEl('button', { cls: 'llr-reflection-source', attr: { 'aria-label': '元ノートへ' } });
+        setIcon(source, 'arrow-up-right');
+        setTooltip(source, '元ノートへ');
+        source.onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
         if (task.supplement) {
             // Strip the common task-child indent while preserving relative Markdown nesting.
             const lines = task.supplement.split('\n');

@@ -10,17 +10,20 @@ export interface ReflectionAxisSegment {
 export interface ReflectionAxisLayout {
     segments: ReflectionAxisSegment[];
     untimed: number[];
+    /** Timed blocks completely outside the day boundary, retained for a separate continuation list. */
+    outsideDay: number[];
     endMinute: number;
 }
 
-/** Build a normal-flow timeline axis, sorting times with source order as the tie-breaker. */
+/** Build a single-day overview axis, clipping cross-day intervals and sorting by time. */
 export function buildReflectionAxisLayout(
     blocks: readonly ReflectionBlock[],
     boundaryMinute = 180,
 ): ReflectionAxisLayout {
     const intervals: Array<{ start: number; end: number; index: number; point: boolean }> = [];
     const untimed: number[] = [];
-    let endMinute = boundaryMinute + 1440;
+    const outsideDay: number[] = [];
+    const endMinute = boundaryMinute + 1440;
 
     blocks.forEach((block, index) => {
         const { startMinute: start, endMinute: end } = block;
@@ -28,12 +31,18 @@ export function buildReflectionAxisLayout(
             untimed.push(index);
             return;
         }
-        const pointMinute = start ?? end;
-        const point = start === null || end === null || end <= start;
-        const intervalStart = point ? pointMinute : start;
-        const intervalEnd = point ? pointMinute : end;
-        intervals.push({ start: intervalStart, end: intervalEnd, index, point });
-        if (!point) endMinute = Math.max(endMinute, intervalEnd);
+        if (start === null || end === null || end <= start) {
+            const pointMinute = start ?? end;
+            intervals.push({ start: pointMinute, end: pointMinute, index, point: true });
+            return;
+        }
+        if (end <= boundaryMinute || start >= endMinute) {
+            outsideDay.push(index);
+            return;
+        }
+        const intervalStart = Math.max(start, boundaryMinute);
+        const intervalEnd = Math.min(end, endMinute);
+        intervals.push({ start: intervalStart, end: intervalEnd, index, point: false });
     });
 
     intervals.sort((a, b) => a.start - b.start || a.index - b.index);
@@ -57,12 +66,14 @@ export function buildReflectionAxisLayout(
         cursor = Math.max(cursor, interval.end);
     }
     if (endMinute > cursor) segments.push({ kind: 'gap', startMinute: cursor, endMinute });
-    return { segments, untimed, endMinute };
+    return { segments, untimed, outsideDay, endMinute };
 }
 
-/** Convert elapsed minutes to a linearly proportional pixel height. */
+/** Convert elapsed time to pixels, compressing minutes beyond two hours and capping long spans. */
 export function reflectionTimeHeight(minutes: number, pxPerHour = 32): number {
-    return minutes * pxPerHour / 60;
+    const baseMinutes = Math.min(Math.max(minutes, 0), 120);
+    const compressedMinutes = Math.max(minutes - 120, 0);
+    return Math.min(baseMinutes * pxPerHour / 60 + compressedMinutes * pxPerHour / 480, pxPerHour * 2.5);
 }
 
 /** Format an absolute minute on the reflection axis, naming later days. */

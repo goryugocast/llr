@@ -13,6 +13,8 @@ interface Harness {
     captureAnchor(): Anchor | null; restoreAnchor(anchor: Anchor | null): void;
     extend(direction: number): Promise<void>; refresh(): Promise<void>; jump(date: string): Promise<void>; today(): string;
     dateInput: { value: string; max: string };
+    currentDayLabel: { textContent: string };
+    syncCurrentDay(): void;
 }
 class FakeDays {
     items: FakeSection[] = [];
@@ -54,6 +56,26 @@ function makeView(all: Entry[], shown: Entry[]) {
 }
 
 describe('reflection viewport continuity', () => {
+    it('updates the visible day without replacing a date currently being edited', () => {
+        const all = [entry(1), entry(2), entry(3)];
+        const view = makeView(all, all);
+        view.scroller.clientHeight = 100;
+        view.currentDayLabel = { textContent: '' };
+        const focusedDocument: { activeElement: unknown } = { activeElement: null };
+        vi.stubGlobal('document', focusedDocument);
+        try {
+            view.scroller.scrollTop = 120;
+            view.syncCurrentDay();
+            expect(view.dateInput.value).toBe('2026-10-02');
+            expect(view.currentDayLabel.textContent).toContain('10月2日');
+            focusedDocument.activeElement = view.dateInput;
+            view.dateInput.value = '2026-10-01';
+            view.scroller.scrollTop = 220;
+            view.syncCurrentDay();
+            expect(view.currentDayLabel.textContent).toContain('10月3日');
+            expect(view.dateInput.value).toBe('2026-10-01');
+        } finally { vi.unstubAllGlobals(); }
+    });
     it('keeps the reader at their latest position when older days finish loading', async () => {
         const all = Array.from({ length: 10 }, (_, i) => entry(i + 1));
         const view = makeView(all, all.slice(5));

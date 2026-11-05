@@ -7,11 +7,13 @@ const block = (startMinute: number | null, endMinute: number | null, title = 'wo
 });
 
 describe('reflection axis layout', () => {
-    it('uses an unrounded linear time scale', () => {
+    it('shows short activity intervals proportionally and compresses long ones', () => {
         expect(reflectionTimeHeight(60)).toBe(32);
         expect(reflectionTimeHeight(120)).toBe(64);
-        expect(reflectionTimeHeight(540)).toBe(288);
+        expect(reflectionTimeHeight(180)).toBe(68);
+        expect(reflectionTimeHeight(600)).toBe(80);
         expect(reflectionTimeHeight(60, 48)).toBe(48);
+        expect(reflectionTimeHeight(600, 48)).toBe(120);
     });
 
     it('fills elapsed time with gaps while retaining activity positions', () => {
@@ -27,6 +29,7 @@ describe('reflection axis layout', () => {
             { kind: 'gap', startMinute: 660, endMinute: 1620 },
         ]);
         expect(result.endMinute).toBe(1620);
+        expect(result.outsideDay).toEqual([]);
         expect(result.segments.filter(segment => segment.kind !== 'point').reduce((minutes, segment) => minutes + segment.endMinute - segment.startMinute, 0)).toBe(1440);
     });
 
@@ -46,14 +49,30 @@ describe('reflection axis layout', () => {
         expect(result.segments.filter(segment => segment.kind !== 'point').reduce((minutes, segment) => minutes + segment.endMinute - segment.startMinute, 0)).toBe(1440);
     });
 
-    it('extends through later days and keeps untimed blocks separate', () => {
-        const blocks = [block(300, 360), block(null, null, 'untimed'), block(3000, 3060, 'later')];
+    it('clips overnight intervals and collects intervals wholly outside the day axis', () => {
+        const blocks = [
+            block(0, 100, 'before'),
+            block(1560, 1740, 'overnight'),
+            block(1700, 1800, 'after'),
+            block(null, null, 'untimed'),
+        ];
         const before = structuredClone(blocks);
         const result = buildReflectionAxisLayout(blocks);
-        expect(result.endMinute).toBe(3060);
-        expect(result.segments.at(-1)).toEqual({ kind: 'activity', startMinute: 3000, endMinute: 3060, blockIndex: 2 });
-        expect(result.untimed).toEqual([1]);
+        expect(result.endMinute).toBe(1620);
+        expect(result.segments).toContainEqual({ kind: 'activity', startMinute: 1560, endMinute: 1620, blockIndex: 1 });
+        expect(result.outsideDay).toEqual([0, 2]);
+        expect(result.untimed).toEqual([3]);
         expect(blocks).toEqual(before);
+    });
+
+    it('keeps point records outside the day axis as points without adding elapsed time', () => {
+        const result = buildReflectionAxisLayout([block(3000, 3000, 'later point')]);
+        expect(result.segments).toEqual([
+            { kind: 'point', startMinute: 3000, endMinute: 3000, blockIndex: 0 },
+            { kind: 'gap', startMinute: 180, endMinute: 1620 },
+        ]);
+        expect(result.outsideDay).toEqual([]);
+        expect(result.endMinute).toBe(1620);
     });
 
     it('formats clocks on the absolute axis', () => {
