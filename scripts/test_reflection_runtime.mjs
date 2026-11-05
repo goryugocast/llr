@@ -11,6 +11,9 @@ async function checkReflectionRuntime() {
     assert(navigation && Math.abs(navigation.getBoundingClientRect().height - view.currentDayLabel.getBoundingClientRect().height) < 1, 'The date picker input must not add an invisible second row to navigation.');
     assert(getComputedStyle(view.dateInput).position === 'absolute' && getComputedStyle(view.dateInput).opacity === '0', 'The native date input must not duplicate the visible date or occupy navigation space.');
     assert(getComputedStyle(view.currentDayLabel).alignItems === 'center', 'The date text must share the vertical center of the other controls.');
+    const controls = [view.currentDayLabel, ...navigation.querySelectorAll('.llr-nav-btn'), view.expandButton].filter(el => !el.hidden);
+    const centers = controls.map(el => { const rect = el.getBoundingClientRect(); return rect.top + rect.height / 2; });
+    assert(Math.max(...centers) - Math.min(...centers) < 1, 'Date, navigation and bulk controls must share one vertical center.');
     assert(view.expandButton.querySelector('svg.lucide-move-vertical'), 'Bulk expansion must use the same vertical movement icon as Backlinks.');
     assert(!view.contentEl.querySelector('.llr-reflection-calendar-picker'), 'Date selection must not have a separate calendar button.');
     assert(!view.currentDayLabel.disabled, 'The date picker must remain usable on days without a note.');

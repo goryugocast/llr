@@ -641,7 +641,10 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-date-picker:focus-within .llr-reflection-date-label { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .llr-reflection-date-weekday { font-size: var(--llr-date-dow-size); font-weight: 600; letter-spacing: 0; }
 .llr-reflection input.llr-reflection-date-input { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; padding: 0; opacity: 0; pointer-events: none; }
-.llr-reflection button.llr-nav-btn { box-shadow: none; border: 1px solid transparent; background: transparent; }
+.llr-reflection button.llr-nav-btn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 32px; margin-block: 0; line-height: 1; box-shadow: none; border: 1px solid transparent; background: transparent; }
+.llr-reflection .llr-nav-btns { align-self: center; }
+.llr-reflection .llr-nav-btn svg { display: block; flex-shrink: 0; }
+.llr-reflection-date-label > span { line-height: 1; }
 .llr-reflection button.llr-nav-btn:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .llr-reflection button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
 .llr-reflection-expand-all { min-width: 28px; }
