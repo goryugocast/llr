@@ -9,7 +9,7 @@ interface Harness {
     anchor: Anchor | null; index: Entry[]; visible: Entry[]; sections: Map<string, FakeSection>;
     scroller: { scrollTop: number; clientHeight?: number; getBoundingClientRect(): { top: number } };
     daysEl: FakeDays; closed: boolean; dirty: Set<string>;
-    rebuildIndex(): void; makeDay(day: Entry): Promise<FakeSection>; updateEdges(): void; releaseDay(section: FakeSection): void;
+    rebuildIndex(): void; makeDay(day: Entry): Promise<FakeSection>; updateEdges(): void; releaseDay(section: FakeSection): void; syncExpandButton(): void;
     captureAnchor(): Anchor | null; restoreAnchor(anchor: Anchor | null): void;
     extend(direction: number): Promise<void>; refresh(): Promise<void>; jump(date: string): Promise<void>; today(): string;
     dateInput: { value: string; max: string };
@@ -48,6 +48,7 @@ function makeView(all: Entry[], shown: Entry[]) {
     view.rebuildIndex = () => {};
     view.updateEdges = () => {};
     view.releaseDay = () => {};
+    view.syncExpandButton = () => {};
     view.makeDay = day => Promise.resolve(new FakeSection(day.date, view.daysEl));
     return view;
 }

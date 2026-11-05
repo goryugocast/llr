@@ -1,4 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, TFile, WorkspaceLeaf, moment } from 'obsidian';
+import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
 
@@ -15,7 +16,11 @@ export class ReflectionView extends ItemView {
     private nextButton!: HTMLButtonElement;
     private index: DayEntry[] = [];
     private visible: DayEntry[] = [];
-    private readonly expanded = new Set<string>();
+    private readonly expansion = new ReflectionExpansionState();
+    private expandButton!: HTMLButtonElement;
+    private readonly detailSetters = new WeakMap<HTMLDetailsElement, { key: string; setOpen: (open: boolean) => Promise<void> }>();
+    private isSettingAllDetails = false;
+    private userScrollRevision = 0;
     private pending = Promise.resolve();
     private closed = false;
     private timer: ReturnType<typeof setTimeout> | null = null;
@@ -46,6 +51,9 @@ export class ReflectionView extends ItemView {
             this.enqueue(() => this.jump(date));
         };
         actions.createEl('button', { text: '今日へ' }).onclick = () => this.enqueue(() => this.jump(this.today()));
+        this.expandButton = actions.createEl('button', { text: '全部開く', cls: 'llr-reflection-expand-all' });
+        this.expandButton.disabled = true;
+        this.expandButton.onclick = () => this.enqueue(() => this.setAllDetails(this.expansion.shouldOpenAll(this.getDetailKeys())));
         this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
         this.scroller.setAttribute('role', 'region');
         this.scroller.setAttribute('aria-label', '日付をまたぐ振り返り');
@@ -55,8 +63,14 @@ export class ReflectionView extends ItemView {
         this.daysEl = this.scroller.createDiv('llr-reflection-days');
         this.nextButton = this.scroller.createEl('button', { cls: 'llr-reflection-edge', text: '新しい記録 ↓' });
         this.nextButton.onclick = () => this.requestExtend(1);
+        this.registerDomEvent(this.scroller, 'pointerdown', () => { this.userScrollRevision++; });
+        this.registerDomEvent(this.scroller, 'wheel', () => { this.userScrollRevision++; });
+        this.registerDomEvent(this.scroller, 'touchmove', () => { this.userScrollRevision++; });
+        this.registerDomEvent(this.scroller, 'keydown', event => {
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) this.userScrollRevision++;
+        });
         this.registerDomEvent(this.scroller, 'scroll', () => {
-            if (!this.scroller.clientHeight) return;
+            if (!this.scroller.clientHeight || this.isSettingAllDetails) return;
             this.anchor = this.captureAnchor();
             if (this.scroller.scrollTop < 160) this.requestExtend(-1);
             else if (this.scroller.scrollTop + this.scroller.clientHeight > this.scroller.scrollHeight - 160) {
@@ -142,6 +156,7 @@ export class ReflectionView extends ItemView {
         const section = this.sections.get(date);
         if (section) this.scroller.scrollTop += section.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
         this.anchor = this.captureAnchor();
+        this.syncExpandButton();
     }
 
     private requestExtend(direction: -1 | 1) {
@@ -177,6 +192,7 @@ export class ReflectionView extends ItemView {
         this.updateEdges();
         this.restoreAnchor(anchor);
         this.anchor = this.captureAnchor();
+        this.syncExpandButton();
     }
 
     private updateEdges() {
@@ -227,6 +243,7 @@ export class ReflectionView extends ItemView {
         this.updateEdges();
         this.restoreAnchor(anchor);
         this.anchor = this.captureAnchor();
+        this.syncExpandButton();
     }
 
     private captureAnchor(): Anchor | null {
@@ -329,7 +346,12 @@ export class ReflectionView extends ItemView {
                 }
             }
         };
-        details.open = this.expanded.has(key);
+        details.open = this.expansion.isOpen(key);
+        this.detailSetters.set(details, { key, setOpen: async open => {
+            if (details.open === open) return;
+            details.open = open;
+            await fill();
+        } });
         await fill();
         summary.onclick = event => {
             if (event.target instanceof Element && event.target.closest('a')) return;
@@ -340,13 +362,54 @@ export class ReflectionView extends ItemView {
                     anchor = { key, offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
                 }
                 details.open = !details.open;
-                if (details.open) this.expanded.add(key); else this.expanded.delete(key);
+                this.expansion.setOpen(key, details.open);
                 const scrollTop = this.scroller.scrollTop;
                 await fill();
                 if (this.scroller.scrollTop === scrollTop) this.restoreAnchor(anchor);
                 this.anchor = this.captureAnchor();
+                this.syncExpandButton();
             });
         };
+    }
+
+    private getDetailKeys(): string[] {
+        return Array.from(this.daysEl.querySelectorAll<HTMLDetailsElement>('details')).flatMap(details => {
+            const controller = this.detailSetters.get(details);
+            return controller ? [controller.key] : [];
+        });
+    }
+
+    private syncExpandButton() {
+        if (!this.expandButton) return;
+        const keys = this.getDetailKeys();
+        this.expandButton.disabled = this.isSettingAllDetails || keys.length === 0;
+        this.expandButton.textContent = this.expansion.shouldOpenAll(keys) ? '全部開く' : keys.length ? '全部閉じる' : '全部開く';
+    }
+
+    private async setAllDetails(open: boolean) {
+        let anchor = this.captureAnchor();
+        if (!open && anchor) {
+            const element = Array.from(this.daysEl.querySelectorAll<HTMLElement>('[data-anchor]')).find(el => el.dataset.anchor === anchor?.key);
+            const summary = element?.closest('details')?.querySelector<HTMLElement>('summary');
+            if (summary?.dataset.anchor) {
+                // A memo is about to disappear. Return to that activity's heading.
+                anchor = { key: summary.dataset.anchor, offset: Math.max(0, summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top), top: this.scroller.scrollTop };
+            }
+        }
+        const revision = this.userScrollRevision;
+        this.expansion.setAll(open);
+        this.isSettingAllDetails = true;
+        this.syncExpandButton();
+        try {
+            for (const details of Array.from(this.daysEl.querySelectorAll<HTMLDetailsElement>('details'))) {
+                await this.detailSetters.get(details)?.setOpen(open);
+            }
+            if (revision === this.userScrollRevision) this.restoreAnchor(anchor);
+            this.anchor = this.captureAnchor();
+        } finally {
+            this.isSettingAllDetails = false;
+            this.syncExpandButton();
+        }
     }
 
     private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {

@@ -624,7 +624,8 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
 .llr-reflection-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid var(--background-modifier-border); }
 .llr-reflection-toolbar strong { font-size: var(--font-ui-large); font-weight: 500; }
-.llr-reflection-actions { display: flex; gap: 8px; align-items: center; }
+.llr-reflection-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
+.llr-reflection-expand-all { min-width: 6.5em; }
 .llr-reflection-actions input { max-width: 155px; }
 .llr-reflection-scroll { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 0 max(16px, calc((100% - 850px) / 2)); }
 .llr-reflection-edge { display: block; margin: 18px auto; color: var(--text-muted); box-shadow: none; background: transparent; font-size: var(--font-ui-small); }
