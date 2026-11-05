@@ -65,7 +65,8 @@ describe('buildReflectionTimeline', () => {
             '- [x] SRS [[Question]] (0m)',
             '~~~md', '```', '- [x] not a record', '~~~',
         ].join('\n'));
-        expect(result.tasks.map(task => task.title)).toEqual(['first', 'second', 'SRS [[Question]]']);
+        expect(result.tasks.filter(task => task.kind === 'task').map(task => task.title)).toEqual(['first', 'second', 'SRS [[Question]]']);
+        expect(result.tasks.at(-1)?.supplement).toBe('~~~md\n```\n- [x] not a record\n~~~');
         expect(result.tasks[0].supplement).toContain('    - 深い箇条書き');
         expect(result.tasks[1].line).toBe(7);
         expect(result.blocks.flatMap(block => block.tasks.map(task => task.id)).sort()).toEqual([0, 1, 2]);
@@ -82,5 +83,61 @@ describe('buildReflectionTimeline', () => {
         expect(result.hours[10].representativeTaskId).toBe(1);
         expect(result.tasks[0].startMinute).toBe(1590);
         expect(result.tasks[3].title).toBe('Summary: noted');
+    });
+
+    it('keeps unindented multi-paragraph task memos and blank lines up to the next record', () => {
+        const result = buildReflectionTimeline([
+            '- [x] [[Task]] 10:00 - 11:00',
+            '📝 nonindented memo', '', 'more text', 'https://example.com', '',
+            '- [x] next 11:00 - 12:00',
+        ].join('\n'));
+        expect(result.tasks).toHaveLength(2);
+        expect(result.tasks[0].supplement).toBe('📝 nonindented memo\n\nmore text\nhttps://example.com');
+        expect(result.tasks[0].title).toBe('[[Task]]');
+        expect(result.tasks[0].kind).toBe('task');
+    });
+
+    it('returns memo-only prose as source-lined items and excludes headings, fences, and LLR controls', () => {
+        const result = buildReflectionTimeline([
+            '冒頭のメモ', '続き', '', '## Tasks',
+            '- [x] [[Alias]] 10:00 - 11:00',
+            '本文のメモ',
+            '<!-- llr:batch start -->',
+            '## After',
+            '締めのメモ',
+            '```md', '- [x] fake 12:00 - 13:00', '```',
+        ].join('\n'));
+        expect(result.tasks.map(task => task.kind)).toEqual(['memo', 'task', 'memo']);
+        expect(result.tasks[0].title).toBe('メモ');
+        expect(result.tasks[0].sourceLine).toBe(1);
+        expect(result.tasks[0].supplement).toBe('冒頭のメモ\n続き');
+        expect(result.tasks[1].title).toBe('[[Alias]]');
+        expect(result.tasks[1].supplement).toBe('本文のメモ');
+        expect(result.tasks[2].sourceLine).toBe(9);
+        expect(result.tasks[2].supplement).toBe('締めのメモ\n```md\n- [x] fake 12:00 - 13:00\n```');
+        expect(result.tasks[1].actualStart).toBe('10:00');
+        expect(result.tasks.filter(task => task.kind === 'memo').every(task => task.startMinute === null)).toBe(true);
+    });
+
+    it('keeps task-like fenced examples inside task memos without duplicating them', () => {
+        const result = buildReflectionTimeline([
+            '- [x] work 10:00 - 11:00',
+            'memo before code', '```md', '- [x] fake 12:00 - 13:00', '```', 'memo after code',
+            '- [x] next 11:00 - 12:00',
+        ].join('\n'));
+        expect(result.tasks.map(task => task.title)).toEqual(['work', 'next']);
+        expect(result.tasks[0].supplement).toBe('memo before code\n```md\n- [x] fake 12:00 - 13:00\n```\nmemo after code');
+    });
+
+    it('preserves standalone fenced memo examples and treats indented checkboxes as nested memo bullets', () => {
+        const result = buildReflectionTimeline([
+            '## Notes', 'Before example', '~~~txt', '- [x] fake 08:00 - 09:00', '~~~',
+            '- [x] actual 10:00 - 11:00', '  - [ ] nested checklist', '    detail',
+            '- [x] next 11:00 - 12:00',
+        ].join('\n'));
+        expect(result.tasks.map(task => task.kind)).toEqual(['memo', 'task', 'task']);
+        expect(result.tasks[0].supplement).toBe('Before example\n~~~txt\n- [x] fake 08:00 - 09:00\n~~~');
+        expect(result.tasks[1].supplement).toBe('  - [ ] nested checklist\n    detail');
+        expect(result.tasks[1].title).toBe('actual');
     });
 });

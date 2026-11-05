@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, moment } from 'obsidian';
+import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, TFile, WorkspaceLeaf, moment } from 'obsidian';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
 
@@ -24,6 +24,7 @@ export class ReflectionView extends ItemView {
     private readonly sections = new Map<string, HTMLElement>();
     private sourceLeaf: WorkspaceLeaf | null = null;
     private readonly extending = new Set<number>();
+    private readonly dayComponents = new WeakMap<HTMLElement, Component>();
 
     constructor(leaf: WorkspaceLeaf, private readonly getSettings: () => DailyNoteSettings) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
@@ -85,6 +86,7 @@ export class ReflectionView extends ItemView {
 
     onClose(): Promise<void> {
         this.closed = true;
+        this.sections.forEach(section => this.releaseDay(section));
         if (this.timer) clearTimeout(this.timer);
         return Promise.resolve();
     }
@@ -127,7 +129,8 @@ export class ReflectionView extends ItemView {
             const at = this.index.findIndex(day => day.date === date);
             const days = this.index.slice(Math.max(0, at - 2), at + 3);
             const sections = await Promise.all(days.map(day => this.makeDay(day)));
-            if (this.closed) return;
+            if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
+            this.sections.forEach(section => this.releaseDay(section));
             this.visible = days;
             this.sections.clear();
             this.daysEl.empty();
@@ -156,7 +159,7 @@ export class ReflectionView extends ItemView {
         const candidates = direction < 0 ? this.index.filter(day => day.date < first).slice(-5) : this.index.filter(day => day.date > last).slice(0, 5);
         if (!candidates.length) { this.updateEdges(); return; }
         const sections = await Promise.all(candidates.map(day => this.makeDay(day)));
-        if (this.closed) return;
+        if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
         // Capture after I/O: the reader may have moved while files were loading.
         const anchor = this.captureAnchor();
         sections.forEach((section, i) => this.sections.set(candidates[i].date, section));
@@ -165,7 +168,11 @@ export class ReflectionView extends ItemView {
         // Bound DOM/body data while allowing either edge to be reloaded later.
         if (this.visible.length > 35) {
             const removed = direction < 0 ? this.visible.splice(35) : this.visible.splice(0, this.visible.length - 35);
-            for (const day of removed) { this.sections.get(day.date)?.remove(); this.sections.delete(day.date); }
+            for (const day of removed) {
+                const section = this.sections.get(day.date);
+                if (section) { this.releaseDay(section); section.remove(); }
+                this.sections.delete(day.date);
+            }
         }
         this.updateEdges();
         this.restoreAnchor(anchor);
@@ -209,10 +216,11 @@ export class ReflectionView extends ItemView {
                 updates.push({ day: next, section: await this.makeDay(next) });
             }
         }
-        if (this.closed) return;
+        if (this.closed) { updates.forEach(update => this.releaseDay(update.section)); return; }
         const anchor = this.captureAnchor();
         for (const { day, section } of updates) {
-            this.sections.get(day.date)?.replaceWith(section);
+            const previous = this.sections.get(day.date);
+            if (previous) { this.releaseDay(previous); previous.replaceWith(section); }
             this.sections.set(day.date, section);
             this.visible[this.visible.findIndex(entry => entry.date === day.date)] = day;
         }
@@ -252,16 +260,41 @@ export class ReflectionView extends ItemView {
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
         const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file));
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
+        if (this.closed) return section;
+        const component = this.addChild(new Component());
+        this.dayComponents.set(section, component);
         const occurrences = new Map<number | null, number>();
         for (const block of timeline.blocks) {
             const occurrence = occurrences.get(block.startMinute) ?? 0;
             occurrences.set(block.startMinute, occurrence + 1);
-            this.makeBlock(section, day, block, occurrence);
+            await this.makeBlock(section, day, block, occurrence, component);
         }
         return section;
     }
 
-    private makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number) {
+    private releaseDay(section: HTMLElement) {
+        const component = this.dayComponents.get(section);
+        if (component) { this.removeChild(component); this.dayComponents.delete(section); }
+    }
+
+    private async renderMarkdown(host: HTMLElement, markdown: string, day: DayEntry, component: Component) {
+        host.addClass('markdown-rendered');
+        await MarkdownRenderer.render(this.app, markdown, host, day.file?.path ?? '', component);
+        // The timeline is a reading surface. Native Markdown task boxes must not edit notes.
+        host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(input => { input.disabled = true; });
+        component.registerDomEvent(host, 'click', event => {
+            const link = event.target instanceof Element ? event.target.closest('a.internal-link') : null;
+            if (!link) return;
+            const target = link.getAttribute('data-href') ?? link.getAttribute('href');
+            if (target) {
+                event.preventDefault();
+                event.stopPropagation();
+                void this.app.workspace.openLinkText(target, day.file?.path ?? '', 'tab');
+            }
+        });
+    }
+
+    private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component) {
         const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
         const row = section.createDiv('llr-reflection-row');
         row.createDiv({ cls: 'llr-reflection-hour', text: block.startMinute === null ? '時刻なし' : this.clock(block.startMinute) });
@@ -270,52 +303,74 @@ export class ReflectionView extends ItemView {
         // A long activity can represent separated bands but its original appears only once.
         if (!block.tasks.length) {
             const overview = row.createDiv('llr-reflection-block');
-            const title = overview.createDiv({ cls: 'llr-reflection-block-title', text: block.title });
+            const title = overview.createDiv('llr-reflection-block-title');
             title.dataset.anchor = key;
+            await this.renderMarkdown(title, block.title, day, component);
             return;
         }
         const details = row.createEl('details', { cls: 'llr-reflection-block' });
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
-        summary.createSpan({ text: block.title, cls: 'llr-reflection-name' });
+        await this.renderMarkdown(summary.createDiv('llr-reflection-name'), block.title, day, component);
         summary.createSpan({ text: `${block.tasks.length}件`, cls: 'llr-reflection-count' });
         const records = details.createDiv('llr-reflection-records');
-        const fill = () => {
+        let bodyComponent: Component | null = null;
+        const fill = async () => {
+            if (bodyComponent) { component.removeChild(bodyComponent); bodyComponent = null; }
             records.empty();
             if (details.open) {
+                bodyComponent = component.addChild(new Component());
                 const occurrences = new Map<string, number>();
-                block.tasks.forEach(task => {
+                for (const task of block.tasks) {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
-                    this.makeRecord(records, day, task, occurrence);
-                });
+                    await this.makeRecord(records, day, task, occurrence, bodyComponent);
+                }
             }
         };
         details.open = this.expanded.has(key);
-        fill();
+        await fill();
         summary.onclick = event => {
+            if (event.target instanceof Element && event.target.closest('a')) return;
             event.preventDefault();
-            let anchor = this.captureAnchor();
-            if (anchor && records.querySelector(`[data-anchor]`) && Array.from(records.querySelectorAll<HTMLElement>('[data-anchor]')).some(el => el.dataset.anchor === anchor?.key)) {
-                anchor = { key, offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
-            }
-            details.open = !details.open;
-            if (details.open) this.expanded.add(key); else this.expanded.delete(key);
-            fill();
-            this.restoreAnchor(anchor);
-            this.anchor = this.captureAnchor();
+            this.enqueue(async () => {
+                let anchor = this.captureAnchor();
+                if (anchor && Array.from(records.querySelectorAll<HTMLElement>('[data-anchor]')).some(el => el.dataset.anchor === anchor?.key)) {
+                    anchor = { key, offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
+                }
+                details.open = !details.open;
+                if (details.open) this.expanded.add(key); else this.expanded.delete(key);
+                const scrollTop = this.scroller.scrollTop;
+                await fill();
+                if (this.scroller.scrollTop === scrollTop) this.restoreAnchor(anchor);
+                this.anchor = this.captureAnchor();
+            });
         };
     }
 
-    private makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number) {
+    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
         const record = parent.createDiv('llr-reflection-record');
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
         const head = record.createDiv('llr-reflection-record-head');
-        head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
-        head.createSpan({ text: `[${task.status === 'plain' ? '・' : task.status}] ${task.title}` });
+        if (task.kind !== 'memo') {
+            head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
+            if (task.status !== 'plain') {
+                const checkbox = head.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox', attr: { 'aria-label': task.status === 'x' ? '完了' : task.status === '/' ? '実行中' : '未完了' } });
+                checkbox.checked = task.status === 'x';
+                checkbox.indeterminate = task.status === '/';
+                checkbox.disabled = true;
+            }
+            await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
+        }
         head.createEl('button', { text: '元ノートへ', cls: 'llr-reflection-source' }).onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
-        if (task.supplement) record.createDiv({ cls: 'llr-reflection-supplement', text: task.supplement });
+        if (task.supplement) {
+            // Strip the common task-child indent while preserving relative Markdown nesting.
+            const lines = task.supplement.split('\n');
+            const indent = Math.min(...lines.filter(line => line.trim()).map(line => line.match(/^[ \t]*/)?.[0].length ?? 0));
+            const markdown = lines.map(line => line.slice(Math.min(indent, line.match(/^[ \t]*/)?.[0].length ?? 0))).join('\n');
+            await this.renderMarkdown(record.createDiv('llr-reflection-supplement'), markdown, day, component);
+        }
     }
 
     private clock(minute: number): string {

@@ -659,3 +659,13 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
     .llr-reflection-records { padding: 0 12px; }
     .llr-reflection-source { margin-left: 0; }
 }
+/* Native Markdown in the reflection reader, without editable task controls. */
+.llr-reflection-name, .llr-reflection-record-title { min-width: 0; overflow-wrap: anywhere; }
+.llr-reflection-name > p, .llr-reflection-record-title > p, .llr-reflection-block-title > p { margin: 0; }
+.llr-reflection-record-title { flex: 1; }
+.llr-reflection-supplement.markdown-rendered { white-space: normal; margin-top: 12px; }
+.llr-reflection-supplement > :first-child { margin-top: 0; }
+.llr-reflection-supplement > :last-child { margin-bottom: 0; }
+.llr-reflection .task-list-item-checkbox:disabled { opacity: 1; cursor: default; }
+.llr-reflection-record-head > .task-list-item-checkbox { flex: none; margin: 0; align-self: center; }
+.llr-reflection input[type="checkbox"] { pointer-events: none; }

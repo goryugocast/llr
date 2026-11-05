@@ -2,6 +2,7 @@ import { TaskParser, type ParsedTaskStatus } from './task-parser';
 
 export interface ReflectionTask {
     id: number;
+    kind: 'task' | 'memo';
     /** Zero-based Markdown line, for opening the source note. */
     line: number;
     sourceLine: number;
@@ -9,7 +10,7 @@ export interface ReflectionTask {
     status: ParsedTaskStatus;
     actualStart: string;
     actualEnd: string;
-    /** Original task line followed by indented supplement lines, if any. */
+    /** Original record line followed by its owned memo text, if any. */
     source: string;
     supplements: string;
     supplement: string;
@@ -45,9 +46,18 @@ export interface ReflectionTimeline {
  */
 export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): ReflectionTimeline {
     const lines = markdown.split(/\r?\n/);
-    const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[] }> = [];
+    const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
+    const owned = new Set<number>();
     let fence: { character: string; length: number } | null = null;
     let inFrontmatter = false;
+    const isHeading = (line: string) => /^\s{0,3}#{1,6}(?:\s|$)/.test(line);
+    const isControl = (line: string) => /^\s*<!--\s*llr:[\s\S]*?-->\s*$/.test(line);
+    const recordIndent = (line: string) => line.match(/^\s*/)?.[0].length ?? 0;
+    const isCheckboxRecord = (line: string) => /^\s*-\s+\[[ /x]\]\s*\S/.test(line);
+    const isTopLevelPlainRecord = (line: string) => /^-\s+(?!\[[ /x]\])\S/.test(line);
+    const isRecord = (line: string) => isCheckboxRecord(line) || isTopLevelPlainRecord(line);
+    const endsRecord = (line: string, parentIndent: number) =>
+        isHeading(line) || isControl(line) || isTopLevelPlainRecord(line) || (isCheckboxRecord(line) && recordIndent(line) <= parentIndent);
     for (let i = 0; i < lines.length; i++) {
         if (i === 0 && lines[i].trim() === '---') { inFrontmatter = true; continue; }
         if (inFrontmatter) { if (/^(---|\.\.\.)$/.test(lines[i].trim())) inFrontmatter = false; continue; }
@@ -57,26 +67,29 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
             continue;
         }
         if (marker) { fence = { character: marker[1][0], length: marker[1].length }; continue; }
-        const isRecord = /^\s*-\s+\[[ /x]\]\s*\S/.test(lines[i]) || /^-\s+(?!\[[ /x]\])\S/.test(lines[i]);
-        if (!isRecord) continue;
-        const entry = { line: lines[i], sourceLine: i + 1, supplements: [] as string[] };
-        const indent = lines[i].match(/^\s*/)?.[0].length ?? 0;
+        if (!isRecord(lines[i])) continue;
+        const entry = { line: lines[i], sourceLine: i + 1, supplements: [] as string[], kind: 'task' as const };
+        const parentIndent = recordIndent(lines[i]);
+        owned.add(i);
         let j = i + 1;
         let supplementFence: { character: string; length: number } | null = null;
         const pendingBlanks: string[] = [];
         while (j < lines.length) {
             const next = lines[j];
+            if (!supplementFence && endsRecord(next, parentIndent)) break;
             const nestedMarker = next.match(/^\s*(`{3,}|~{3,})/);
             if (supplementFence) {
                 entry.supplements.push(next);
+                owned.add(j);
                 if (nestedMarker && nestedMarker[1][0] === supplementFence.character && nestedMarker[1].length >= supplementFence.length && next.trim() === nestedMarker[1]) supplementFence = null;
                 j++;
                 continue;
             }
             if (!next.trim()) { pendingBlanks.push(''); j++; continue; }
-            const nextIndent = next.match(/^\s*/)?.[0].length ?? 0;
-            if (nextIndent <= indent || /^\s*-\s+\[[ /x]\]\s*\S/.test(next)) break;
+            if (isControl(next)) { owned.add(j); j++; continue; }
             entry.supplements.push(...pendingBlanks, next);
+            for (let blank = j - pendingBlanks.length; blank < j; blank++) if (blank > i) owned.add(blank);
+            owned.add(j);
             pendingBlanks.length = 0;
             if (nestedMarker) supplementFence = { character: nestedMarker[1][0], length: nestedMarker[1].length };
             j++;
@@ -85,7 +98,47 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
         i = j - 1;
     }
 
-    const tasks = rawTasks.map(({ line, sourceLine, supplements }, id): ReflectionTask => {
+    // Prose not attached to a record is still useful diary material. Group it by
+    // section and keep its original line breaks; headings and control markers
+    // delimit ownership but are not themselves diary content.
+    let memoLines: string[] = [];
+    let memoStart = -1;
+    const flushMemo = () => {
+        while (memoLines.length && !memoLines[0].trim()) { memoLines.shift(); memoStart++; }
+        while (memoLines.length && !memoLines[memoLines.length - 1].trim()) memoLines.pop();
+        if (memoLines.some(line => line.trim())) {
+            rawTasks.push({ line: '- メモ', sourceLine: memoStart + 1, supplements: memoLines, kind: 'memo' });
+        }
+        memoLines = [];
+        memoStart = -1;
+    };
+    fence = null;
+    inFrontmatter = false;
+    for (let i = 0; i < lines.length; i++) {
+        if (i === 0 && lines[i].trim() === '---') { inFrontmatter = true; continue; }
+        if (inFrontmatter) { if (/^(---|\.\.\.)$/.test(lines[i].trim())) inFrontmatter = false; continue; }
+        if (owned.has(i)) continue;
+        const marker = lines[i].match(/^\s*(`{3,}|~{3,})/);
+        if (fence) {
+            if (memoStart < 0) memoStart = i;
+            memoLines.push(lines[i]);
+            if (marker && marker[1][0] === fence.character && marker[1].length >= fence.length && lines[i].trim() === marker[1]) fence = null;
+            continue;
+        }
+        if (marker) {
+            if (memoStart < 0) memoStart = i;
+            fence = { character: marker[1][0], length: marker[1].length };
+            memoLines.push(lines[i]);
+            continue;
+        }
+        if (isHeading(lines[i]) || isControl(lines[i]) || isRecord(lines[i])) { flushMemo(); continue; }
+        if (memoStart < 0 && lines[i].trim()) memoStart = i;
+        if (memoStart >= 0) memoLines.push(lines[i]);
+    }
+    flushMemo();
+    rawTasks.sort((a, b) => a.sourceLine - b.sourceLine);
+
+    const tasks = rawTasks.map(({ line, sourceLine, supplements, kind }, id): ReflectionTask => {
         const parsed = TaskParser.parseLine(line);
         const startMinute = parseClock(parsed.actualStart);
         const endMinute = parseClock(parsed.actualEnd);
@@ -98,13 +151,14 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
         }
         return {
             id,
+            kind,
             line: sourceLine - 1,
             sourceLine,
             title: parsed.content,
             status: parsed.status,
             actualStart: parsed.actualStart,
             actualEnd: parsed.actualEnd,
-            source: [line, ...supplements].join('\n'),
+            source: kind === 'memo' ? supplements.join('\n') : [line, ...supplements].join('\n'),
             supplements: supplements.join('\n'),
             supplement: supplements.join('\n'),
             startMinute: start,
