@@ -10,6 +10,8 @@ async function checkReflectionRuntime() {
     const navigation = view.contentEl.querySelector('.llr-reflection-date-nav');
     assert(navigation && Math.abs(navigation.getBoundingClientRect().height - view.currentDayLabel.getBoundingClientRect().height) < 1, 'The date picker input must not add an invisible second row to navigation.');
     assert(getComputedStyle(view.dateInput).position === 'absolute' && getComputedStyle(view.dateInput).opacity === '0', 'The native date input must not duplicate the visible date or occupy navigation space.');
+    assert(getComputedStyle(view.currentDayLabel).alignItems === 'center', 'The date text must share the vertical center of the other controls.');
+    assert(view.expandButton.querySelector('svg.lucide-move-vertical'), 'Bulk expansion must use the same vertical movement icon as Backlinks.');
     // Reuse the public Component class already present in this Obsidian runtime.
     let prototype = view;
     while (prototype && !Object.prototype.hasOwnProperty.call(prototype, 'registerDomEvent')) prototype = Object.getPrototypeOf(prototype);
@@ -27,7 +29,7 @@ async function checkReflectionRuntime() {
     const originalExpansion = view.expansion;
     const originalDaysEl = view.daysEl;
     const originalExpandButton = view.expandButton;
-    const originalButtonText = originalExpandButton?.textContent;
+    const originalButtonHTML = originalExpandButton?.innerHTML;
     const originalButtonDisabled = originalExpandButton?.disabled;
     const expansion = new originalExpansion.constructor();
     view.expansion = expansion;
@@ -132,24 +134,24 @@ async function checkReflectionRuntime() {
         assert(expansion.isOpen('later-key') && !expansion.shouldOpenAll([firstKey, secondKey]), 'New keys must inherit open-all mode.');
         assert([...host.querySelectorAll('details')].every(item => item.open), 'Global expansion must open all visible details.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 2, 'Global expansion must render every body.');
-        assert(view.expandButton.textContent === '閉じる', 'The global button must offer closing when all details are open.');
+        assert(view.expandButton.getAttribute('aria-label') === 'すべて折りたたむ', 'The global button must offer closing when all details are open.');
         host.querySelectorAll('details')[1].querySelector('summary').click();
         await view.pending;
         assert(!host.querySelectorAll('details')[1].open && host.querySelector('details').open, 'An individual close must leave other details open.');
-        assert(view.expandButton.textContent === '開く', 'One closed detail must make the global button offer opening.');
+        assert(view.expandButton.getAttribute('aria-label') === 'すべて展開', 'One closed detail must make the global button offer opening.');
         await view.setAllDetails(true);
         assert([...host.querySelectorAll('details')].every(item => item.open), 'Global expansion must reopen all details.');
-        assert(view.expandButton.textContent === '閉じる', 'The button must return to the close action.');
+        assert(view.expandButton.getAttribute('aria-label') === 'すべて折りたたむ', 'The button must return to the close action.');
         const thirdTask = makeTask(2, 840, '追加の記録', '追加本文');
         const thirdBlock = { id: 2, title: thirdTask.title, startMinute: 840, endMinute: 900, tasks: [thirdTask] };
         await view.makeBlock(host, day, thirdBlock, 0, component);
         assert(host.querySelectorAll('details')[2].open, 'A newly rendered detail must follow the current open-all mode.');
-        assert(view.expandButton.textContent === '閉じる', 'Adding an open detail must preserve the close action.');
+        assert(view.expandButton.getAttribute('aria-label') === 'すべて折りたたむ', 'Adding an open detail must preserve the close action.');
         await view.setAllDetails(false);
         assert(!expansion.isOpen('later-key') && expansion.shouldOpenAll([firstKey, secondKey]), 'New keys must inherit close-all mode.');
         assert([...host.querySelectorAll('details')].every(item => !item.open), 'Global collapse must close every visible detail.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 0, 'Global collapse must release all rendered bodies.');
-        assert(view.expandButton.textContent === '開く', 'The global button must offer opening after collapse.');
+        assert(view.expandButton.getAttribute('aria-label') === 'すべて展開', 'The global button must offer opening after collapse.');
 
         // Reconstructing a block after a global collapse must stay closed.
         view.removeChild(component);
@@ -228,7 +230,7 @@ async function checkReflectionRuntime() {
         view.daysEl = originalDaysEl;
         view.expandButton = originalExpandButton;
         if (originalExpandButton) {
-            originalExpandButton.textContent = originalButtonText;
+            originalExpandButton.innerHTML = originalButtonHTML;
             originalExpandButton.disabled = originalButtonDisabled;
         }
         view.anchor = originalAnchor;

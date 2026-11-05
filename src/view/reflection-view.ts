@@ -72,7 +72,8 @@ export class ReflectionView extends ItemView {
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
         navigation.createEl('button', { text: '今日', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
-        this.expandButton = toolbar.createEl('button', { text: '開く', cls: 'llr-nav-btn llr-reflection-expand-all' });
+        this.expandButton = toolbar.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
+        setIcon(this.expandButton, 'move-vertical');
         this.expandButton.disabled = true;
         this.expandButton.onclick = () => this.enqueue(() => this.setAllDetails(this.expansion.shouldOpenAll(this.getDetailKeys())));
         this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
@@ -509,8 +510,11 @@ export class ReflectionView extends ItemView {
         if (!this.expandButton) return;
         const keys = this.getDetailKeys();
         this.expandButton.disabled = this.isSettingAllDetails || keys.length === 0;
-        this.expandButton.textContent = this.expansion.shouldOpenAll(keys) ? '開く' : keys.length ? '閉じる' : '開く';
-        this.expandButton.setAttribute('aria-label', `表示中の記録をすべて${this.expandButton.textContent}`);
+        const allOpen = keys.length > 0 && !this.expansion.shouldOpenAll(keys);
+        const action = allOpen ? 'すべて折りたたむ' : 'すべて展開';
+        this.expandButton.classList.toggle('is-active', allOpen);
+        setTooltip(this.expandButton, action);
+        this.expandButton.setAttribute('aria-label', action);
     }
 
     private async setAllDetails(open: boolean) {
