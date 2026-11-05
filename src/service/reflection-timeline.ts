@@ -108,6 +108,10 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
     // delimit ownership but are not themselves diary content.
     let memoLines: string[] = [];
     let memoStart = -1;
+    // Daily-note title/mission prose before the first real section or record is
+    // fixed context, not an activity. A named section opts its prose into memo
+    // extraction, and record supplements are handled by the ownership pass.
+    let hasStartedContent = false;
     const flushMemo = () => {
         while (memoLines.length && !memoLines[0].trim()) { memoLines.shift(); memoStart++; }
         while (memoLines.length && !memoLines[memoLines.length - 1].trim()) memoLines.pop();
@@ -122,21 +126,32 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
     for (let i = 0; i < lines.length; i++) {
         if (i === 0 && lines[i].trim() === '---') { inFrontmatter = true; continue; }
         if (inFrontmatter) { if (/^(---|\.\.\.)$/.test(lines[i].trim())) inFrontmatter = false; continue; }
-        if (owned.has(i)) continue;
+        if (owned.has(i)) {
+            if (isRecord(lines[i])) { flushMemo(); hasStartedContent = true; }
+            continue;
+        }
         const marker = lines[i].match(/^\s*(`{3,}|~{3,})/);
         if (fence) {
-            if (memoStart < 0) memoStart = i;
-            memoLines.push(lines[i]);
+            if (hasStartedContent) {
+                if (memoStart < 0) memoStart = i;
+                memoLines.push(lines[i]);
+            }
             if (marker && marker[1][0] === fence.character && marker[1].length >= fence.length && lines[i].trim() === marker[1]) fence = null;
             continue;
         }
         if (marker) {
-            if (memoStart < 0) memoStart = i;
+            if (hasStartedContent && memoStart < 0) memoStart = i;
             fence = { character: marker[1][0], length: marker[1].length };
-            memoLines.push(lines[i]);
+            if (hasStartedContent) memoLines.push(lines[i]);
             continue;
         }
-        if (isHeading(lines[i]) || isControl(lines[i]) || isRecord(lines[i])) { flushMemo(); continue; }
+        if (isHeading(lines[i]) || isRecord(lines[i])) {
+            flushMemo();
+            hasStartedContent = true;
+            continue;
+        }
+        if (isControl(lines[i])) { flushMemo(); continue; }
+        if (!hasStartedContent) continue;
         if (memoStart < 0 && lines[i].trim()) memoStart = i;
         if (memoStart >= 0) memoLines.push(lines[i]);
     }

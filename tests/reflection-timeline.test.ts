@@ -96,7 +96,7 @@ describe('buildReflectionTimeline', () => {
         expect(result.tasks[0].kind).toBe('task');
     });
 
-    it('returns memo-only prose as source-lined items and excludes headings, fences, and LLR controls', () => {
+    it('ignores fixed preamble prose but returns section memo as a source-lined item', () => {
         const result = buildReflectionTimeline([
             '冒頭のメモ', '続き', '', '## Tasks',
             '- [x] [[Alias]] 10:00 - 11:00',
@@ -106,16 +106,49 @@ describe('buildReflectionTimeline', () => {
             '締めのメモ',
             '```md', '- [x] fake 12:00 - 13:00', '```',
         ].join('\n'));
-        expect(result.tasks.map(task => task.kind)).toEqual(['memo', 'task', 'memo']);
-        expect(result.tasks[0].title).toBe('メモ');
-        expect(result.tasks[0].sourceLine).toBe(1);
-        expect(result.tasks[0].supplement).toBe('冒頭のメモ\n続き');
-        expect(result.tasks[1].title).toBe('[[Alias]]');
-        expect(result.tasks[1].supplement).toBe('本文のメモ');
-        expect(result.tasks[2].sourceLine).toBe(9);
-        expect(result.tasks[2].supplement).toBe('締めのメモ\n```md\n- [x] fake 12:00 - 13:00\n```');
-        expect(result.tasks[1].actualStart).toBe('10:00');
+        expect(result.tasks.map(task => task.kind)).toEqual(['task', 'memo']);
+        expect(result.tasks[0].title).toBe('[[Alias]]');
+        expect(result.tasks[0].supplement).toBe('本文のメモ');
+        expect(result.tasks[1].sourceLine).toBe(9);
+        expect(result.tasks[1].supplement).toBe('締めのメモ\n```md\n- [x] fake 12:00 - 13:00\n```');
+        expect(result.tasks[0].actualStart).toBe('10:00');
         expect(result.tasks.filter(task => task.kind === 'memo').every(task => task.startMinute === null)).toBe(true);
+    });
+
+    it('does not extract name and mission prose before the first heading or record', () => {
+        const result = buildReflectionTimeline([
+            '---', 'title: Daily', '---', 'ごりゅご', '今日の使命', '```md', '# example', '```',
+            '- [x] work 10:00 - 11:00', '  作業の補足', '補足の続き',
+        ].join('\n'));
+
+        expect(result.tasks).toHaveLength(1);
+        expect(result.tasks[0].kind).toBe('task');
+        expect(result.tasks[0].sourceLine).toBe(9);
+        expect(result.tasks[0].supplement).toBe('  作業の補足\n補足の続き');
+    });
+
+    it('returns no timeline items for a document containing only fixed preamble', () => {
+        const result = buildReflectionTimeline(['---', 'title: Daily', '---', 'Name', 'Mission', ''].join('\n'));
+        expect(result.tasks).toEqual([]);
+        expect(result.blocks).toEqual([]);
+    });
+
+    it('retains standalone memo prose after an explicit memo heading', () => {
+        const result = buildReflectionTimeline(['Name', 'Mission', '## メモ', '独立した記録'].join('\n'));
+        expect(result.tasks.map(task => task.kind)).toEqual(['memo']);
+        expect(result.tasks[0].sourceLine).toBe(4);
+        expect(result.tasks[0].supplement).toBe('独立した記録');
+    });
+
+    it('recognizes a record as the start of content without a preceding heading', () => {
+        const result = buildReflectionTimeline([
+            'Fixed introduction', '- [x] work 10:00 - 11:00',
+            '<!-- llr:routines-expanded 2026-11-05 -->',
+            'A separate memo after a record',
+        ].join('\n'));
+        expect(result.tasks.map(task => task.kind)).toEqual(['task', 'memo']);
+        expect(result.tasks[1].supplement).toBe('A separate memo after a record');
+        expect(result.tasks[1].sourceLine).toBe(4);
     });
 
     it('keeps task-like fenced examples inside task memos without duplicating them', () => {
