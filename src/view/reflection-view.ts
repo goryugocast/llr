@@ -1,5 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
-import { buildReflectionAxisLayout, formatReflectionClock, reflectionTimeHeight } from '../service/reflection-axis-layout';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionTimeHeight } from '../service/reflection-axis-layout';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -288,11 +288,12 @@ export class ReflectionView extends ItemView {
         if (this.closed) return section;
         const component = this.addChild(new Component());
         this.dayComponents.set(section, component);
-        const layout = buildReflectionAxisLayout(timeline.blocks);
+        const blocks = reflectionDisplayBlocks(timeline.blocks);
+        const layout = buildReflectionAxisLayout(blocks);
         const axis = section.createDiv('llr-reflection-axis');
         const occurrences = new Map<number | null, number>();
         const renderBlock = async (parent: HTMLElement, index: number, interval?: { startMinute: number; endMinute: number }) => {
-            const block = timeline.blocks[index];
+            const block = blocks[index];
             const occurrence = occurrences.get(block.startMinute) ?? 0;
             occurrences.set(block.startMinute, occurrence + 1);
             await this.makeBlock(parent, day, block, occurrence, component, interval);
@@ -305,12 +306,6 @@ export class ReflectionView extends ItemView {
                     if (activities.some(item => item.endMinute <= segment.startMinute) && activities.some(item => item.startMinute >= segment.endMinute)) this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute);
                 } else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex, segment);
             }
-        }
-        const points = layout.segments.filter(segment => segment.kind === 'point');
-        if (points.length) {
-            const pointList = section.createDiv('llr-reflection-point-list');
-            pointList.createDiv({ cls: 'llr-reflection-section-label', text: '時刻だけの記録' });
-            for (const point of points) if (point.blockIndex !== undefined) await renderBlock(pointList, point.blockIndex);
         }
         if (layout.outsideDay.length) {
             const continuation = section.createDiv('llr-reflection-outside-day');
@@ -392,6 +387,7 @@ export class ReflectionView extends ItemView {
         const displayDuration = interval ? interval.endMinute - interval.startMinute : duration;
         const isTimed = block.startMinute !== null && duration > 0;
         row.toggleClass('is-time-band', isTimed);
+        row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
         row.style.setProperty('--llr-reflection-header-height', `${isTimed ? Math.max(this.hourHeight(), reflectionTimeHeight(Math.min(displayDuration, 60), this.hourHeight())) : this.hourHeight()}px`);
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
@@ -412,23 +408,13 @@ export class ReflectionView extends ItemView {
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
         summary.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
-        const chevron = summary.createSpan({ cls: 'llr-reflection-chevron', attr: { 'aria-hidden': 'true' } });
         const name = await this.renderHeading(summary, day, block.title, component);
-        // Representative bands are rounded to hours. Never present their length as actual work.
-        const matching = block.tasks.filter(task => task.title === block.title && task.startMinute !== null && task.endMinute !== null && task.endMinute > task.startMinute);
-        const representative = matching.length === 1 ? matching[0] : null;
-        if (duration > 60 && representative && representative.startMinute !== null && representative.endMinute !== null) {
-            const actualMinutes = representative.endMinute - representative.startMinute;
-            const hours = Math.floor(actualMinutes / 60), minutes = actualMinutes % 60;
-            const label = `${hours ? `${hours}時間` : ''}${minutes ? `${minutes}分` : ''}`;
-            summary.createSpan({ cls: 'llr-reflection-duration', text: `実績${label}${interval && representative.endMinute > interval.endMinute ? ` · ${formatReflectionClock(representative.endMinute)}まで` : ''}` });
-        }
         if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());
         const records = details.createDiv('llr-reflection-records');
         let bodyComponent: Component | null = null;
         const fill = async () => {
             summary.setAttribute('aria-expanded', String(details.open));
-            setIcon(chevron, details.open ? 'chevron-up' : 'chevron-down');
+            row.toggleClass('is-collapsed', !details.open);
             if (bodyComponent) { component.removeChild(bodyComponent); bodyComponent = null; }
             records.empty();
             if (details.open) {
@@ -450,6 +436,11 @@ export class ReflectionView extends ItemView {
         } });
         await fill();
         tail();
+        row.onclick = event => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest('summary, a, button, input')) return;
+            if (!details.open) summary.click();
+        };
         summary.onclick = event => {
             if (event.target instanceof Element && event.target.closest('a')) return;
             event.preventDefault();
@@ -517,13 +508,16 @@ export class ReflectionView extends ItemView {
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
         const head = record.createDiv('llr-reflection-record-head');
         if (task.kind !== 'memo') {
-            head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
         const source = head.createEl('button', { cls: 'llr-reflection-source', attr: { 'aria-label': '元ノートへ' } });
         setIcon(source, 'arrow-up-right');
         setTooltip(source, '元ノートへ');
         source.onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
+        if (task.kind !== 'memo' && task.actualStart) {
+            const time = task.actualEnd && task.actualEnd !== task.actualStart ? `${task.actualStart}–${task.actualEnd}` : task.actualStart;
+            record.createDiv({ cls: 'llr-reflection-record-time', text: time });
+        }
         if (task.supplement) {
             // Strip the common task-child indent while preserving relative Markdown nesting.
             const lines = task.supplement.split('\n');

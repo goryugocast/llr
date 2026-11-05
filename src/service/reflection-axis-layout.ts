@@ -15,6 +15,38 @@ export interface ReflectionAxisLayout {
     endMinute: number;
 }
 
+/** Normalize zero-duration records into display-only hourly overview blocks. */
+export function reflectionDisplayBlocks(blocks: readonly ReflectionBlock[]): ReflectionBlock[] {
+    const result = blocks.map(block => ({ ...block, tasks: [...block.tasks] }));
+    const points = new Map<number, { blockIndex: number; tasks: ReflectionBlock['tasks'] }>();
+    const excludedPoints = new Set<number>();
+
+    blocks.forEach((block, index) => {
+        if (block.startMinute === null && block.endMinute === null) return;
+        if (block.startMinute !== null && block.endMinute !== null && block.endMinute > block.startMinute) return;
+        const minute = block.startMinute ?? block.endMinute;
+        if (minute === null) return;
+        const coveringIndex = blocks.findIndex(candidate => candidate.startMinute !== null && candidate.endMinute !== null && candidate.endMinute > candidate.startMinute && minute >= candidate.startMinute && minute < candidate.endMinute);
+        if (coveringIndex >= 0) {
+            result[coveringIndex].tasks.push(...block.tasks);
+            excludedPoints.add(index);
+            return;
+        }
+        const hour = Math.floor(minute / 60) * 60;
+        const group = points.get(hour);
+        if (group) group.tasks.push(...block.tasks);
+        else points.set(hour, { blockIndex: index, tasks: [...block.tasks] });
+        excludedPoints.add(index);
+    });
+
+    const display = result.filter((_, index) => !excludedPoints.has(index));
+    for (const [hour, group] of points) {
+        const original = blocks[group.blockIndex];
+        display.push({ ...original, startMinute: hour, endMinute: hour + 60, tasks: group.tasks });
+    }
+    return display.sort((a, b) => (a.startMinute ?? Infinity) - (b.startMinute ?? Infinity) || a.id - b.id);
+}
+
 /** Build a single-day overview axis, clipping cross-day intervals and sorting by time. */
 export function buildReflectionAxisLayout(
     blocks: readonly ReflectionBlock[],
@@ -74,10 +106,8 @@ export function reflectionTimeHeight(minutes: number, pxPerHour = 32): number {
     return Math.max(minutes, 0) * pxPerHour / 60;
 }
 
-/** Format an absolute minute on the reflection axis, naming later days. */
+/** Format the visible clock without adding date qualifiers. */
 export function formatReflectionClock(minute: number): string {
-    const day = Math.floor(minute / 1440);
     const clockMinute = ((minute % 1440) + 1440) % 1440;
-    const prefix = day <= 0 ? '' : day === 1 ? '翌 ' : `${day}日後 `;
-    return `${prefix}${String(Math.floor(clockMinute / 60)).padStart(2, '0')}:${String(clockMinute % 60).padStart(2, '0')}`;
+    return `${String(Math.floor(clockMinute / 60)).padStart(2, '0')}:${String(clockMinute % 60).padStart(2, '0')}`;
 }

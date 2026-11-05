@@ -1,12 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import type { ReflectionBlock } from '../src/service/reflection-timeline';
-import { buildReflectionAxisLayout, formatReflectionClock, reflectionTimeHeight } from '../src/service/reflection-axis-layout';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionTimeHeight } from '../src/service/reflection-axis-layout';
 
 const block = (startMinute: number | null, endMinute: number | null, title = 'work'): ReflectionBlock => ({
     id: 0, title, startMinute, endMinute, tasks: [],
 });
 
 describe('reflection axis layout', () => {
+    it('groups point records into hour cells without changing their actual times', () => {
+        const point = (id: number, minute: number, title: string) => ({
+            id, kind: 'task' as const, line: id, sourceLine: id + 1, title, status: 'x' as const,
+            actualStart: '20:01', actualEnd: '20:01', source: title, supplements: '', supplement: '',
+            startMinute: minute, endMinute: minute,
+        });
+        const activity = { ...block(1140, 1260, 'break'), id: 0 };
+        const coveredTask = point(1, 1201, 'break');
+        const covered = { ...block(1201, 1201, 'break'), id: 1, tasks: [coveredTask] };
+        const firstTask = point(2, 1261, 'book');
+        const first = { ...block(1261, 1261, 'book'), id: 2, tasks: [firstTask] };
+        const secondTask = point(3, 1288, 'task');
+        const second = { ...block(1288, 1288, 'task'), id: 3, tasks: [secondTask] };
+        const nextHour = { ...block(1320, null, 'call'), id: 4, tasks: [point(4, 1320, 'call')] };
+        const untimed = { ...block(null, null, 'untimed'), id: 5 };
+        const input = [activity, covered, first, second, nextHour, untimed];
+        const before = structuredClone(input);
+
+        const result = reflectionDisplayBlocks(input);
+
+        expect(result.find(item => item.id === activity.id)?.tasks).toEqual(covered.tasks);
+        expect(result.filter(item => item.startMinute === 1260)).toHaveLength(1);
+        const bookHour = result.find(item => item.id === first.id);
+        expect(bookHour).toMatchObject({ startMinute: 1260, endMinute: 1320, title: 'book' });
+        expect(bookHour?.tasks.map(task => task.id)).toEqual([2, 3]);
+        expect(bookHour?.tasks.map(task => [task.startMinute, task.endMinute])).toEqual([[1261, 1261], [1288, 1288]]);
+        expect(result.find(item => item.startMinute === 1320 && item.endMinute === 1380)?.title).toBe('call');
+        expect(result.find(item => item.id === untimed.id)).toBeDefined();
+        expect(input).toEqual(before);
+    });
+
     it('uses one consistent height per elapsed hour', () => {
         expect(reflectionTimeHeight(60)).toBe(32);
         expect(reflectionTimeHeight(120)).toBe(64);
@@ -80,7 +111,7 @@ describe('reflection axis layout', () => {
 
     it('formats clocks on the absolute axis', () => {
         expect(formatReflectionClock(180)).toBe('03:00');
-        expect(formatReflectionClock(1440)).toBe('翌 00:00');
-        expect(formatReflectionClock(3060)).toBe('2日後 03:00');
+        expect(formatReflectionClock(1440)).toBe('00:00');
+        expect(formatReflectionClock(3060)).toBe('03:00');
     });
 });
