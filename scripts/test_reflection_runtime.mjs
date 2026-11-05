@@ -61,7 +61,10 @@ async function checkReflectionRuntime() {
         assert(host.querySelector('.llr-reflection-name')?.textContent.includes('見出しの別名'), 'The representative wiki alias must remain visible as text.');
         assert(host.querySelector('.llr-reflection-name')?.closest('summary')?.querySelector('input[type="checkbox"]') === null, 'The collapsed heading must not expose task status checkboxes.');
         assert(host.querySelector('.llr-reflection-hour')?.textContent.includes('10:00'), 'The summary must display a full HH:mm clock.');
-        assert(host.querySelector('.llr-reflection-time-step.is-compressed'), 'A long block must retain a compact duration marker.');
+        const steps = [...host.querySelectorAll('.llr-reflection-row:first-child .llr-reflection-time-step')];
+        assert(steps.length === 2 && steps.map(step => step.textContent).join(',') === '11:00,12:00', 'Every intermediate hour must have its own visible clock.');
+        assert(steps.every(step => Math.abs(step.getBoundingClientRect().height - view.hourHeight()) < 1), 'Every hour must occupy the same cell height.');
+        assert(Math.abs(host.querySelector('.llr-reflection-row').getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'A three-hour overview must occupy exactly three cells.');
         assert(host.querySelector('.llr-reflection-duration')?.textContent === '実績30分', 'A rounded representative band must not be presented as actual duration.');
         assert(host.querySelector('.llr-reflection-chevron').nextElementSibling?.classList.contains('llr-reflection-name'), 'The expansion icon must sit next to the heading.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 0, 'Collapsed details must not render their bodies.');
@@ -187,7 +190,7 @@ async function checkReflectionRuntime() {
             fixtureSection = await view.makeDay({ date: '1900-01-02', file: fixtureFile });
             host.append(fixtureSection);
             assert(fixtureSection.querySelector('.llr-reflection-duration')?.textContent.includes('翌 10:00まで'), 'Cross-day duration must retain its full ending time.');
-            assert(fixtureSection.querySelector('.llr-reflection-axis').getBoundingClientRect().height <= view.hourHeight() * 2.5, 'Long cross-day activities must not create a tall empty axis.');
+            assert(Math.abs(fixtureSection.querySelector('.llr-reflection-axis').getBoundingClientRect().height - view.hourHeight() * 3) < 1, 'Cross-day overviews must stop at the next cutoff while retaining equal hourly cells.');
             const crossDetails = fixtureSection.querySelector('details');
             await view.detailSetters.get(crossDetails).setOpen(true);
             assert(fixtureSection.querySelectorAll('.llr-reflection-record').length === 1, 'Clipping an overview must keep its source record exactly once.');
@@ -197,7 +200,7 @@ async function checkReflectionRuntime() {
             app.vault.cachedRead = originalRead;
             if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
         }
-        return { passed: true, checks: ['plain representative heading and whole-row toggling', 'compressed time with explicit duration', 'point separation and omitted blank edge hours', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
+        return { passed: true, checks: ['plain representative heading and whole-row toggling', 'equal hourly cells and actual duration', 'point separation and omitted blank edge hours', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;
         view.expansion = originalExpansion;

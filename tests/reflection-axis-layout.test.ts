@@ -7,13 +7,16 @@ const block = (startMinute: number | null, endMinute: number | null, title = 'wo
 });
 
 describe('reflection axis layout', () => {
-    it('shows short activity intervals proportionally and compresses long ones', () => {
+    it('uses one consistent height per elapsed hour', () => {
         expect(reflectionTimeHeight(60)).toBe(32);
         expect(reflectionTimeHeight(120)).toBe(64);
-        expect(reflectionTimeHeight(180)).toBe(68);
-        expect(reflectionTimeHeight(600)).toBe(80);
+        expect(reflectionTimeHeight(180)).toBe(96);
+        expect(reflectionTimeHeight(600)).toBe(320);
         expect(reflectionTimeHeight(60, 48)).toBe(48);
-        expect(reflectionTimeHeight(600, 48)).toBe(120);
+        expect(reflectionTimeHeight(180, 48)).toBe(144);
+        expect(reflectionTimeHeight(600, 48)).toBe(480);
+        expect(reflectionTimeHeight(0)).toBe(0);
+        expect(reflectionTimeHeight(-60)).toBe(0);
     });
 
     it('fills elapsed time with gaps while retaining activity positions', () => {

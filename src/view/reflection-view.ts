@@ -302,7 +302,7 @@ export class ReflectionView extends ItemView {
                 if (segment.kind === 'gap') {
                     // Empty leading/trailing hours add no reading value. Keep only internal gaps.
                     const activities = layout.segments.filter(item => item.kind === 'activity');
-                    if (activities.some(item => item.endMinute <= segment.startMinute) && activities.some(item => item.startMinute >= segment.endMinute)) this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute, false);
+                    if (activities.some(item => item.endMinute <= segment.startMinute) && activities.some(item => item.startMinute >= segment.endMinute)) this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute);
                 } else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex, segment);
             }
         }
@@ -347,16 +347,22 @@ export class ReflectionView extends ItemView {
     }
 
     private hourHeight(): number {
-        return Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 48 : 32;
+        const style = getComputedStyle(document.body);
+        const textSize = Number.parseFloat(style.getPropertyValue('--font-text-size')) || 16;
+        const lineHeight = textSize * (Number.parseFloat(style.getPropertyValue('--line-height-normal')) || 1.5);
+        const spacing = Number.parseFloat(style.getPropertyValue('--size-4-1')) || 4;
+        return Math.max(Math.ceil(lineHeight + spacing * 2), Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 44 : 32);
     }
 
-    private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number, activity: boolean, height?: number) {
-        if (end <= start) return;
-        const step = parent.createDiv(activity ? 'llr-reflection-time-step is-compressed' : 'llr-reflection-time-step is-gap');
-        step.style.height = `${height ?? 28}px`;
-        step.dataset.anchor = `${day.date}:time:${start}`;
-        if (activity) step.createSpan('llr-reflection-time-mark');
-        else step.createSpan({ cls: 'llr-reflection-gap-label', text: `${formatReflectionClock(start)}–${formatReflectionClock(end)} 記録なし` });
+    private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number) {
+        for (let cursor = start; cursor < end;) {
+            const next = Math.min(end, (Math.floor(cursor / 60) + 1) * 60);
+            const step = parent.createDiv('llr-reflection-time-step');
+            step.style.height = `${reflectionTimeHeight(next - cursor, this.hourHeight())}px`;
+            step.dataset.anchor = `${day.date}:time:${cursor}`;
+            if (cursor % 60 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: formatReflectionClock(cursor) });
+            cursor = next;
+        }
     }
 
     private syncCurrentDay() {
@@ -391,8 +397,7 @@ export class ReflectionView extends ItemView {
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
         const tail = () => {
             if (isTimed && block.startMinute !== null && block.endMinute !== null) {
-                const remainingHeight = reflectionTimeHeight(displayDuration, this.hourHeight()) - this.hourHeight();
-                if (remainingHeight > 0) this.makeTimeSpace(row, day, block.startMinute + 60, interval?.endMinute ?? block.endMinute, true, remainingHeight);
+                this.makeTimeSpace(row, day, block.startMinute + 60, interval?.endMinute ?? block.endMinute);
             }
         };
         if (!block.tasks.length) {

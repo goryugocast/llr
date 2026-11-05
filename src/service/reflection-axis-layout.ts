@@ -69,11 +69,9 @@ export function buildReflectionAxisLayout(
     return { segments, untimed, outsideDay, endMinute };
 }
 
-/** Convert elapsed time to pixels, compressing minutes beyond two hours and capping long spans. */
+/** Convert elapsed time to pixels at one consistent height per hour. */
 export function reflectionTimeHeight(minutes: number, pxPerHour = 32): number {
-    const baseMinutes = Math.min(Math.max(minutes, 0), 120);
-    const compressedMinutes = Math.max(minutes - 120, 0);
-    return Math.min(baseMinutes * pxPerHour / 60 + compressedMinutes * pxPerHour / 480, pxPerHour * 2.5);
+    return Math.max(minutes, 0) * pxPerHour / 60;
 }
 
 /** Format an absolute minute on the reflection axis, naming later days. */

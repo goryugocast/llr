@@ -620,10 +620,10 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
     /* 進行中はさらに強調 */
 }
 
-/* Reflection: compact time overview with full reading space on expansion. */
-.llr-reflection { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
-.llr-reflection-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--background-modifier-border); }
-.llr-reflection-toolbar strong { font-size: var(--font-ui-large); font-weight: 500; }
+/* Reflection: native note typography and one equal cell per hour. */
+.llr-reflection { font-family: var(--font-text); font-size: var(--font-text-size); line-height: var(--line-height-normal); display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
+.llr-reflection-toolbar { font-family: var(--font-interface); font-size: var(--font-ui-medium); line-height: var(--line-height-tight); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--background-modifier-border); }
+.llr-reflection-toolbar strong { font-size: var(--font-ui-medium); font-weight: var(--font-semibold); }
 .llr-reflection-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
 .llr-reflection-expand-all { min-width: 6.5em; }
 .llr-reflection-actions input { max-width: 155px; }
@@ -632,7 +632,7 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-edge:disabled { opacity: 1; cursor: default; }
 .llr-reflection-day { padding-bottom: 12px; }
 .llr-reflection-day:last-child { min-height: var(--llr-reflection-viewport-height, 0px); }
-.llr-reflection-day h2 { font-size: 1.15em; font-weight: 500; padding: 16px 0 14px; margin: 0; }
+.llr-reflection-day h2 { font-family: var(--font-interface); font-size: var(--font-ui-medium); font-weight: var(--font-semibold); padding: var(--size-4-4) 0 var(--size-4-3); margin: 0; }
 .llr-reflection-day h2 small { color: var(--text-muted); font-size: var(--font-ui-small); margin-left: 12px; font-weight: normal; }
 .llr-reflection-row { position: relative; margin: 0; }
 .llr-reflection-block { background: transparent; border: 0; margin: 0; padding: 0; }
@@ -640,29 +640,27 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-block summary::-webkit-details-marker { display: none; }
 .llr-reflection-block summary:hover { background: var(--background-modifier-hover); }
 .llr-reflection-block summary:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.llr-reflection-hour { color: var(--text-muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.llr-reflection-name { font-size: var(--font-text-size); font-weight: 500; min-width: 0; overflow: hidden; }
+.llr-reflection-hour { font-family: var(--font-interface); color: var(--text-muted); font-size: var(--font-ui-small); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.llr-reflection-name { font-family: var(--font-text); font-size: inherit; font-weight: var(--font-normal); min-width: 0; overflow: hidden; }
 .llr-reflection-name > p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .llr-reflection-overview { cursor: default; grid-template-columns: 52px 12px minmax(0, 1fr); }
 .llr-reflection-overview .llr-reflection-name { grid-column: 3; }
-.llr-reflection-duration { color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; padding-right: 4px; }
+.llr-reflection-duration { font-family: var(--font-interface); color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; padding-right: 4px; }
 .llr-reflection-chevron { display: flex; align-items: center; justify-content: center; color: var(--text-muted); pointer-events: none; }
 .llr-reflection-chevron svg { width: 16px; height: 16px; }
-.llr-reflection-time-step { position: relative; box-sizing: border-box; display: grid; align-items: center; padding-left: 80px; }
-.llr-reflection-gap-label { color: var(--text-faint); font-size: var(--font-ui-smaller); }
-.llr-reflection-time-mark { position: absolute; left: 66px; top: 0; bottom: 0; width: 2px; background: var(--background-modifier-border); content: ''; pointer-events: none; }
+.llr-reflection-time-step { position: relative; box-sizing: border-box; display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; column-gap: 6px; }
 .llr-reflection-records { margin-left: 80px; padding: 8px 0 16px; }
 .llr-reflection-record { padding: 0; }
 .llr-reflection-record + .llr-reflection-record { margin-top: 8px; }
 .llr-reflection-record.has-memo + .llr-reflection-record, .llr-reflection-record + .llr-reflection-record.has-memo { margin-top: 16px; }
 .llr-reflection-record-head { display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: baseline; overflow-wrap: anywhere; }
-.llr-reflection-record-time { font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.llr-reflection-record-title { flex: 0 1 auto; font-size: var(--font-ui-medium); min-width: 0; overflow-wrap: anywhere; }
+.llr-reflection-record-time { font-family: var(--font-interface); font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.llr-reflection-record-title { flex: 0 1 auto; font-size: inherit; min-width: 0; overflow-wrap: anywhere; }
 .llr-reflection-record-title > p { margin: 0; }
 .llr-reflection button.llr-reflection-source { flex: 0 0 24px; width: 24px; height: 24px; padding: 3px; color: var(--text-muted); background: transparent; box-shadow: none; border: 0; }
 .llr-reflection-source svg { width: 14px; height: 14px; }
 .llr-reflection-source:hover, .llr-reflection-source:focus-visible { color: var(--text-normal); background: var(--background-modifier-hover); }
-.llr-reflection-supplement { overflow-wrap: anywhere; line-height: 1.8; margin-top: 6px; }
+.llr-reflection-supplement { overflow-wrap: anywhere; font-family: var(--font-text); font-size: inherit; line-height: var(--line-height-normal); margin-top: var(--size-4-2); }
 .llr-reflection-supplement > :first-child { margin-top: 0; }
 .llr-reflection-supplement > :last-child { margin-bottom: 0; }
 .llr-reflection-empty, .llr-reflection-gap { color: var(--text-muted); font-size: var(--font-ui-small); padding: 12px; }
