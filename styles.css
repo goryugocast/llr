@@ -634,11 +634,11 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-toolbar { font-family: var(--font-interface); font-size: var(--font-ui-medium); line-height: var(--line-height-tight); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--background-modifier-border); }
 .llr-reflection-date-nav { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .llr-reflection-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.llr-reflection-date-picker, .llr-reflection-calendar-picker { position: relative; min-width: 0; display: flex; align-items: center; }
+.llr-reflection-date-picker { position: relative; min-width: 0; display: flex; align-items: center; }
 .llr-reflection-date-year { position: absolute; top: -12px; left: 6px; font-size: var(--font-ui-smaller); line-height: 1; color: var(--text-muted); pointer-events: none; }
 .llr-reflection button.llr-reflection-date-label { display: inline-flex; align-items: center; line-height: 1.05; gap: 6px; height: 32px; padding: 0 6px; border: 0; border-radius: 4px; box-shadow: none; background: transparent; color: var(--text-normal); font-family: var(--font-interface); font-size: var(--llr-date-size); font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
 .llr-reflection button.llr-reflection-date-label:hover { background: var(--background-modifier-hover); }
-.llr-reflection-date-picker:focus-within .llr-reflection-date-label, .llr-reflection-calendar-picker:focus-within .llr-nav-btn { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.llr-reflection-date-picker:focus-within .llr-reflection-date-label { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .llr-reflection-date-weekday { font-size: var(--llr-date-dow-size); font-weight: 600; letter-spacing: 0; }
 .llr-reflection input.llr-reflection-date-input { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; padding: 0; opacity: 0; pointer-events: none; }
 .llr-reflection button.llr-nav-btn { box-shadow: none; border: 1px solid transparent; background: transparent; }

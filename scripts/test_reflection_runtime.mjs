@@ -12,6 +12,19 @@ async function checkReflectionRuntime() {
     assert(getComputedStyle(view.dateInput).position === 'absolute' && getComputedStyle(view.dateInput).opacity === '0', 'The native date input must not duplicate the visible date or occupy navigation space.');
     assert(getComputedStyle(view.currentDayLabel).alignItems === 'center', 'The date text must share the vertical center of the other controls.');
     assert(view.expandButton.querySelector('svg.lucide-move-vertical'), 'Bulk expansion must use the same vertical movement icon as Backlinks.');
+    assert(!view.contentEl.querySelector('.llr-reflection-calendar-picker'), 'Date selection must not have a separate calendar button.');
+    assert(!view.currentDayLabel.disabled, 'The date picker must remain usable on days without a note.');
+    const originalPicker = view.dateInput.showPicker;
+    const originalFocus = document.activeElement;
+    let pickerCalls = 0;
+    try {
+        view.dateInput.showPicker = () => { pickerCalls++; };
+        view.currentDayLabel.click();
+        assert(pickerCalls === 1, 'Clicking the date must open the date picker.');
+    } finally {
+        view.dateInput.showPicker = originalPicker;
+        if (originalFocus instanceof HTMLElement) originalFocus.focus({ preventScroll: true });
+    }
     // Reuse the public Component class already present in this Obsidian runtime.
     let prototype = view;
     while (prototype && !Object.prototype.hasOwnProperty.call(prototype, 'registerDomEvent')) prototype = Object.getPrototypeOf(prototype);

@@ -57,25 +57,6 @@ function makeView(all: Entry[], shown: Entry[]) {
 }
 
 describe('reflection viewport continuity', () => {
-    it('reuses the selected daily note tab and does nothing for a missing note', async () => {
-        const file = entry(2).file;
-        const existing = { getViewState: () => ({ state: { file: file!.path } }), openFile: vi.fn(async () => {}) };
-        const workspace = { getLeavesOfType: vi.fn(() => [existing]), getLeaf: vi.fn(), revealLeaf: vi.fn(async () => {}) };
-        const view = Object.assign(Object.create(ReflectionView.prototype), {
-            index: [{ date: '2026-10-02', file }], dateInput: { value: '2026-10-02' }, app: { workspace },
-        });
-        await view.openCurrentDateNote();
-        expect(existing.openFile).toHaveBeenCalledWith(file);
-        expect(workspace.revealLeaf).toHaveBeenCalledWith(existing);
-        expect(workspace.getLeaf).not.toHaveBeenCalled();
-        existing.openFile.mockClear();
-        workspace.revealLeaf.mockClear();
-        view.dateInput.value = '2026-10-03';
-        await view.openCurrentDateNote();
-        expect(existing.openFile).not.toHaveBeenCalled();
-        expect(workspace.revealLeaf).not.toHaveBeenCalled();
-        expect(workspace.getLeaf).not.toHaveBeenCalled();
-    });
     it('moves by calendar days across gaps and month boundaries', async () => {
         const view = makeView([entry(1), entry(3)], [entry(1), entry(3)]);
         view.jump = vi.fn(() => Promise.resolve());
