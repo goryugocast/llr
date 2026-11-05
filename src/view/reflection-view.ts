@@ -1,4 +1,4 @@
-import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
+import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks, reflectionTimeHeight } from '../service/reflection-axis-layout';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
@@ -16,6 +16,8 @@ export class ReflectionView extends ItemView {
     private currentDayLabel!: HTMLButtonElement;
     private currentDayMain!: HTMLElement;
     private currentDayWeekday!: HTMLElement;
+    private currentDayYear!: HTMLElement;
+    private calendarButton!: HTMLButtonElement;
     private previousDayButton!: HTMLButtonElement;
     private followingDayButton!: HTMLButtonElement;
     private pastButton!: HTMLButtonElement;
@@ -33,7 +35,6 @@ export class ReflectionView extends ItemView {
     private dirty = new Set<string>();
     private anchor: Anchor | null = null;
     private readonly sections = new Map<string, HTMLElement>();
-    private sourceLeaf: WorkspaceLeaf | null = null;
     private readonly extending = new Set<number>();
     private readonly dayComponents = new WeakMap<HTMLElement, Component>();
 
@@ -47,32 +48,41 @@ export class ReflectionView extends ItemView {
         this.contentEl.empty();
         this.contentEl.addClass('llr-reflection');
         const toolbar = this.contentEl.createDiv('llr-reflection-toolbar');
-        const navigation = toolbar.createDiv('llr-reflection-date-nav');
+        const dateNavigation = toolbar.createDiv('llr-reflection-date-nav');
+        const dateLabel = dateNavigation.createDiv('llr-reflection-date-picker');
+        this.currentDayYear = dateLabel.createSpan('llr-reflection-date-year');
+        this.currentDayYear.hidden = true;
+        this.currentDayLabel = dateLabel.createEl('button', { cls: 'llr-reflection-date-label', attr: { 'aria-label': 'デイリーノートを開く' } });
+        this.currentDayMain = this.currentDayLabel.createSpan({ cls: 'llr-date-main', text: moment(this.today()).format('MM-DD') });
+        this.currentDayWeekday = this.currentDayLabel.createSpan('llr-date-dow llr-reflection-date-weekday');
+        this.currentDayLabel.onclick = () => { void this.openCurrentDateNote(); };
+        const navigation = dateNavigation.createDiv('llr-nav-btns');
         this.previousDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日' } });
         setIcon(this.previousDayButton, 'chevron-left');
         this.previousDayButton.onclick = () => this.enqueue(() => this.moveDay(-1));
-        const picker = navigation.createDiv('llr-reflection-date-picker');
-        this.currentDayLabel = picker.createEl('button', { cls: 'llr-reflection-date-label', attr: { 'aria-label': '日付を選ぶ' } });
-        this.currentDayMain = this.currentDayLabel.createSpan({ text: moment(this.today()).format('YYYY/M/D') });
-        this.currentDayWeekday = this.currentDayLabel.createSpan('llr-reflection-date-weekday');
+        navigation.createEl('button', { text: '今日', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
+        this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
+        setIcon(this.followingDayButton, 'chevron-right');
+        this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
+        const tools = toolbar.createDiv('llr-reflection-tools');
+        const picker = tools.createDiv('llr-reflection-calendar-picker');
+        this.calendarButton = picker.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '日付を選ぶ' } });
+        setIcon(this.calendarButton, 'calendar-days');
+        setTooltip(this.calendarButton, '日付を選ぶ');
         this.dateInput = picker.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
-        this.currentDayLabel.onclick = () => {
+        this.calendarButton.onclick = () => {
             this.dateInput.focus({ preventScroll: true });
             if (typeof this.dateInput.showPicker === 'function') this.dateInput.showPicker();
             else this.dateInput.click();
         };
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
-            this.currentDayLabel.focus({ preventScroll: true });
+            this.calendarButton.focus({ preventScroll: true });
             this.enqueue(() => this.jump(date));
         };
-        this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
-        setIcon(this.followingDayButton, 'chevron-right');
-        this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
-        navigation.createEl('button', { text: '今日', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
-        this.expandButton = toolbar.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
+        this.expandButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
         setIcon(this.expandButton, 'move-vertical');
         this.expandButton.disabled = true;
         this.expandButton.onclick = () => this.enqueue(() => this.setAllDetails(this.expansion.shouldOpenAll(this.getDetailKeys())));
@@ -154,6 +164,14 @@ export class ReflectionView extends ItemView {
         }
         if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
         this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    private async openCurrentDateNote() {
+        const file = this.index.find(day => day.date === this.dateInput.value)?.file;
+        if (!file) return;
+        const leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.getViewState().state?.file === file.path) ?? this.app.workspace.getLeaf('tab');
+        await leaf.openFile(file);
+        await this.app.workspace.revealLeaf(leaf);
     }
 
     private async moveDay(direction: -1 | 1) {
@@ -392,11 +410,23 @@ export class ReflectionView extends ItemView {
             return rect && rect.bottom > top + 24;
         });
         if (!day) return;
-        const dateText = moment(day.date).format('YYYY/M/D');
-        const weekday = `（${['日', '月', '火', '水', '木', '金', '土'][moment(day.date).day()]}）`;
+        const parsed = moment(day.date);
+        const dateText = parsed.format('MM-DD');
+        const weekday = `(${['日', '月', '火', '水', '木', '金', '土'][parsed.day()]})`;
         if (this.currentDayMain) { this.currentDayMain.textContent = dateText; this.currentDayWeekday.textContent = weekday; }
         else this.currentDayLabel.textContent = dateText + weekday;
-        this.currentDayLabel.setAttribute?.('aria-label', `${dateText}${weekday}、カレンダーを開く`);
+        if (this.currentDayYear) {
+            const pastYear = parsed.year() !== moment(this.today()).year();
+            this.currentDayYear.hidden = !pastYear;
+            this.currentDayYear.textContent = pastYear ? parsed.format('YYYY') : '';
+        }
+        if (this.currentDayWeekday) {
+            this.currentDayWeekday.toggleClass('day-saturday', parsed.day() === 6);
+            this.currentDayWeekday.toggleClass('day-sunday', parsed.day() === 0);
+            this.currentDayWeekday.toggleClass('day-weekday', parsed.day() > 0 && parsed.day() < 6);
+        }
+        this.currentDayLabel.disabled = !day.file;
+        this.currentDayLabel.setAttribute?.('aria-label', `${parsed.format('YYYY/MM/DD')}のデイリーノートを開く`);
         if (this.followingDayButton) this.followingDayButton.disabled = day.date >= this.today();
         if (document.activeElement !== this.dateInput) this.dateInput.value = day.date;
     }
@@ -552,10 +582,6 @@ export class ReflectionView extends ItemView {
         if (task.kind !== 'memo') {
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
-        const source = head.createEl('button', { cls: 'llr-reflection-source', attr: { 'aria-label': '元ノートへ' } });
-        setIcon(source, 'arrow-up-right');
-        setTooltip(source, '元ノートへ');
-        source.onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
         if (task.kind !== 'memo' && task.actualStart) {
             const time = task.actualEnd && task.actualEnd !== task.actualStart ? `${task.actualStart}–${task.actualEnd}` : task.actualStart;
             record.createDiv({ cls: 'llr-reflection-record-time', text: time });
@@ -569,14 +595,4 @@ export class ReflectionView extends ItemView {
         }
     }
 
-    private async openSource(file: TFile, line: number) {
-        if (!this.sourceLeaf || !this.app.workspace.getLeavesOfType('markdown').includes(this.sourceLeaf)) this.sourceLeaf = this.app.workspace.getLeaf('tab');
-        await this.sourceLeaf.openFile(file, { eState: { line } });
-        const view = this.sourceLeaf.view;
-        if (view instanceof MarkdownView) {
-            view.editor.setCursor({ line, ch: 0 });
-            view.editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
-        }
-        await this.app.workspace.revealLeaf(this.sourceLeaf);
-    }
 }

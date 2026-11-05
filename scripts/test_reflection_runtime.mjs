@@ -97,8 +97,7 @@ async function checkReflectionRuntime() {
         assert(host.querySelector('code')?.textContent.includes('[[コード中の記法]]'), 'Fenced examples must remain literal.');
         const boxes = [...host.querySelectorAll('input[type="checkbox"]')];
         assert(boxes.length === 2 && boxes.every(box => box.disabled), 'Nested memo checkboxes must be native and read-only.');
-        assert(host.querySelector('.llr-reflection-source')?.getAttribute('aria-label') === '元ノートへ', 'The compact source control must retain an accessible name.');
-        assert(host.querySelector('.llr-reflection-source')?.textContent === '', 'Repeated source controls must use quiet icons.');
+        assert(!host.querySelector('.llr-reflection-source'), 'Records must not repeat a redundant daily-note navigation control.');
         const renderedRecord = host.querySelector('.llr-reflection-record');
         assert(renderedRecord.querySelector('.llr-reflection-record-time')?.parentElement === renderedRecord, 'Actual times must sit beneath the title instead of creating a wide title column.');
         const checkedBefore = boxes.map(box => box.checked).join(',');
