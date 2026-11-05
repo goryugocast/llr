@@ -1,4 +1,5 @@
-import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, TFile, WorkspaceLeaf, moment } from 'obsidian';
+import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionTimeHeight } from '../service/reflection-axis-layout';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -271,7 +272,7 @@ export class ReflectionView extends ItemView {
     private async makeDay(day: DayEntry): Promise<HTMLElement> {
         const section = document.createElement('section');
         section.className = 'llr-reflection-day';
-        const heading = section.createEl('h2', { text: moment(day.date).format('M月D日（ddd）') });
+        const heading = section.createEl('h2', { text: `${moment(day.date).format('M月D日')}（${['日', '月', '火', '水', '木', '金', '土'][moment(day.date).day()]}）` });
         heading.dataset.anchor = day.date;
         if (day.date === this.today()) heading.createEl('small', { text: '今日' });
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
@@ -280,11 +281,30 @@ export class ReflectionView extends ItemView {
         if (this.closed) return section;
         const component = this.addChild(new Component());
         this.dayComponents.set(section, component);
+        const layout = buildReflectionAxisLayout(timeline.blocks);
+        const axis = section.createDiv('llr-reflection-axis');
         const occurrences = new Map<number | null, number>();
-        for (const block of timeline.blocks) {
+        const renderBlock = async (parent: HTMLElement, index: number) => {
+            const block = timeline.blocks[index];
             const occurrence = occurrences.get(block.startMinute) ?? 0;
             occurrences.set(block.startMinute, occurrence + 1);
-            await this.makeBlock(section, day, block, occurrence, component);
+            await this.makeBlock(parent, day, block, occurrence, component);
+        };
+        if (layout.segments.some(segment => segment.kind === 'activity')) {
+            for (const segment of layout.segments) {
+                if (segment.kind === 'gap') this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute, false);
+                else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex);
+            }
+        }
+        const points = layout.segments.filter(segment => segment.kind === 'point');
+        if (points.length) {
+            const pointList = section.createDiv('llr-reflection-point-list');
+            pointList.createDiv({ cls: 'llr-reflection-section-label', text: '時刻だけの記録' });
+            for (const point of points) if (point.blockIndex !== undefined) await renderBlock(pointList, point.blockIndex);
+        }
+        if (layout.untimed.length) {
+            const untimed = section.createDiv('llr-reflection-untimed');
+            for (const index of layout.untimed) await renderBlock(untimed, index);
         }
         return section;
     }
@@ -311,28 +331,66 @@ export class ReflectionView extends ItemView {
         });
     }
 
+    private hourHeight(): number {
+        return Platform.isMobile || window.matchMedia('(pointer: coarse)').matches ? 48 : 32;
+    }
+
+    private makeTimeSpace(parent: HTMLElement, day: DayEntry, start: number, end: number, activity: boolean) {
+        for (let cursor = start; cursor < end;) {
+            const next = Math.min(end, (Math.floor(cursor / 60) + 1) * 60);
+            const step = parent.createDiv('llr-reflection-time-step');
+            const height = `${reflectionTimeHeight(next - cursor, this.hourHeight())}px`;
+            step.style.height = height;
+            step.style.setProperty('--llr-reflection-step-height', height);
+            step.dataset.anchor = `${day.date}:time:${cursor}`;
+            if (cursor % 60 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: formatReflectionClock(cursor) });
+            if (activity) step.createSpan('llr-reflection-time-mark');
+            cursor = next;
+        }
+    }
+
+    private async renderHeading(parent: HTMLElement, day: DayEntry, title: string, component: Component) {
+        const name = parent.createDiv('llr-reflection-name');
+        await this.renderMarkdown(name, title, day, component);
+        // The whole heading expands. Note links remain available in the records.
+        name.querySelectorAll('a').forEach(link => link.replaceWith(document.createTextNode(link.textContent ?? '')));
+        return name;
+    }
+
     private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component) {
         const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
         const row = section.createDiv('llr-reflection-row');
-        row.createDiv({ cls: 'llr-reflection-hour', text: block.startMinute === null ? '時刻なし' : this.clock(block.startMinute) });
-        const height = Math.min(180, Math.max(62, ((block.endMinute ?? 0) - (block.startMinute ?? 0)) * 0.6));
-        row.style.setProperty('--llr-reflection-height', `${height}px`);
-        // A long activity can represent separated bands but its original appears only once.
+        const duration = Math.max(0, (block.endMinute ?? block.startMinute ?? 0) - (block.startMinute ?? 0));
+        const isTimed = block.startMinute !== null && duration > 0;
+        row.toggleClass('is-time-band', isTimed);
+        row.toggleClass('is-point', block.startMinute !== null && !isTimed);
+        row.style.setProperty('--llr-reflection-header-height', `${isTimed ? reflectionTimeHeight(Math.min(duration, 60), this.hourHeight()) : this.hourHeight()}px`);
+        const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
+        const tail = () => {
+            if (isTimed && block.startMinute !== null && block.endMinute !== null) {
+                this.makeTimeSpace(row, day, Math.min(block.endMinute, block.startMinute + 60), block.endMinute, true);
+            }
+        };
         if (!block.tasks.length) {
-            const overview = row.createDiv('llr-reflection-block');
-            const title = overview.createDiv('llr-reflection-block-title');
-            title.dataset.anchor = key;
-            await this.renderMarkdown(title, block.title, day, component);
+            const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
+            overview.dataset.anchor = key;
+            overview.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
+            await this.renderHeading(overview, day, block.title, component);
+            tail();
             return;
         }
         const details = row.createEl('details', { cls: 'llr-reflection-block' });
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
-        await this.renderMarkdown(summary.createDiv('llr-reflection-name'), block.title, day, component);
-        summary.createSpan({ text: `${block.tasks.length}件`, cls: 'llr-reflection-count' });
+        summary.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
+        const name = await this.renderHeading(summary, day, block.title, component);
+        if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());
+        const chevron = summary.createSpan({ cls: 'llr-reflection-chevron', attr: { 'aria-hidden': 'true' } });
         const records = details.createDiv('llr-reflection-records');
         let bodyComponent: Component | null = null;
         const fill = async () => {
+            summary.setAttribute('aria-expanded', String(details.open));
+            setIcon(chevron, details.open ? 'chevron-up' : 'chevron-down');
             if (bodyComponent) { component.removeChild(bodyComponent); bodyComponent = null; }
             records.empty();
             if (details.open) {
@@ -353,6 +411,7 @@ export class ReflectionView extends ItemView {
             await fill();
         } });
         await fill();
+        tail();
         summary.onclick = event => {
             if (event.target instanceof Element && event.target.closest('a')) return;
             event.preventDefault();
@@ -414,16 +473,11 @@ export class ReflectionView extends ItemView {
 
     private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
         const record = parent.createDiv('llr-reflection-record');
+        record.dataset.status = task.status;
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
         const head = record.createDiv('llr-reflection-record-head');
         if (task.kind !== 'memo') {
             head.createSpan({ cls: 'llr-reflection-record-time', text: task.actualStart ? `${task.actualStart}${task.actualEnd ? `–${task.actualEnd}` : '–（終了未記録）'}` : '実績時刻なし' });
-            if (task.status !== 'plain') {
-                const checkbox = head.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox', attr: { 'aria-label': task.status === 'x' ? '完了' : task.status === '/' ? '実行中' : '未完了' } });
-                checkbox.checked = task.status === 'x';
-                checkbox.indeterminate = task.status === '/';
-                checkbox.disabled = true;
-            }
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
         head.createEl('button', { text: '元ノートへ', cls: 'llr-reflection-source' }).onclick = () => { if (day.file) void this.openSource(day.file, task.line); };
@@ -434,11 +488,6 @@ export class ReflectionView extends ItemView {
             const markdown = lines.map(line => line.slice(Math.min(indent, line.match(/^[ \t]*/)?.[0].length ?? 0))).join('\n');
             await this.renderMarkdown(record.createDiv('llr-reflection-supplement'), markdown, day, component);
         }
-    }
-
-    private clock(minute: number): string {
-        const time = minute % 1440;
-        return `${String(Math.floor(time / 60)).padStart(2, '0')}:${String(time % 60).padStart(2, '0')}${minute >= 1440 ? '⁺' : ''}`;
     }
 
     private async openSource(file: TFile, line: number) {

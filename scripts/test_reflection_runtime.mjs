@@ -47,34 +47,49 @@ async function checkReflectionRuntime() {
             startMinute, endMinute: startMinute + 30, source: '', supplement,
         });
         const task = makeTask(0, 600, '[[Reflection test reference|見出しの別名]]', 'インデントなしの**大切なメモ**\n\n次の段落と[[Reflection test reference|補足の別名]]。\n\n- [x] 読んだ\n- [ ] 後で読む\n\n```md\n[[コード中の記法]]\n- [x] example\n```');
-        const block = { id: 0, title: task.title, startMinute: 600, endMinute: 660, tasks: [task] };
-        const secondTask = makeTask(1, 660, '別の記録', '二つ目の本文');
-        const secondBlock = { id: 1, title: secondTask.title, startMinute: 660, endMinute: 720, tasks: [secondTask] };
+        const block = { id: 0, title: task.title, startMinute: 600, endMinute: 780, tasks: [task] };
+        const secondTask = makeTask(1, 780, '別の記録', '二つ目の本文');
+        const secondBlock = { id: 1, title: secondTask.title, startMinute: 780, endMinute: 840, tasks: [secondTask] };
         const firstKey = key;
-        const secondKey = `${date}:block:660:0`;
+        const secondKey = `${date}:block:780:0`;
         await view.makeBlock(host, day, block, 0, component);
         await view.makeBlock(host, day, secondBlock, 0, component);
         let details = host.querySelector('details');
         assert(details && !details.open, 'Details must begin collapsed.');
+        assert(host.querySelectorAll('.llr-reflection-count').length === 0, 'The redundant task count UI must be removed.');
+        assert(host.querySelectorAll('.llr-reflection-name a').length === 0, 'The representative heading must be plain rendered text.');
+        assert(host.querySelector('.llr-reflection-name')?.textContent.includes('見出しの別名'), 'The representative wiki alias must remain visible as text.');
+        assert(host.querySelector('.llr-reflection-name')?.closest('summary')?.querySelector('input[type="checkbox"]') === null, 'The collapsed heading must not expose task status checkboxes.');
+        assert(host.querySelector('.llr-reflection-hour')?.textContent.includes('10:00'), 'The summary must display a full HH:mm clock.');
+        assert(host.querySelectorAll('.llr-reflection-time-step').length >= 2, 'A three-hour block must show proportional elapsed-time tail ticks.');
+        const tailLabels = [...host.querySelectorAll('.llr-reflection-time-step')].map(item => item.textContent);
+        assert(tailLabels.some(label => label.includes('11:00')) && tailLabels.some(label => label.includes('12:00')), 'Elapsed-time tail ticks must display full HH:mm labels.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 0, 'Collapsed details must not render their bodies.');
         const childrenWhileClosed = component._children.length;
-        details.querySelector('summary').click();
+        host.querySelector('.llr-reflection-name').click();
         await view.pending;
         assert(details.open && expansion.isOpen(firstKey), 'Individual expansion must be remembered.');
-        assert(host.querySelector('.llr-reflection-name a')?.textContent === '見出しの別名', 'Representative wiki alias must render as a link.');
         assert(host.querySelector('.llr-reflection-record-title a')?.textContent === '見出しの別名', 'Task wiki alias must render as a link.');
         assert(host.querySelector('.llr-reflection-supplement strong')?.textContent === '大切なメモ', 'Memo Markdown must render rather than show raw syntax.');
         assert(host.querySelectorAll('.llr-reflection-supplement > p').length >= 2, 'Multi-paragraph memos must retain separate paragraphs.');
         assert(host.querySelector('.llr-reflection-supplement a')?.textContent === '補足の別名', 'Memo wiki alias must render as a link.');
         assert(host.querySelector('code')?.textContent.includes('[[コード中の記法]]'), 'Fenced examples must remain literal.');
         const boxes = [...host.querySelectorAll('input[type="checkbox"]')];
-        assert(boxes.length === 3 && boxes.every(box => box.disabled), 'Activity and memo checkboxes must be native and read-only.');
+        assert(boxes.length === 2 && boxes.every(box => box.disabled), 'Nested memo checkboxes must be native and read-only.');
         const checkedBefore = boxes.map(box => box.checked).join(',');
         boxes.forEach(box => box.click());
         assert(boxes.map(box => box.checked).join(',') === checkedBefore, 'Read-only controls must not toggle.');
-        host.querySelector('.llr-reflection-name a').click();
+        host.querySelector('.llr-reflection-record-title a').click();
         assert(requestedLink?.target === 'Reflection test reference' && requestedLink.newLeaf === 'tab', 'Wiki links must dispatch tab navigation.');
         assert(details.open, 'Following a title link must not collapse details.');
+
+        // The clock and plain title each toggle the entire native detail row.
+        host.querySelector('.llr-reflection-hour').click();
+        await view.pending;
+        assert(!details.open, 'Clicking the summary clock must collapse the detail.');
+        host.querySelector('.llr-reflection-name').click();
+        await view.pending;
+        assert(details.open, 'Clicking the summary title must expand the detail.');
 
         // A redraw retains individual exceptions before any global operation.
         view.removeChild(component);
@@ -99,8 +114,8 @@ async function checkReflectionRuntime() {
         await view.setAllDetails(true);
         assert([...host.querySelectorAll('details')].every(item => item.open), 'Global expansion must reopen all details.');
         assert(view.expandButton.textContent === '全部閉じる', 'The button must return to the close action.');
-        const thirdTask = makeTask(2, 720, '追加の記録', '追加本文');
-        const thirdBlock = { id: 2, title: thirdTask.title, startMinute: 720, endMinute: 780, tasks: [thirdTask] };
+        const thirdTask = makeTask(2, 840, '追加の記録', '追加本文');
+        const thirdBlock = { id: 2, title: thirdTask.title, startMinute: 840, endMinute: 900, tasks: [thirdTask] };
         await view.makeBlock(host, day, thirdBlock, 0, component);
         assert(host.querySelectorAll('details')[2].open, 'A newly rendered detail must follow the current open-all mode.');
         assert(view.expandButton.textContent === '全部閉じる', 'Adding an open detail must preserve the close action.');
@@ -149,7 +164,26 @@ async function checkReflectionRuntime() {
             view.restoreAnchor = originalRestore;
         }
         await view.setAllDetails(false);
-        return { passed: true, checks: ['wiki aliases', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
+        // Standalone point records must remain readable without stretching elapsed time.
+        const originalRead = app.vault.cachedRead;
+        const fixtureFile = { path: '__llr_axis_runtime_fixture__.md' };
+        let fixtureSection;
+        app.vault.cachedRead = function(file) {
+            if (file === fixtureFile) return Promise.resolve('- [x] 活動 10:00 - 11:00\n- [x] 時刻のみ 12:30 - 12:30');
+            return originalRead.apply(this, arguments);
+        };
+        try {
+            fixtureSection = await view.makeDay({ date: '1900-01-02', file: fixtureFile });
+            host.append(fixtureSection);
+            const axis = fixtureSection.querySelector('.llr-reflection-axis');
+            assert(!axis.querySelector('.is-point'), 'Point records must not consume axis height.');
+            assert(fixtureSection.querySelector('.llr-reflection-point-list .is-point'), 'Standalone point records must remain available below the axis.');
+            assert(Math.abs(axis.getBoundingClientRect().height - 24 * view.hourHeight()) < 1, 'A collapsed day must preserve exactly 24 hours of elapsed height.');
+        } finally {
+            app.vault.cachedRead = originalRead;
+            if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
+        }
+        return { passed: true, checks: ['plain representative heading and whole-row toggling', 'clock and elapsed-time tail labels', 'point record separation and 24-hour geometry', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;
         view.expansion = originalExpansion;
