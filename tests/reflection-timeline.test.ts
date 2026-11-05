@@ -12,11 +12,10 @@ describe('buildReflectionTimeline', () => {
             '```md', '- [x] 12:00 code 12:00 - 12:30', '```',
         ].join('\n'));
 
-        expect(result.tasks.map(t => t.title)).toEqual(['読書', '予定のみ', '別セクション']);
+        expect(result.tasks.map(t => t.title)).toEqual(['読書', '別セクション']);
         expect(result.tasks[0].sourceLine).toBe(5);
         expect(result.tasks[0].supplements).toBe('  補足の一行目\n  補足の二行目');
-        expect(result.tasks[1].actualStart).toBe('');
-        expect(result.withoutActualInterval).toEqual([1]);
+        expect(result.withoutActualInterval).toEqual([]);
     });
 
     it('uses actual overlap, wraps midnight, preserves zero duration and assigns a task once', () => {
@@ -33,10 +32,10 @@ describe('buildReflectionTimeline', () => {
         expect(result.hours[23].representativeTaskId).toBe(0);
         expect(result.hours[0].representativeTaskId).toBe(0);
         expect(result.tasks[2].startMinute).toBe(1440);
-        expect(result.withoutActualInterval).toEqual([2, 3, 4]);
+        expect(result.withoutActualInterval).toEqual([2]);
         const assigned = result.blocks.flatMap(block => block.tasks.map(task => task.id));
         expect(new Set(assigned).size).toBe(assigned.length);
-        expect(assigned.sort()).toEqual([0, 1, 2, 3, 4]);
+        expect(assigned.sort()).toEqual([0, 1, 2]);
     });
 
     it('keeps the cutoff-crossing hour on one absolute axis and treats nested bullets as supplements', () => {
@@ -82,7 +81,7 @@ describe('buildReflectionTimeline', () => {
 
         expect(result.hours[10].representativeTaskId).toBe(1);
         expect(result.tasks[0].startMinute).toBe(1590);
-        expect(result.tasks[3].title).toBe('Summary: noted');
+        expect(result.tasks.some(task => task.kind === 'task' && task.status !== 'x')).toBe(true);
     });
 
     it('keeps unindented multi-paragraph task memos and blank lines up to the next record', () => {
@@ -139,5 +138,52 @@ describe('buildReflectionTimeline', () => {
         expect(result.tasks[0].supplement).toBe('Before example\n~~~txt\n- [x] fake 08:00 - 09:00\n~~~');
         expect(result.tasks[1].supplement).toBe('  - [ ] nested checklist\n    detail');
         expect(result.tasks[1].title).toBe('actual');
+    });
+
+    it('defaults to completed checkbox records while retaining plain bullets and standalone memo prose', () => {
+        const result = buildReflectionTimeline([
+            '- [ ] unchecked 08:00 - 09:00',
+            '- [/] in progress 09:00 - 10:00',
+            '- [x] completed 10:00 - 11:00',
+            '  - [ ] nested checklist stays in original memo',
+            '## Notes', '- ordinary bullet',
+            '## More notes',
+            'standalone memo',
+        ].join('\n'));
+
+        expect(result.tasks.map(task => task.kind)).toEqual(['task', 'task', 'memo']);
+        expect(result.tasks[0].supplement).toContain('- [ ] nested checklist stays in original memo');
+        expect(result.tasks[1].status).not.toBe('x');
+        expect(result.tasks[2].supplement).toBe('standalone memo');
+    });
+
+    it('omits SRS start-to-end/done regions, keeps linked notes outside, and ignores marker examples in fences', () => {
+        const result = buildReflectionTimeline([
+            '- [x] [[Outside SRS]] 08:00 - 09:00',
+            '<!-- llr:srs start -->',
+            '- [x] [[Inside end]] 09:00 - 10:00',
+            '<!-- llr:srs end -->',
+            '- [x] [[Between]] 10:00 - 11:00',
+            'outside batch memo',
+            '<!-- llr:srs start -->',
+            '- [x] [[Inside done]] 11:00 - 12:00',
+            '<!-- llr:srs done -->',
+            '```md', '<!-- llr:srs start -->', '- [x] [[Example]] 12:00 - 13:00', '<!-- llr:srs end -->', '```',
+            '- [x] [[After]] 13:00 - 14:00',
+        ].join('\n'));
+
+        expect(result.tasks.filter(task => task.kind === 'task').map(task => task.title)).toEqual([
+            '[[Outside SRS]]', '[[Between]]', '[[After]]',
+        ]);
+        expect(result.tasks.find(task => task.title === '[[Between]]')?.supplement).toBe('outside batch memo');
+        expect(result.tasks.map(task => task.sourceLine)).toEqual([1, 5, 10, 15]);
+    });
+
+    it('omits an unclosed SRS batch only through end of note', () => {
+        const result = buildReflectionTimeline([
+            '- [x] before 08:00 - 09:00', '<!-- llr:srs start -->',
+            '- [x] inside 09:00 - 10:00', 'memo inside',
+        ].join('\n'));
+        expect(result.tasks.map(task => task.title)).toEqual(['before']);
     });
 });

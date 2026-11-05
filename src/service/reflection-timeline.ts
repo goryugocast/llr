@@ -1,4 +1,9 @@
 import { TaskParser, type ParsedTaskStatus } from './task-parser';
+import { SRS_BATCH_START, SRS_BATCH_END, SRS_BATCH_DONE } from './srs-batch';
+
+/** Internal default reflection policy. Keep this isolated so a future settings
+ * control can select a different policy without changing extraction semantics. */
+const reflectionIncludesTask = (status: ParsedTaskStatus): boolean => status === 'x';
 
 export interface ReflectionTask {
     id: number;
@@ -45,7 +50,7 @@ export interface ReflectionTimeline {
  * The configurable day boundary makes early-morning work part of the preceding day.
  */
 export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): ReflectionTimeline {
-    const lines = markdown.split(/\r?\n/);
+    const lines = excludeSrsBatch(markdown.split(/\r?\n/));
     const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
     const owned = new Set<number>();
     let fence: { character: string; length: number } | null = null;
@@ -164,7 +169,8 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
             startMinute: start,
             endMinute: end,
         };
-    });
+    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status))
+        .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));
     const firstHour = dayBoundaryHour;
@@ -228,6 +234,26 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
         blocks,
         withoutActualInterval: tasks.filter(t => t.startMinute === null || t.endMinute === null || t.endMinute <= t.startMinute).map(t => t.id),
     };
+}
+
+/** Exclude generated SRS batch content while retaining the original line map. */
+function excludeSrsBatch(lines: string[]): string[] {
+    let fence: { character: string; length: number } | null = null;
+    let inSrsBatch = false;
+    return lines.map(line => {
+        const marker = line.match(/^\s*(`{3,}|~{3,})/);
+        if (fence) {
+            if (marker && marker[1][0] === fence.character && marker[1].length >= fence.length && line.trim() === marker[1]) fence = null;
+            return inSrsBatch ? '' : line;
+        }
+        if (marker) {
+            fence = { character: marker[1][0], length: marker[1].length };
+            return inSrsBatch ? '' : line;
+        }
+        if (line.trim() === SRS_BATCH_START) { inSrsBatch = true; return line; }
+        if (inSrsBatch && (line.trim() === SRS_BATCH_END || line.trim() === SRS_BATCH_DONE)) { inSrsBatch = false; return line; }
+        return inSrsBatch ? '' : line;
+    });
 }
 
 function parseClock(value: string): number | null {
