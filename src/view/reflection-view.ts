@@ -25,7 +25,6 @@ export class ReflectionView extends ItemView {
     private visible: DayEntry[] = [];
     private readonly expansion = new ReflectionExpansionState();
     private expandButton!: HTMLButtonElement;
-    private readingList = false;
     private readonly detailSetters = new WeakMap<HTMLDetailsElement, { key: string; setOpen: (open: boolean) => Promise<void> }>();
     private isSettingAllDetails = false;
     private userScrollRevision = 0;
@@ -64,25 +63,6 @@ export class ReflectionView extends ItemView {
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
         const tools = toolbar.createDiv('llr-reflection-tools');
-        const readingButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '一覧表示に切り替え', 'aria-pressed': 'false' } });
-        setIcon(readingButton, 'list');
-        setTooltip(readingButton, '一覧表示に切り替え');
-        readingButton.onclick = () => {
-            const top = this.scroller.getBoundingClientRect().top;
-            const item = Array.from(this.daysEl.querySelectorAll<HTMLElement>('h2[data-anchor], summary[data-anchor], .llr-reflection-record[data-anchor]')).find(el => el.getBoundingClientRect().bottom > top);
-            const anchor = item ? { key: item.dataset.anchor ?? '', offset: item.getBoundingClientRect().top - top, top: this.scroller.scrollTop } : this.captureAnchor();
-            this.readingList = !this.readingList;
-            this.contentEl.toggleClass('is-reading-list', this.readingList);
-            readingButton.setAttribute('aria-pressed', String(this.readingList));
-            const action = this.readingList ? '時間軸表示に切り替え' : '一覧表示に切り替え';
-            readingButton.setAttribute('aria-label', action);
-            setTooltip(readingButton, action);
-            setIcon(readingButton, this.readingList ? 'clock' : 'list');
-            this.restoreAnchor(anchor);
-            this.anchor = this.captureAnchor();
-            this.syncCurrentDay();
-        };
-
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
@@ -455,14 +435,6 @@ export class ReflectionView extends ItemView {
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
         if (isTimed) row.style.minHeight = `calc(${displayDuration / 60} * var(--llr-reflection-hour-height))`;
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
-        const singleTask = block.tasks.length === 1 && block.tasks[0].title === block.title ? block.tasks[0] : null;
-        const firstHour = block.startMinute === null ? null : Math.floor(block.startMinute / 60);
-        const lastHour = firstHour === null ? null : Math.max(firstHour, Math.ceil((block.endMinute ?? block.startMinute ?? 0) / 60) - 1);
-        const timeBand = firstHour === null ? '' : firstHour === lastHour ? `${firstHour % 24}時台` : `${firstHour % 24}〜${(lastHour ?? firstHour) % 24}時台`;
-        const readingTime = singleTask?.actualStart
-            ? singleTask.actualEnd && singleTask.actualEnd !== singleTask.actualStart ? `${singleTask.actualStart}–${singleTask.actualEnd}` : singleTask.actualStart
-            : timeBand;
-
         const makeTicks = () => {
             if (!isTimed || block.startMinute === null) return;
             const start = interval?.startMinute ?? block.startMinute;
@@ -476,7 +448,6 @@ export class ReflectionView extends ItemView {
             }
         };
         if (!block.tasks.length) {
-            row.addClass('is-overview');
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
             overview.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
@@ -488,7 +459,6 @@ export class ReflectionView extends ItemView {
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
         summary.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
-        if (readingTime) summary.createSpan({ cls: 'llr-reflection-reading-time', text: readingTime });
         const name = await this.renderHeading(summary, day, block.title, component);
         summary.setAttribute('aria-label', `${timeLabel} ${name.textContent ?? ''}`.trim());
         if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());

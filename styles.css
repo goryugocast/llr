@@ -719,36 +719,3 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
     .llr-reflection-toolbar { padding: 8px; }
     .llr-reflection-day h2 { padding: 12px 0 8px; }
 }
-
-/* Comparison: read the same groups as a sidebar-style list. */
-.llr-reflection-reading-time { display: none; }
-.llr-reflection.is-reading-list .llr-reflection-time-step,
-.llr-reflection.is-reading-list .llr-reflection-hour-track,
-.llr-reflection.is-reading-list .llr-reflection-hour,
-.llr-reflection.is-reading-list .llr-reflection-row.is-overview { display: none; }
-.llr-reflection.is-reading-list .llr-reflection-row { min-height: 0 !important; margin: 0 0 4px; }
-.llr-reflection.is-reading-list .llr-reflection-row::before,
-.llr-reflection.is-reading-list .llr-reflection-block summary::before { inset: 0; background: transparent; }
-.llr-reflection.is-reading-list .llr-reflection-row.is-collapsed:hover::before,
-.llr-reflection.is-reading-list .llr-reflection-row:not(.is-collapsed) summary:hover::before { background: var(--llr-item-hover); }
-.llr-reflection.is-reading-list .llr-reflection-block-title {
-    display: flex;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 6px;
-    height: auto;
-    min-height: 44px;
-    padding: 10px 12px;
-}
-.llr-reflection.is-reading-list .llr-reflection-reading-time {
-    display: block;
-    color: var(--text-muted);
-    font-family: var(--font-interface);
-    font-size: var(--font-ui-small);
-    line-height: 1.3;
-    font-weight: var(--font-normal);
-    font-variant-numeric: tabular-nums;
-}
-.llr-reflection.is-reading-list .llr-reflection-name > p { white-space: normal; overflow-wrap: anywhere; }
-.llr-reflection.is-reading-list .llr-reflection-records { margin-left: 0; padding: 0 12px 12px; }
-.llr-reflection.is-reading-list .llr-reflection-section-label { margin-left: 12px; }
