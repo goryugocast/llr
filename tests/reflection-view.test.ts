@@ -13,6 +13,7 @@ interface Harness {
     captureAnchor(): Anchor | null; restoreAnchor(anchor: Anchor | null): void;
     extend(direction: number): Promise<void>; refresh(): Promise<void>; jump(date: string): Promise<void>; today(): string;
     dateInput: { value: string; max: string };
+    moveDay(direction: -1 | 1): Promise<void>;
     currentDayLabel: { textContent: string };
     syncCurrentDay(): void;
 }
@@ -56,6 +57,19 @@ function makeView(all: Entry[], shown: Entry[]) {
 }
 
 describe('reflection viewport continuity', () => {
+    it('moves by calendar days across gaps and month boundaries', async () => {
+        const view = makeView([entry(1), entry(3)], [entry(1), entry(3)]);
+        view.jump = vi.fn(() => Promise.resolve());
+        view.dateInput.value = '2026-10-03';
+        await view.moveDay(-1);
+        expect(view.jump).toHaveBeenLastCalledWith('2026-10-02');
+        view.dateInput.value = '2026-11-01';
+        await view.moveDay(-1);
+        expect(view.jump).toHaveBeenLastCalledWith('2026-10-31');
+        view.dateInput.value = '2026-10-31';
+        await view.moveDay(1);
+        expect(view.jump).toHaveBeenLastCalledWith('2026-11-01');
+    });
     it('updates the visible day without replacing a date currently being edited', () => {
         const all = [entry(1), entry(2), entry(3)];
         const view = makeView(all, all);
@@ -67,12 +81,12 @@ describe('reflection viewport continuity', () => {
             view.scroller.scrollTop = 120;
             view.syncCurrentDay();
             expect(view.dateInput.value).toBe('2026-10-02');
-            expect(view.currentDayLabel.textContent).toContain('10月2日');
+            expect(view.currentDayLabel.textContent).toContain('2026/10/2');
             focusedDocument.activeElement = view.dateInput;
             view.dateInput.value = '2026-10-01';
             view.scroller.scrollTop = 220;
             view.syncCurrentDay();
-            expect(view.currentDayLabel.textContent).toContain('10月3日');
+            expect(view.currentDayLabel.textContent).toContain('2026/10/3');
             expect(view.dateInput.value).toBe('2026-10-01');
         } finally { vi.unstubAllGlobals(); }
     });
