@@ -55,6 +55,14 @@
 
 モバイルでは日付から今日のデイリーノートを作成する操作が頻繁に使われているため、現行の日付クリック操作を維持する（今日ならノートを開く・作成する。今日以外の未作成日は通知する）。将来案は「日付を押すとカレンダーを開き、選択日のノートを開く・なければ作成」。カレンダー上でノートの存在有無が分かること、同じ今日の日付を選び直した場合も作成できることが必要。振り返りのカレンダーとは選択後の役割を分ける。現在使うHTMLの `input[type=date]` / `showPicker()` はブラウザ標準で、Obsidian専用カレンダーではない。日ごとのノート存在マーカーを付けるAPIはないため、存在有無を表示できる別のカレンダーUIと、選択日の取得・作成処理が必要になる。参考：[MDN showPicker](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/showPicker)、[date input](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/date)。この案は採用・実装未決。
 
+#### Calendar実装の調査と候補
+
+- Calendarプラグインは、日付ごとのノート索引をUIへ渡し、既存日を `has-note` とメタデータで区別する。日付クリックは既存なら開き、未作成なら `createDailyNote(date)` でテンプレート付き作成後に開く。作成前確認は同プラグインの設定で切り替える。[日付セル](https://github.com/liamcain/obsidian-calendar-ui/blob/master/src/components/Day.svelte)、[クリック処理](https://github.com/liamcain/obsidian-calendar-plugin/blob/master/src/view.ts)、[作成処理](https://github.com/liamcain/obsidian-calendar-plugin/blob/master/src/io/dailyNotes.ts)。
+- カレンダー表示は再利用用の `obsidian-calendar-ui`、ノート取得・作成は `obsidian-daily-notes-interface` に分離されている。UIはMIT（複製時は著作権・ライセンス表示を保持）。LLRでCalendarプラグイン自体を必須にする必要はない。既存UI部品の再利用を先に評価するが、Svelte等の依存、現API、モバイル・キーボード操作との適合は導入前に確認する。[UI部品](https://github.com/liamcain/obsidian-calendar-ui)、[ノート操作部品](https://github.com/liamcain/obsidian-daily-notes-interface)。
+- AI案：既存ノートのある日だけに小さな印を付け、未作成日も選択可能にする。選択日・今日・ノート有無は別の状態として表示する。空の既存ノートも「ある日」と判定し、書字量を存在判定に使わない。振り返りでは選択後に表示だけ移動、サイドバーでは開く・作成するという処理を分ける。未採用。
+- Obsidian標準の「今日のデイリーノートを開く」は未作成なら作る。実行中アプリでもcommand ID `daily-notes` を確認した（今回は実行・作成していない）。標準のフォルダ・日付形式・テンプレートに従わせる今日の導線として利用候補になる。[標準機能](https://help.obsidian.md/plugins/daily-notes)。LLRの現Todayは表示日の移動のみ。Todayを「今日を開く・作成する」操作に変えることも可能だが、画面移動の有無を含めて未決。
+- ブラウザ標準カレンダー内の「今日」は日付選択であり、それ自体にノート作成機能はない。選択後にLLR側で作成することは可能だが、既存・未作成日の印は表示できず、すでに選択中の今日を再選択した場合の `change` イベントにも依存できない。モバイルで確実に一回押して今日を作る導線を担わせるなら、独立して処理を呼べるLLR側のTodayを使う方が適する。
+
 ## 検証範囲
 
 `npm test -- --run` は、メモ抽出・冒頭文除外・未完了/SRS除外・予定と実績の分離・日跨ぎ・元記録の一度だけの所属、展開中も帯内で均等な目盛り座標・2時間ラベル・日界内の概観と元記録の保持・時刻だけの記録による伸長防止、および追加読込/更新/タブ非表示時の位置保持を検証する。位置保持の単体テストは合成した画面寸法を使うため、ObsidianのMarkdown表示を検証したことにはしない。
