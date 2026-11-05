@@ -106,6 +106,27 @@ export function reflectionTimeHeight(minutes: number, pxPerHour = 32): number {
     return Math.max(minutes, 0) * pxPerHour / 60;
 }
 
+/** Return hourly overview tick positions, labeling only even absolute hours. */
+export function reflectionOverviewTicks(
+    startMinute: number,
+    endMinute: number,
+): Array<{ minute: number; fraction: number; label: string }> {
+    if (endMinute <= startMinute) return [];
+
+    const ticks: Array<{ minute: number; fraction: number; label: string }> = [];
+    const firstHour = Math.ceil(startMinute / 60);
+    for (let hour = firstHour; hour * 60 < endMinute; hour++) {
+        const minute = hour * 60;
+        const clockHour = ((hour % 24) + 24) % 24;
+        ticks.push({
+            minute,
+            fraction: (minute - startMinute) / (endMinute - startMinute),
+            label: hour % 2 === 0 ? String(clockHour) : '',
+        });
+    }
+    return ticks;
+}
+
 /** Format the visible clock without adding date qualifiers. */
 export function formatReflectionClock(minute: number): string {
     const clockMinute = ((minute % 1440) + 1440) % 1440;

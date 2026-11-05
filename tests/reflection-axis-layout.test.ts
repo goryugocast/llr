@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReflectionBlock } from '../src/service/reflection-timeline';
-import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionTimeHeight } from '../src/service/reflection-axis-layout';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks, reflectionTimeHeight } from '../src/service/reflection-axis-layout';
 
 const block = (startMinute: number | null, endMinute: number | null, title = 'work'): ReflectionBlock => ({
     id: 0, title, startMinute, endMinute, tasks: [],
@@ -48,6 +48,39 @@ describe('reflection axis layout', () => {
         expect(reflectionTimeHeight(600, 48)).toBe(480);
         expect(reflectionTimeHeight(0)).toBe(0);
         expect(reflectionTimeHeight(-60)).toBe(0);
+    });
+
+    it('keeps every hourly tick evenly spaced and labels only every two hours', () => {
+        const ticks = reflectionOverviewTicks(12 * 60, 15 * 60);
+        expect(ticks).toEqual([
+            { minute: 12 * 60, fraction: 0, label: '12' },
+            { minute: 13 * 60, fraction: 1 / 3, label: '' },
+            { minute: 14 * 60, fraction: 2 / 3, label: '14' },
+        ]);
+
+        // The same fractions remain one-hour apart for any expanded block height.
+        for (const height of [32, 96, 240]) {
+            const positions = ticks.map(tick => tick.fraction * height);
+            expect(positions[1] - positions[0]).toBeCloseTo(height / 3);
+            expect(positions[2] - positions[1]).toBeCloseTo(height / 3);
+        }
+    });
+
+    it('labels even absolute hours across midnight and omits the end boundary', () => {
+        expect(reflectionOverviewTicks(23 * 60, 27 * 60)).toEqual([
+            { minute: 23 * 60, fraction: 0, label: '' },
+            { minute: 24 * 60, fraction: 1 / 4, label: '0' },
+            { minute: 25 * 60, fraction: 1 / 2, label: '' },
+            { minute: 26 * 60, fraction: 3 / 4, label: '2' },
+        ]);
+    });
+
+    it('starts at the next whole hour and returns no ticks for an empty range', () => {
+        expect(reflectionOverviewTicks(12 * 60 + 15, 14 * 60)).toEqual([
+            { minute: 13 * 60, fraction: 45 / 105, label: '' },
+        ]);
+        expect(reflectionOverviewTicks(14 * 60, 14 * 60)).toEqual([]);
+        expect(reflectionOverviewTicks(15 * 60, 14 * 60)).toEqual([]);
     });
 
     it('fills elapsed time with gaps while retaining activity positions', () => {

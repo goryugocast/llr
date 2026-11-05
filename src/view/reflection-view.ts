@@ -1,5 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
-import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionTimeHeight } from '../service/reflection-axis-layout';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks, reflectionTimeHeight } from '../service/reflection-axis-layout';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -355,7 +355,7 @@ export class ReflectionView extends ItemView {
             const step = parent.createDiv('llr-reflection-time-step');
             step.style.height = `${reflectionTimeHeight(next - cursor, this.hourHeight())}px`;
             step.dataset.anchor = `${day.date}:time:${cursor}`;
-            if (cursor % 60 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: formatReflectionClock(cursor) });
+            if (cursor % 120 === 0) step.createSpan({ cls: 'llr-reflection-hour', text: String(Math.floor(cursor / 60) % 24) });
             cursor = next;
         }
     }
@@ -389,26 +389,35 @@ export class ReflectionView extends ItemView {
         row.toggleClass('is-time-band', isTimed);
         row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
-        row.style.setProperty('--llr-reflection-header-height', `${isTimed ? Math.max(this.hourHeight(), reflectionTimeHeight(Math.min(displayDuration, 60), this.hourHeight())) : this.hourHeight()}px`);
+        row.style.setProperty('--llr-reflection-header-height', `${this.hourHeight()}px`);
+        if (isTimed) row.style.minHeight = `${reflectionTimeHeight(displayDuration, this.hourHeight())}px`;
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
-        const tail = () => {
-            if (isTimed && block.startMinute !== null && block.endMinute !== null) {
-                this.makeTimeSpace(row, day, block.startMinute + 60, interval?.endMinute ?? block.endMinute);
+        const makeTicks = () => {
+            if (!isTimed || block.startMinute === null) return;
+            const start = interval?.startMinute ?? block.startMinute;
+            const end = interval?.endMinute ?? block.endMinute ?? start;
+            const track = row.createDiv({ cls: 'llr-reflection-hour-track', attr: { 'aria-hidden': 'true' } });
+            for (const tick of reflectionOverviewTicks(start, end)) {
+                const mark = track.createSpan({ cls: 'llr-reflection-hour llr-reflection-axis-tick', text: tick.label });
+                mark.dataset.minute = String(tick.minute);
+                mark.dataset.anchor = `${day.date}:time:${tick.minute}`;
+                mark.style.top = `calc(${tick.fraction * 100}% + ${this.hourHeight() / 2}px)`;
             }
         };
         if (!block.tasks.length) {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
-            overview.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
+            overview.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
             await this.renderHeading(overview, day, block.title, component);
-            tail();
+            makeTicks();
             return;
         }
         const details = row.createEl('details', { cls: 'llr-reflection-block' });
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
-        summary.createSpan({ cls: 'llr-reflection-hour', text: timeLabel });
+        summary.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
         const name = await this.renderHeading(summary, day, block.title, component);
+        summary.setAttribute('aria-label', `${timeLabel} ${name.textContent ?? ''}`.trim());
         if ((name.textContent?.length ?? 0) > 28) setTooltip(summary, `${timeLabel} ${name.textContent ?? ''}`.trim());
         const records = details.createDiv('llr-reflection-records');
         let bodyComponent: Component | null = null;
@@ -435,7 +444,7 @@ export class ReflectionView extends ItemView {
             await fill();
         } });
         await fill();
-        tail();
+        makeTicks();
         row.onclick = event => {
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('summary, a, button, input')) return;
