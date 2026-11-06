@@ -19,6 +19,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check README release status
+        run: |
+          if grep -q 'LLR_UNRELEASED_README' README.md; then
+            echo "::error::README still marks features as planned for the next release. Review their release status and remove the notice and marker before publishing."
+            exit 1
+          fi
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

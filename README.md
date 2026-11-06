@@ -161,11 +161,12 @@ Details: [SRS spec](https://github.com/goryugocast/llr/blob/main/docs/specs/SRS%
 
 ## LLR View
 
+<!-- LLR_UNRELEASED_README -->
+> **Planned for the next release / 次回リリース予定:** The unified task/timeline view described below is available on `main`, but is not included in the current tagged release (0.4.2).
+
 The LLR pane combines the existing task view and a read-only timeline. Use the clock/list button in the header to switch between them. The task view keeps its existing task interactions and estimate summaries; it does not show memo items.
 
 The timeline uses a consistent hourly scale to show when completed activities happened, and lets you scroll across multiple days. Click outside a linked title to expand the activity and read its records and inline notes; the activity grows to make room for the text. The header control expands or collapses all activities. Clicking a linked title opens its note without toggling the activity. The view reads daily notes without changing them or storing a separate database.
-
-This feature is available on `main` but is not yet included in a tagged release. The latest tagged release remains 0.4.2.
 
 ### Task view
 
