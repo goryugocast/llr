@@ -44,25 +44,42 @@ export class LlrView extends ItemView {
             if (this.closed) return;
             const previous = this.mode === 'tasks' ? this.summary : this.timeline;
             const selectedDate = date ?? previous?.getDisplayDate();
-            if (mode === 'timeline' && !this.timeline) {
-                this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks')));
-                this.contentEl.append(this.timeline.contentEl);
-                this.timeline.containerEl.remove();
-                this.summary.contentEl.hidden = true;
-                await this.timeline.onOpen();
+            let created: ReflectionView | null = null;
+            try {
+                if (mode === 'timeline' && !this.timeline) {
+                    this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks')));
+                    created = this.timeline;
+                    this.contentEl.append(this.timeline.contentEl);
+                    this.timeline.containerEl.remove();
+                    this.summary.contentEl.hidden = true;
+                    await this.timeline.onOpen();
+                }
+                const next = mode === 'tasks' ? this.summary : this.timeline;
+                if (!next) return;
+                this.summary.contentEl.hidden = mode !== 'tasks';
+                if (this.timeline) this.timeline.contentEl.hidden = mode !== 'timeline';
+                // Never reset a renderer already displaying this date: its scroll and
+                // accordion state belong to that mode, not to the switch itself.
+                if (selectedDate && selectedDate !== next.getDisplayDate()) await next.setDisplayDate(selectedDate);
+                if (this.closed) return;
+                this.mode = mode;
+                this.contentEl.dataset.mode = mode;
+                if (focusSwitch) next.contentEl.querySelector<HTMLButtonElement>('.llr-display-switch')?.focus({ preventScroll: true });
+            } catch (error) {
+                if (created) {
+                    await created.onClose();
+                    this.removeChild(created);
+                    created.contentEl.remove();
+                    this.timeline = null;
+                }
+                // A failed read must leave the last successful mode usable.
+                this.summary.contentEl.hidden = this.mode !== 'tasks';
+                if (this.timeline) this.timeline.contentEl.hidden = this.mode !== 'timeline';
+                if (focusSwitch) previous?.contentEl.querySelector<HTMLButtonElement>('.llr-display-switch')?.focus({ preventScroll: true });
+                throw error;
             }
-            const next = mode === 'tasks' ? this.summary : this.timeline;
-            if (!next) return;
-            this.summary.contentEl.hidden = mode !== 'tasks';
-            if (this.timeline) this.timeline.contentEl.hidden = mode !== 'timeline';
-            // Never reset a renderer already displaying this date: its scroll and
-            // accordion state belong to that mode, not to the switch itself.
-            if (selectedDate && selectedDate !== next.getDisplayDate()) await next.setDisplayDate(selectedDate);
-            if (this.closed) return;
-            this.mode = mode;
-            this.contentEl.dataset.mode = mode;
-            if (focusSwitch) next.contentEl.querySelector<HTMLButtonElement>('.llr-display-switch')?.focus({ preventScroll: true });
         });
+        // Report errors to the caller without poisoning subsequent switches.
         this.pending = work.catch(() => {});
         return work;
     }
@@ -82,7 +99,7 @@ export class LlrView extends ItemView {
     onPaneMenu(menu: Menu, source: string): void {
         super.onPaneMenu(menu, source);
         for (const [mode, label] of [['tasks', 'タスクを表示'], ['timeline', 'タイムラインを表示']] as const) {
-            menu.addItem(item => item.setTitle(label).setChecked(this.mode === mode).onClick(() => this.showMode(mode)));
+            menu.addItem(item => item.setTitle(label).setChecked(this.mode === mode).onClick(() => this.switchFromButton(mode)));
         }
     }
 

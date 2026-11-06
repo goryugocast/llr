@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('obsidian', async () => ({ ItemView: class {}, MarkdownView: class {}, Notice: class {}, TFile: class {}, moment: (await import('moment')).default }));
 import { ReflectionView } from '../src/view/reflection-view';
@@ -7,7 +7,7 @@ type Entry = { date: string; file: { path: string } | null };
 type Anchor = { key: string; offset: number; top: number; day?: string; dayOffset?: number };
 interface Harness {
     anchor: Anchor | null; index: Entry[]; visible: Entry[]; sections: Map<string, FakeSection>;
-    scroller: { scrollTop: number; clientHeight?: number; getBoundingClientRect(): { top: number } };
+    scroller: { scrollTop: number; clientHeight?: number; style: { setProperty(name: string, value: string): void }; getBoundingClientRect(): { top: number } };
     daysEl: FakeDays; closed: boolean; dirty: Set<string>;
     rebuildIndex(): void; makeDay(day: Entry): Promise<FakeSection>; updateEdges(): void; releaseDay(section: FakeSection): void; syncExpandButton(): void;
     captureAnchor(): Anchor | null; restoreAnchor(anchor: Anchor | null): void;
@@ -16,6 +16,11 @@ interface Harness {
     moveDay(direction: -1 | 1): Promise<void>;
     currentDayLabel: { textContent: string };
     syncCurrentDay(): void;
+    pending: Promise<void>;
+    enqueue(work: () => Promise<void>): Promise<void>;
+    setDisplayDate(date: string): Promise<void>;
+    pendingDisplayDate: string | null;
+    restorePendingDate(): void;
 }
 class FakeDays {
     items: FakeSection[] = [];
@@ -43,9 +48,11 @@ function makeView(all: Entry[], shown: Entry[]) {
     view.dateInput = { value: '', max: '' };
     view.today = () => '2026-10-31';
     view.anchor = null;
+    view.pending = Promise.resolve();
+    view.pendingDisplayDate = null;
     view.index = [...all]; view.visible = [...shown]; view.closed = false;
     view.sections = new Map(); view.dirty = new Set();
-    view.scroller = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0 }) };
+    view.scroller = { scrollTop: 0, style: { setProperty: vi.fn() }, getBoundingClientRect: () => ({ top: 0 }) };
     view.daysEl = new FakeDays(view);
     for (const day of shown) { const section = new FakeSection(day.date, view.daysEl); view.sections.set(day.date, section); view.daysEl.items.push(section); }
     view.rebuildIndex = () => {};
@@ -57,6 +64,86 @@ function makeView(all: Entry[], shown: Entry[]) {
 }
 
 describe('reflection viewport continuity', () => {
+    beforeEach(() => { vi.stubGlobal('getComputedStyle', () => ({ overflowY: 'auto' })); });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('keeps the restored date pending until plugin CSS makes the view scrollable', async () => {
+        const all = [entry(1), entry(10), entry(20), entry(31)];
+        const view = makeView(all, all.slice(0, 2));
+        view.scroller.clientHeight = 500;
+        vi.stubGlobal('getComputedStyle', () => ({ overflowY: 'visible' }));
+        await view.setDisplayDate('2026-10-20');
+        expect(view.pendingDisplayDate).toBe('2026-10-20');
+        expect(view.dateInput.value).toBe('2026-10-20');
+        expect(view.scroller.scrollTop).toBe(0);
+        vi.stubGlobal('getComputedStyle', () => ({ overflowY: 'auto' }));
+        view.restorePendingDate();
+        expect(view.pendingDisplayDate).toBeNull();
+        expect(view.sections.get('2026-10-20')?.getBoundingClientRect().top).toBe(12);
+    });
+
+    it('defers a restored date until the hidden pane has measurable geometry', async () => {
+        const all = [entry(1), entry(10), entry(20), entry(31)];
+        const view = makeView(all, all.slice(0, 2));
+        view.scroller.clientHeight = 0;
+        await view.setDisplayDate('2026-10-20');
+        expect(view.dateInput.value).toBe('2026-10-20');
+        expect(view.pendingDisplayDate).toBe('2026-10-20');
+        expect(view.scroller.scrollTop).toBe(0);
+        expect(view.anchor).toBeNull();
+        view.restorePendingDate();
+        expect(view.pendingDisplayDate).toBe('2026-10-20');
+        view.scroller.clientHeight = 500;
+        view.restorePendingDate();
+        expect(view.pendingDisplayDate).toBeNull();
+        expect(view.scroller.scrollTop).toBe(188);
+        expect(view.scroller.style.setProperty).toHaveBeenCalledWith('--llr-reflection-viewport-height', '500px');
+        expect(view.sections.get('2026-10-20')?.getBoundingClientRect().top).toBe(12);
+    });
+
+    it('serializes date navigation with later background work until rendering finishes', async () => {
+        const view = makeView([entry(1)], [entry(1)]);
+        view.dateInput.value = '2026-10-01';
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const visited: string[] = [];
+        view.jump = async date => { await gate; view.dateInput.value = date; };
+        const navigation = view.setDisplayDate('2026-10-20');
+        await Promise.resolve();
+        const background = view.enqueue(() => { visited.push(view.dateInput.value); return Promise.resolve(); });
+        await Promise.resolve();
+        expect(visited).toEqual([]);
+        release();
+        await Promise.all([navigation, background]);
+        expect(visited).toEqual(['2026-10-20']);
+    });
+
+    it('waits for initial work even when selecting the already displayed date', async () => {
+        const view = makeView([entry(1)], [entry(1)]);
+        view.dateInput.value = '2026-10-01';
+        let release!: () => void;
+        view.pending = new Promise<void>(resolve => { release = resolve; });
+        const jump = vi.spyOn(view, 'jump');
+        let finished = false;
+        const navigation = view.setDisplayDate('2026-10-01').then(() => { finished = true; });
+        await Promise.resolve();
+        expect(finished).toBe(false);
+        release(); await navigation;
+        expect(jump).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed navigation to its caller and accepts a subsequent retry', async () => {
+        const view = makeView([entry(1)], [entry(1)]);
+        view.dateInput.value = '2026-10-01';
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        view.jump = vi.fn().mockRejectedValueOnce(new Error('vault unavailable')).mockImplementation(async (date: string) => { view.dateInput.value = date; });
+        try {
+            await expect(view.setDisplayDate('2026-10-20')).rejects.toThrow('vault unavailable');
+            await view.setDisplayDate('2026-10-20');
+            expect(view.dateInput.value).toBe('2026-10-20');
+        } finally { error.mockRestore(); }
+    });
+
     it('moves by calendar days across gaps and month boundaries', async () => {
         const view = makeView([entry(1), entry(3)], [entry(1), entry(3)]);
         view.jump = vi.fn(() => Promise.resolve());

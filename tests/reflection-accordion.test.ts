@@ -83,12 +83,12 @@ const block = (start = 720, title = 'Lunch'): ReflectionBlock => ({
 interface Harness {
     contentEl: HTMLElement; scroller: HTMLElement; daysEl: HTMLElement; expandButton: HTMLButtonElement;
     pending: Promise<void>; expansion: ReflectionExpansionState; userScrollRevision: number;
-    displayMode: 'tasks' | 'timeline'; dateInput: HTMLInputElement;
+    dateInput: HTMLInputElement;
     visible: Day[]; sections: Map<string, HTMLElement>;
     app: { vault: { cachedRead: ReturnType<typeof vi.fn> }; workspace: { openLinkText: ReturnType<typeof vi.fn> } };
     makeBlock(parent: HTMLElement, day: Day, block: ReflectionBlock, occurrence: number, component: Component): Promise<void>;
     makeDay(day: Day): Promise<HTMLElement>;
-    setAllDetails(open: boolean): Promise<void>; setDisplayMode(mode: 'tasks' | 'timeline'): Promise<void>;
+    setAllDetails(open: boolean): Promise<void>;
     captureAnchor(): null; restoreAnchor(anchor: unknown): void;
     updateEdges(): void; jump(date: string): Promise<void>; today(): string;
     renderMarkdown(host: HTMLElement, markdown: string, day: Day, component: Component): Promise<void>;
@@ -213,25 +213,6 @@ describe('reflection accordion source DOM behavior', () => {
         expect(view.expandButton.getAttribute('aria-label')).toBe('すべて折りたたむ');
         await view.setAllDetails(false);
         expect(Array.from(view.daysEl.querySelectorAll('details')).every(item => !item.open)).toBe(true);
-    });
-    it('preserves timeline expansion across task/timeline round trips without task memo controls', async () => {
-        const { view } = await setup();
-        view.visible = [day];
-        view.sections = new Map();
-        view.updateEdges = () => {};
-        view.jump = () => Promise.resolve();
-        view.app.vault.cachedRead.mockResolvedValue('- [x] Lunch 12:00 - 14:18 (138m)\nMemo text');
-        const sourceDay = { ...day, file: { path: '2026-11-05.md' } } as unknown as Day;
-        view.visible = [sourceDay];
-        await view.setAllDetails(true);
-        await view.setDisplayMode('tasks');
-        expect(view.daysEl.querySelector('details')).toBeNull();
-        expect(view.daysEl.textContent).not.toContain('Memo text');
-        expect(view.expandButton.hidden).toBe(true);
-        await view.setDisplayMode('timeline');
-        expect(view.daysEl.querySelector('details')?.open).toBe(true);
-        expect(view.daysEl.textContent).toContain('Memo text');
-        expect(view.expandButton.hidden).toBe(false);
     });
     it('honors manual scroll intent during async Markdown rendering', async () => {
         const { view, summary } = await setup();

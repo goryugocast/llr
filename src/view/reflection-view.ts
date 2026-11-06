@@ -1,6 +1,5 @@
-import { Component, ItemView, MarkdownRenderer, Menu, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
+import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
-import { renderReflectionTask } from './reflection-task-list';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -25,7 +24,6 @@ export class ReflectionView extends ItemView {
     private index: DayEntry[] = [];
     private visible: DayEntry[] = [];
     private expansion = new ReflectionExpansionState();
-    private displayMode: 'timeline' | 'tasks' = 'timeline';
     private expandButton!: HTMLButtonElement;
     private readonly detailSetters = new WeakMap<HTMLDetailsElement, { key: string; setOpen: (open: boolean) => Promise<void> }>();
     private isSettingAllDetails = false;
@@ -35,6 +33,7 @@ export class ReflectionView extends ItemView {
     private timer: ReturnType<typeof setTimeout> | null = null;
     private dirty = new Set<string>();
     private anchor: Anchor | null = null;
+    private pendingDisplayDate: string | null = null;
     private readonly sections = new Map<string, HTMLElement>();
     private readonly extending = new Set<number>();
     private readonly dayComponents = new WeakMap<HTMLElement, Component>();
@@ -46,20 +45,10 @@ export class ReflectionView extends ItemView {
 
     getDisplayDate(): string { return this.dateInput?.value ?? this.today(); }
 
-    async setDisplayDate(date: string): Promise<void> {
-        await this.pending;
-        if (date !== this.getDisplayDate()) await this.jump(date);
-    }
-
-    onPaneMenu(menu: Menu, source: string): void {
-        super.onPaneMenu(menu, source);
-        // Keep the provisional display switch in the existing pane menu. A new
-        // permanent tab row (or wide-view entry) has not been approved.
-        for (const [mode, label, icon] of [['tasks', 'タスク', 'list-checks'], ['timeline', 'タイムライン', 'history']] as const) {
-            menu.addItem(item => item.setTitle(label).setIcon(icon)
-                .setChecked(this.displayMode === mode)
-                .onClick(() => this.enqueue(() => this.setDisplayMode(mode))));
-        }
+    setDisplayDate(date: string): Promise<void> {
+        return this.enqueue(async () => {
+            if (date !== this.getDisplayDate()) await this.jump(date);
+        });
     }
 
     onOpen(): Promise<void> {
@@ -95,7 +84,7 @@ export class ReflectionView extends ItemView {
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
             this.currentDayLabel.focus({ preventScroll: true });
-            this.enqueue(() => this.jump(date));
+            void this.enqueue(() => this.jump(date));
         };
         this.expandButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
         setIcon(this.expandButton, 'move-vertical');
@@ -110,7 +99,10 @@ export class ReflectionView extends ItemView {
         }
         this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
         const viewportObserver = new ResizeObserver(() => {
-            if (this.scroller.clientHeight) this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
+            if (this.scroller.clientHeight) {
+                this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
+                this.restorePendingDate();
+            }
         });
         viewportObserver.observe(this.scroller);
         this.register(() => viewportObserver.disconnect());
@@ -152,8 +144,7 @@ export class ReflectionView extends ItemView {
                 this.scheduleRefresh();
             }
         }));
-        this.enqueue(() => this.jump(this.today()));
-        return Promise.resolve();
+        return this.enqueue(() => this.jump(this.today()));
     }
 
     onClose(): Promise<void> {
@@ -166,10 +157,12 @@ export class ReflectionView extends ItemView {
     private today(): string { return moment().subtract(3, 'hours').format('YYYY-MM-DD'); }
 
     private enqueue(work: () => Promise<void>) {
-        this.pending = this.pending.then(async () => { if (!this.closed) await work(); }).catch(error => {
+        const operation = this.pending.then(async () => { if (!this.closed) await work(); });
+        this.pending = operation.catch(error => {
             console.error('[LLR] Reflection read failed', error);
             if (!this.closed) new Notice('振り返りを読み込めませんでした。再度開いてください。');
         });
+        return operation;
     }
 
     private rebuildIndex() {
@@ -186,25 +179,6 @@ export class ReflectionView extends ItemView {
         }
         if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
         this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
-    }
-
-    private async setDisplayMode(mode: 'timeline' | 'tasks') {
-        if (mode === this.displayMode) return;
-        const date = this.dateInput.value;
-        const oldMode = this.displayMode;
-        this.displayMode = mode;
-        let sections: HTMLElement[];
-        try { sections = await Promise.all(this.visible.map(day => this.makeDay(day))); }
-        catch (error) { this.displayMode = oldMode; throw error; }
-        if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
-        this.sections.forEach(section => this.releaseDay(section));
-        this.sections.clear();
-        this.daysEl.empty();
-        sections.forEach((section, i) => { this.sections.set(this.visible[i].date, section); this.daysEl.append(section); });
-        this.contentEl.toggleClass('is-task-view', mode === 'tasks');
-        this.updateEdges();
-        await this.jump(date);
-        this.syncExpandButton();
     }
 
     private async moveDay(direction: -1 | 1) {
@@ -236,16 +210,39 @@ export class ReflectionView extends ItemView {
         }
         this.dateInput.value = date;
         this.dateInput.max = this.today();
-        const section = this.sections.get(date);
-        if (section) this.scroller.scrollTop += section.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
-        this.anchor = this.captureAnchor();
+        // Saved workspace state can arrive before the leaf is shown. Zero-sized
+        // geometry cannot position a day; retain the requested date until visible.
+        this.pendingDisplayDate = this.scrollToDate(date) ? null : date;
+        this.anchor = this.pendingDisplayDate ? null : this.captureAnchor();
         this.syncExpandButton();
+    }
+
+    private scrollToDate(date: string): boolean {
+        if (this.scroller.clientHeight === 0) return false;
+        // During plugin reload, saved views can open before the plugin CSS has
+        // loaded. A natural-height div reports a size but cannot scroll yet.
+        if (!['auto', 'scroll', 'overlay'].includes(getComputedStyle(this.scroller).overflowY)) return false;
+        // ResizeObserver may not have run yet during workspace restoration.
+        // Size the final day before scrolling so the browser cannot clamp the
+        // requested date back into the preceding day.
+        if (this.scroller.clientHeight) this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
+        const section = this.sections.get(date);
+        if (!section) return false;
+        this.scroller.scrollTop += section.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - 12;
+        return true;
+    }
+
+    private restorePendingDate(): void {
+        if (!this.pendingDisplayDate || !this.scrollToDate(this.pendingDisplayDate)) return;
+        this.pendingDisplayDate = null;
+        this.anchor = this.captureAnchor();
+        this.syncCurrentDay();
     }
 
     private requestExtend(direction: -1 | 1) {
         if (this.extending.has(direction)) return;
         this.extending.add(direction);
-        this.enqueue(async () => {
+        void this.enqueue(async () => {
             try { await this.extend(direction); } finally { this.extending.delete(direction); }
         });
     }
@@ -299,7 +296,7 @@ export class ReflectionView extends ItemView {
         if (this.timer) clearTimeout(this.timer);
         this.timer = setTimeout(() => {
             this.timer = null;
-            this.enqueue(() => this.refresh());
+            void this.enqueue(() => this.refresh());
         }, 500);
     }
 
@@ -363,21 +360,6 @@ export class ReflectionView extends ItemView {
         if (this.closed) return section;
         const component = this.addChild(new Component());
         this.dayComponents.set(section, component);
-        if (this.displayMode === 'tasks') {
-            const list = section.createDiv('llr-reflection-tasks');
-            const occurrences = new Map<string, number>();
-            for (const task of timeline.tasks.filter(task => task.kind === 'task')) {
-                const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
-                const occurrence = occurrences.get(signature) ?? 0;
-                occurrences.set(signature, occurrence + 1);
-                await renderReflectionTask(list, day, task, occurrence, component, {
-                    renderMarkdown: (el, markdown, child) => this.renderMarkdown(el, markdown, day, child),
-                });
-            }
-            if (!list.childElementCount && timeline.tasks.length) section.createEl('p', { text: 'タスクの記録がありません。', cls: 'llr-reflection-empty' });
-            return section;
-        }
-
         const blocks = reflectionDisplayBlocks(timeline.blocks);
         const layout = buildReflectionAxisLayout(blocks);
         const axis = section.createDiv('llr-reflection-axis');
@@ -453,7 +435,7 @@ export class ReflectionView extends ItemView {
     private syncCurrentDay() {
         if (!this.currentDayLabel || !this.scroller.clientHeight) return;
         const top = this.scroller.getBoundingClientRect().top;
-        const day = this.visible.find(entry => {
+        const day = this.pendingDisplayDate ? this.visible.find(entry => entry.date === this.pendingDisplayDate) : this.visible.find(entry => {
             const rect = this.sections.get(entry.date)?.getBoundingClientRect();
             return rect && rect.bottom > top + 24;
         });
@@ -565,7 +547,7 @@ export class ReflectionView extends ItemView {
         summary.onclick = event => {
             if (event.target instanceof Element && event.target.closest('a')) return;
             event.preventDefault();
-            this.enqueue(async () => {
+            void this.enqueue(async () => {
                 let anchor = this.captureAnchor();
                 if (anchor && Array.from(records.querySelectorAll<HTMLElement>('[data-anchor]')).some(el => el.dataset.anchor === anchor?.key)) {
                     anchor = { key, offset: summary.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top, top: this.scroller.scrollTop };
@@ -591,7 +573,6 @@ export class ReflectionView extends ItemView {
     private syncExpandButton() {
         this.syncCurrentDay();
         if (!this.expandButton) return;
-        this.expandButton.hidden = this.displayMode === 'tasks';
         const keys = this.getDetailKeys();
         this.expandButton.disabled = this.isSettingAllDetails || keys.length === 0;
         const allOpen = keys.length > 0 && !this.expansion.shouldOpenAll(keys);

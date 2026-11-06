@@ -11,6 +11,7 @@ import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './ser
 import { SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
 import { LlrView, type LlrDisplayMode } from './view/llr-view';
 import { ReflectionView, VIEW_TYPE_REFLECTION } from './view/reflection-view';
+import { migrateLlrViews } from './view/migrate-llr-views';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
 import { requestRefreshIfSupported } from './view/refreshable-view';
@@ -175,7 +176,7 @@ export default class LlrPlugin extends Plugin {
         );
         this.app.workspace.onLayoutReady(() => {
             this.dailyAutoInsert.tryStartup();
-            const migrate = window.setTimeout(() => { void this.migrateReflectionViews(); }, 0);
+            const migrate = window.setTimeout(() => { void migrateLlrViews(this.app.workspace); }, 0);
             this.register(() => window.clearTimeout(migrate));
         });
         // Checkbox override + long-press support
@@ -679,36 +680,6 @@ export default class LlrPlugin extends Plugin {
 
     private async activateReflectionView() {
         await this.activateView('timeline');
-    }
-
-    /** Keep saved legacy tabs usable, merging duplicate sidebar entries only. */
-    private async migrateReflectionViews() {
-        const { workspace } = this.app;
-        for (const old of workspace.getLeavesOfType(VIEW_TYPE_REFLECTION)) {
-            const existing = workspace.getLeavesOfType(VIEW_TYPE_SUMMARY).find(leaf =>
-                leaf.getRoot() === old.getRoot() && old.getRoot() !== workspace.rootSplit);
-            if (existing) {
-                await existing.loadIfDeferred();
-                if (existing.view instanceof LlrView) await existing.view.showMode('timeline');
-                old.detach();
-                await workspace.revealLeaf(existing);
-            } else {
-                await old.setViewState({ type: VIEW_TYPE_SUMMARY, state: { displayMode: 'timeline' } });
-            }
-        }
-        // Reload can restore saved leaves after the legacy conversion starts.
-        // A sidebar has one LLR entry; independent central panes remain valid.
-        const sidebar = new Map<ReturnType<WorkspaceLeaf['getRoot']>, WorkspaceLeaf>();
-        for (const leaf of workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)) {
-            const root = leaf.getRoot();
-            if (root === workspace.rootSplit) continue;
-            const first = sidebar.get(root);
-            if (!first) { sidebar.set(root, leaf); continue; }
-            const keep = leaf.view.containerEl.isShown() ? leaf : first;
-            const duplicate = keep === leaf ? first : leaf;
-            sidebar.set(root, keep);
-            duplicate.detach();
-        }
     }
 
     private async activateView(mode: LlrDisplayMode = 'tasks') {

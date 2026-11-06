@@ -11,7 +11,7 @@ const renderer = vi.hoisted(() => {
         openCount = 0;
         closeCount = 0;
         refresh = vi.fn(async () => {});
-        setDate = vi.fn(async (date: string) => { this.date = date; });
+        setDate = vi.fn(async (date: string) => { this.date = date; this.scrollTop = 0; });
         constructor(leaf: { containerEl: HTMLElement }) {
             this.containerEl = document.createElement('div');
             this.containerEl.className = 'workspace-leaf-content';
@@ -163,7 +163,8 @@ describe('unified LLR view', () => {
 
         await view.showMode('tasks');
         expect(view.summary.date).toBe('2026-11-06');
-        expect(view.summary.scrollTop).toBe(140);
+        // A different day starts at its beginning, as the real SummaryView does.
+        expect(view.summary.scrollTop).toBe(0);
         expect(timeline.scrollTop).toBe(220);
 
         await view.showMode('timeline');
@@ -176,6 +177,52 @@ describe('unified LLR view', () => {
         await view.showMode('timeline');
         expect(timeline.date).toBe('2026-11-07');
         expect(timeline.setDate).toHaveBeenCalledWith('2026-11-07');
+    });
+
+    it('preserves each scroll position on a same-day round trip', async () => {
+        const { view } = setup();
+        await view.onOpen();
+        view.summary.scrollTop = 140;
+        await view.showMode('timeline');
+        const timeline = view.timeline!;
+        timeline.scrollTop = 220;
+        await view.showMode('tasks');
+        expect(view.summary.scrollTop).toBe(140);
+        await view.showMode('timeline');
+        expect(timeline.scrollTop).toBe(220);
+    });
+
+    it('restores the previous mode after a failed switch and allows retry', async () => {
+        const { view } = setup();
+        await view.onOpen();
+        await view.showMode('timeline');
+        await view.showMode('tasks');
+        view.summary.date = '2026-11-06';
+        view.timeline!.setDate.mockRejectedValueOnce(new Error('read failed'));
+        await expect(view.showMode('timeline')).rejects.toThrow('read failed');
+        expect(view.mode).toBe('tasks');
+        expect(view.summary.contentEl.hidden).toBe(false);
+        expect(view.timeline!.contentEl.hidden).toBe(true);
+        await view.showMode('timeline');
+        expect(view.mode).toBe('timeline');
+        expect(view.timeline!.date).toBe('2026-11-06');
+    });
+
+    it('releases an unsuccessfully initialized timeline before a later retry', async () => {
+        const { view } = setup();
+        await view.onOpen();
+        const open = vi.spyOn(renderer.MockView.prototype, 'onOpen').mockRejectedValueOnce(new Error('open failed'));
+        try {
+            await expect(view.showMode('timeline')).rejects.toThrow('open failed');
+            const failed = renderer.timelineInstances[0].view;
+            expect(failed.closeCount).toBe(1);
+            expect(failed.contentEl.isConnected).toBe(false);
+            expect(view.timeline).toBeNull();
+            expect(view.summary.contentEl.hidden).toBe(false);
+            await view.showMode('timeline');
+            expect(renderer.timelineInstances).toHaveLength(2);
+            expect(view.mode).toBe('timeline');
+        } finally { open.mockRestore(); }
     });
 
     it('serializes quick requests and leaves focus on the switch control', async () => {

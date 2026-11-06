@@ -727,15 +727,10 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
     .llr-reflection-day h2 { padding: 12px 0 8px; }
 }
 
-/* Task rows reuse sidebar typography and the fixed 120-minute duration bar. */
-.llr-reflection-tasks { font-size: 17px; }
-.llr-reflection-task-entry { margin: 0; padding: 0; border: 0; background: transparent; }
-.llr-reflection-task-heading, .llr-reflection-task-heading .llr-row-top { cursor: default; }
-.llr-reflection-task-heading .llr-task-name > p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* One LLR pane: the existing task body stays intact; both modes share action slots. */
 .llr-unified-view { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; container-type: inline-size; }
-.llr-unified-view > .view-content { flex: 1; min-width: 0; min-height: 0; width: 100%; }
+/* Avoid applying native ItemView padding again inside the host. */
+.llr-unified-view > .view-content { flex: 1; min-width: 0; min-height: 0; width: 100%; padding: 0 !important; }
 .llr-unified-view > .view-content[hidden] { display: none !important; }
 .llr-unified-date-nav, .llr-unified-timeline .llr-reflection-toolbar {
     display: grid; grid-template-columns: minmax(max-content, 1fr) 110px 64px;
@@ -775,5 +770,3 @@ button.llr-display-switch:focus-visible { outline: 2px solid var(--interactive-a
 }
 .is-mobile .llr-unified-date-nav .llr-date-label, .is-mobile .llr-unified-timeline button.llr-reflection-date-label { font-size: 23px; }
 .is-mobile .llr-unified-timeline .llr-reflection-date-weekday { font-size: 15px; }
-/* Native ItemView content padding must not be applied again inside the host. */
-.llr-unified-view > .view-content { padding: 0 !important; }

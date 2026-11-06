@@ -31,8 +31,9 @@ export class SummaryView extends ItemView {
     private currentDate: moment.Moment;
     private targetFile: TFile | null = null;
     private expandedLines: Set<number> = new Set();
-    private isRefreshing = false;
     private refreshQueued = false;
+    private refreshPromise: Promise<void> | null = null;
+    private isClosed = false;
     private debouncedRefresh: ReturnType<typeof setTimeout> | null = null;
     private routineSummaryRoleCache: Map<string, string | null> = new Map();
     private autoScrollToRunningUntilMs = 0;
@@ -62,23 +63,41 @@ export class SummaryView extends ItemView {
     async setDisplayDate(date: string): Promise<void> {
         const parsed = moment(date, 'YYYY-MM-DD', true);
         if (!parsed.isValid() || date === this.getDisplayDate()) return;
+        const previousDate = this.currentDate;
+        const previousTargetFile = this.targetFile;
         this.currentDate = parsed;
         this.updateTargetFile();
-        await this.requestRefresh();
-        this.contentEl.querySelector('.llr-list-container')?.scrollTo(0, 0);
+        try {
+            await this.requestRefresh();
+        } catch (error) {
+            // A failed read should leave the date retryable. Do not overwrite a newer
+            // navigation choice made while this request was in flight.
+            if (this.getDisplayDate() === date) {
+                this.currentDate = previousDate;
+                this.targetFile = previousTargetFile;
+            }
+            throw error;
+        }
+        if (!this.isClosed && this.getDisplayDate() === date) {
+            this.contentEl.querySelector('.llr-list-container')?.scrollTo(0, 0);
+        }
     }
 
     onClose(): Promise<void> {
+        this.isClosed = true;
         if (this.debouncedRefresh) clearTimeout(this.debouncedRefresh);
+        this.debouncedRefresh = null;
         return Promise.resolve();
     }
 
     onOpen(): Promise<void> {
+        this.isClosed = false;
         const container = this.contentEl;
         container.empty();
         container.addClass('llr-summary-container');
 
         this.app.workspace.onLayoutReady(() => {
+            if (this.isClosed) return;
             this.updateTargetFile();
             this.requestAutoScrollToRunning();
             void this.requestRefresh();
@@ -109,6 +128,7 @@ export class SummaryView extends ItemView {
     }
 
     private scheduleRefresh() {
+        if (this.isClosed) return;
         if (this.debouncedRefresh) {
             clearTimeout(this.debouncedRefresh);
         }
@@ -134,32 +154,42 @@ export class SummaryView extends ItemView {
         return (this.targetFile?.path ?? null) !== prevPath;
     }
 
-    public async requestRefresh() {
-        if (this.isRefreshing) {
-            this.refreshQueued = true;
-            return;
-        }
+    public requestRefresh(): Promise<void> {
+        if (this.isClosed) return Promise.resolve();
+        this.refreshQueued = true;
+        if (this.refreshPromise) return this.refreshPromise;
 
-        this.isRefreshing = true;
-        try {
-            do {
-                this.refreshQueued = false;
-                await this.refresh();
-            } while (this.refreshQueued);
-        } finally {
-            this.isRefreshing = false;
-        }
+        this.refreshPromise = (async () => {
+            try {
+                while (this.refreshQueued && !this.isClosed) {
+                    this.refreshQueued = false;
+                    await this.refresh();
+                }
+            } finally {
+                this.refreshPromise = null;
+            }
+        })();
+        // Event-driven refreshes have no awaiting caller. Handle their rejection
+        // here while returning the original promise for navigation error recovery.
+        void this.refreshPromise.catch(error => {
+            if (!this.isClosed) console.error('[LLR] Summary refresh failed', error);
+        });
+        return this.refreshPromise;
     }
 
     async refresh() {
+        if (this.isClosed) return;
         const container = this.contentEl;
-
-        // スクロール位置の保存
-        const scrollEl = container.querySelector('.llr-list-container');
-        const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
+        const dateAtStart = this.getDisplayDate();
 
         this.routineSummaryRoleCache.clear();
         const data = await this.loadSummaryData();
+        // A delayed read for an earlier day must never render under the newer date header.
+        if (this.isClosed || this.getDisplayDate() !== dateAtStart) return;
+
+        // Capture immediately before replacing the list so scrolling during a read is preserved.
+        const scrollEl = container.querySelector<HTMLElement>('.llr-list-container');
+        const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
         const hasRunningItem = data.futureGroups.some((group) => group.items.some((item) => item.isRunning));
         const hasVisibleItems =
             data.pastGroups.some((group) => group.items.length > 0) ||
@@ -175,12 +205,24 @@ export class SummaryView extends ItemView {
         this.renderHeader(innerContainer, data);
         this.renderList(innerContainer, data);
 
+        const activeElement = document.activeElement;
+        const keepSwitchFocus = activeElement instanceof HTMLElement
+            && container.contains(activeElement)
+            && activeElement.classList.contains('llr-display-switch');
+
         // コンテナを空にせず、replaceChildren を使って一瞬で置換する（チラつき防止）
         container.replaceChildren(...Array.from(innerContainer.childNodes));
+        if (keepSwitchFocus) {
+            container.querySelector<HTMLElement>('.llr-display-switch')?.focus({ preventScroll: true });
+        }
+
+        const renderedList = container.querySelector<HTMLElement>('.llr-list-container');
 
         // スクロール位置の復元
         requestAnimationFrame(() => {
+            if (this.isClosed || this.getDisplayDate() !== dateAtStart) return;
             const newScrollEl = container.querySelector<HTMLElement>('.llr-list-container');
+            if (!renderedList || newScrollEl !== renderedList) return;
             if (newScrollEl) {
                 const runningEl = newScrollEl.querySelector<HTMLElement>('.llr-item-running');
                 if (this.shouldAutoScrollToRunning()) {
