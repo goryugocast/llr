@@ -171,7 +171,7 @@ This feature is available on `main` but is not yet included in a tagged release.
 
 Screenshots use sample records rendered in Obsidian.
 
-<img src="assets/llr-tasks.png" width="320" alt="LLR task view">
+![LLR task view](assets/llr-tasks.png)
 
 - Tasks stacked: completed → running → upcoming
 - `EST. TOTAL` and `EST. FINISH` updated dynamically as the day progresses
@@ -182,8 +182,9 @@ Screenshots use sample records rendered in Obsidian.
 
 ### Timeline view
 
-<img src="assets/llr-timeline.png" width="320" alt="LLR timeline view">
-<img src="assets/llr-timeline-expanded.png" width="320" alt="LLR timeline with an activity expanded to show its records and notes">
+![LLR timeline view](assets/llr-timeline.png)
+
+![LLR timeline with an activity expanded to show its records and notes](assets/llr-timeline-expanded.png)
 
 The timeline uses completed records and notes from daily notes. It omits unchecked and in-progress tasks and the SRS area by default. Details: [reflection view spec](https://github.com/goryugocast/llr/blob/main/docs/specs/REFLECTION_%E6%8C%AF%E3%82%8A%E8%BF%94%E3%82%8A.md) and [sidebar task view spec](https://github.com/goryugocast/llr/blob/main/docs/specs/%E3%82%B5%E3%82%A4%E3%83%89%E3%83%90%E3%83%BC%E8%A6%81%E7%B4%84%E3%83%93%E3%83%A5%E3%83%BC%E4%BB%95%E6%A7%98.md).
 
