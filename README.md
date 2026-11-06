@@ -80,15 +80,16 @@ Inline markers (full reference: [recording format spec](https://github.com/goryu
 - `@MMDD` / `@M/D` / `@2026-05-30` — reschedule a routine to a specific date.
 - Processed markers normalize to `→done` / `→YYYY-MM-DD` so they're not re-fired.
 
-### Commands (10 total)
+### Commands
 
-The three you'll use most:
+Start with these commands:
 
 | Command | What it does |
 |---|---|
 | `Toggle Task` | Create → Start → Finish (the main verb) |
 | `Adjust Time (1m)` | Smart 1-minute nudge: with one timestamp on the line, the start time moves back 1m; with two, the end time does. Completed lines recompute duration automatically. |
-| `Open Summary View` | Show today's progress in the sidebar |
+| `Open Summary View` | Open the LLR pane in its task view |
+| `振り返りを開く` | Open the same LLR pane in timeline view |
 
 Auxiliary commands:
 
@@ -158,11 +159,19 @@ Details: [SRS spec](https://github.com/goryugocast/llr/blob/main/docs/specs/SRS%
 
 ---
 
-## Summary View
+## LLR View
 
-Run `Open Summary View` for a sidebar overview of the day.
+The LLR pane combines the existing task view and a read-only timeline. Use the clock/list button in the header to switch between them. The task view keeps its existing task interactions and estimate summaries; it does not show memo items.
 
-<img src="assets/llr-summary-view.png" width="320" alt="Summary View">
+The timeline uses a consistent hourly scale to show when completed activities happened, and lets you scroll across multiple days. Click outside a linked title to expand the activity and read its records and inline notes; the activity grows to make room for the text. The header control expands or collapses all activities. Clicking a linked title opens its note without toggling the activity. The view reads daily notes without changing them or storing a separate database.
+
+This feature is available on `main` but is not yet included in a tagged release. The latest tagged release remains 0.4.2.
+
+### Task view
+
+Screenshots use sample records rendered in Obsidian.
+
+<img src="assets/llr-tasks.png" width="320" alt="LLR task view">
 
 - Tasks stacked: completed → running → upcoming
 - `EST. TOTAL` and `EST. FINISH` updated dynamically as the day progresses
@@ -171,7 +180,12 @@ Run `Open Summary View` for a sidebar overview of the day.
 - Click a row to jump to that line in the editor; click a `[[wikilink]]` to open the linked note
 - Section dividers driven by the `Routine Sections` setting (time + label pairs)
 
-Details: [sidebar summary view spec](https://github.com/goryugocast/llr/blob/main/docs/specs/%E3%82%B5%E3%82%A4%E3%83%89%E3%83%90%E3%83%BC%E8%A6%81%E7%B4%84%E3%83%93%E3%83%A5%E3%83%BC%E4%BB%95%E6%A7%98.md).
+### Timeline view
+
+<img src="assets/llr-timeline.png" width="320" alt="LLR timeline view">
+<img src="assets/llr-timeline-expanded.png" width="320" alt="LLR timeline with an activity expanded to show its records and notes">
+
+The timeline uses completed records and notes from daily notes. It omits unchecked and in-progress tasks and the SRS area by default. Details: [reflection view spec](https://github.com/goryugocast/llr/blob/main/docs/specs/REFLECTION_%E6%8C%AF%E3%82%8A%E8%BF%94%E3%82%8A.md) and [sidebar task view spec](https://github.com/goryugocast/llr/blob/main/docs/specs/%E3%82%B5%E3%82%A4%E3%83%89%E3%83%90%E3%83%BC%E8%A6%81%E7%B4%84%E3%83%93%E3%83%A5%E3%83%BC%E4%BB%95%E6%A7%98.md).
 
 ---
 
@@ -206,7 +220,7 @@ LLR aims to make "writing it down in Markdown" feel cheap and natural. The follo
 - ⛔ Timers, alarms, notifications (use the OS or another plugin)
 - ⛔ Calendar integration
 - ⛔ Statistics, charts, dashboards (the canonical record is Markdown; analyze it with separate tools)
-- ⛔ Heavyweight dedicated views (the sidebar Summary is the cap)
+- ⛔ Heavyweight dedicated views (tasks and timeline share one LLR pane)
 
 The full "can it do X?" list is in [implementation summary §3](https://github.com/goryugocast/llr/blob/main/docs/specs/STATE_%E5%AE%9F%E8%A3%85%E7%8A%B6%E6%B3%81%E3%82%B5%E3%83%9E%E3%83%AA%E3%83%BC.md).
 
