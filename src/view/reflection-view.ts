@@ -39,10 +39,17 @@ export class ReflectionView extends ItemView {
     private readonly extending = new Set<number>();
     private readonly dayComponents = new WeakMap<HTMLElement, Component>();
 
-    constructor(leaf: WorkspaceLeaf, private readonly getSettings: () => DailyNoteSettings) { super(leaf); }
+    constructor(leaf: WorkspaceLeaf, private readonly getSettings: () => DailyNoteSettings, private readonly showTasks?: () => void) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
     getIcon() { return 'history'; }
+
+    getDisplayDate(): string { return this.dateInput?.value ?? this.today(); }
+
+    async setDisplayDate(date: string): Promise<void> {
+        await this.pending;
+        if (date !== this.getDisplayDate()) await this.jump(date);
+    }
 
     onPaneMenu(menu: Menu, source: string): void {
         super.onPaneMenu(menu, source);
@@ -59,6 +66,7 @@ export class ReflectionView extends ItemView {
         this.closed = false;
         this.contentEl.empty();
         this.contentEl.addClass('llr-reflection');
+        if (this.showTasks) this.contentEl.addClass('llr-unified-timeline');
         const toolbar = this.contentEl.createDiv('llr-reflection-toolbar');
         const dateNavigation = toolbar.createDiv('llr-reflection-date-nav');
         const dateLabel = dateNavigation.createDiv('llr-reflection-date-picker');
@@ -71,7 +79,7 @@ export class ReflectionView extends ItemView {
         this.previousDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日' } });
         setIcon(this.previousDayButton, 'chevron-left');
         this.previousDayButton.onclick = () => this.enqueue(() => this.moveDay(-1));
-        navigation.createEl('button', { text: '今日', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
+        navigation.createEl('button', { text: 'Today', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
         this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
@@ -93,6 +101,13 @@ export class ReflectionView extends ItemView {
         setIcon(this.expandButton, 'move-vertical');
         this.expandButton.disabled = true;
         this.expandButton.onclick = () => this.enqueue(() => this.setAllDetails(this.expansion.shouldOpenAll(this.getDetailKeys())));
+        if (this.showTasks) {
+            tools.addClass('llr-display-tools');
+            this.expandButton.addClass('llr-bulk-slot');
+            const toggle = tools.createEl('button', { cls: 'clickable-icon llr-display-switch', attr: { 'aria-label': 'タスクを表示' } });
+            setIcon(toggle, 'list-checks');
+            toggle.onclick = this.showTasks;
+        }
         this.scroller = this.contentEl.createDiv('llr-reflection-scroll');
         const viewportObserver = new ResizeObserver(() => {
             if (this.scroller.clientHeight) this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
@@ -466,8 +481,11 @@ export class ReflectionView extends ItemView {
     private async renderHeading(parent: HTMLElement, day: DayEntry, title: string, component: Component) {
         const name = parent.createDiv('llr-reflection-name');
         await this.renderMarkdown(name, title, day, component);
-        // The whole heading expands. Note links remain available in the records.
-        name.querySelectorAll('a').forEach(link => link.replaceWith(document.createTextNode(link.textContent ?? '')));
+        // Let external links use their browser default while keeping their click
+        // from reaching the surrounding disclosure summary.
+        component.registerDomEvent(name, 'click', event => {
+            if (event.target instanceof Element && event.target.closest('a:not(.internal-link)')) event.stopPropagation();
+        });
         return name;
     }
 
@@ -524,9 +542,9 @@ export class ReflectionView extends ItemView {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
-                    // A plain representative title is already the accordion heading.
-                    // Keep linked titles in the record so their navigation is not lost.
-                    const repeatTitle = index !== 0 || task.title !== block.title || /\[|<|https?:\/\//.test(task.title);
+                    // The heading retains its title links, so avoid repeating the
+                    // same representative title in the expanded record.
+                    const repeatTitle = index !== 0 || task.title !== block.title;
                     await this.makeRecord(records, day, task, occurrence, bodyComponent, repeatTitle);
                 }
             }

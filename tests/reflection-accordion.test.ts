@@ -26,7 +26,20 @@ vi.mock('obsidian', async () => {
         MarkdownRenderer: {
             render: (_app: unknown, markdown: string, host: HTMLElement) => {
                 const paragraph = document.createElement('p');
-                paragraph.textContent = markdown;
+                const linkPattern = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+                let cursor = 0;
+                for (const match of markdown.matchAll(linkPattern)) {
+                    const index = match.index ?? 0;
+                    paragraph.append(document.createTextNode(markdown.slice(cursor, index)));
+                    const link = document.createElement('a');
+                    link.className = 'internal-link';
+                    link.dataset.href = match[1];
+                    link.href = match[1];
+                    link.textContent = match[2] ?? match[1];
+                    paragraph.append(link);
+                    cursor = index + match[0].length;
+                }
+                paragraph.append(document.createTextNode(markdown.slice(cursor)));
                 host.append(paragraph);
                 return Promise.resolve();
             },
@@ -72,7 +85,7 @@ interface Harness {
     pending: Promise<void>; expansion: ReflectionExpansionState; userScrollRevision: number;
     displayMode: 'tasks' | 'timeline'; dateInput: HTMLInputElement;
     visible: Day[]; sections: Map<string, HTMLElement>;
-    app: { vault: { cachedRead: ReturnType<typeof vi.fn> } };
+    app: { vault: { cachedRead: ReturnType<typeof vi.fn> }; workspace: { openLinkText: ReturnType<typeof vi.fn> } };
     makeBlock(parent: HTMLElement, day: Day, block: ReflectionBlock, occurrence: number, component: Component): Promise<void>;
     makeDay(day: Day): Promise<HTMLElement>;
     setAllDetails(open: boolean): Promise<void>; setDisplayMode(mode: 'tasks' | 'timeline'): Promise<void>;
@@ -119,11 +132,74 @@ describe('reflection accordion source DOM behavior', () => {
         expect(details.open).toBe(true);
         expect(view.daysEl.querySelectorAll('.llr-reflection-record')).toHaveLength(1);
     });
-    it('keeps linked titles in the record rather than dropping navigation', async () => {
+    it('keeps the linked title in the activity heading without repeating it in the record', async () => {
         const { view, component } = await setup();
         await view.makeBlock(view.daysEl, day, block(960, '[[Reference|Reading]]'), 0, component);
+        const heading = view.daysEl.querySelector<HTMLAnchorElement>('.llr-reflection-name a');
+        expect(heading?.textContent).toBe('Reading');
+        expect(heading?.getAttribute('data-href')).toBe('Reference');
         await view.setAllDetails(true);
-        expect(view.daysEl.querySelector('.llr-reflection-record-title')?.textContent).toBe('[[Reference|Reading]]');
+        expect(view.daysEl.querySelectorAll('.llr-reflection-record-title')).toHaveLength(0);
+        expect(view.app.workspace.openLinkText).not.toHaveBeenCalled();
+    });
+    it('opens the linked title without toggling a closed or open activity', async () => {
+        const { view } = await setup();
+        const component = new RuntimeComponent();
+        view.daysEl.empty();
+        await view.makeBlock(view.daysEl, day, block(720, '[[Reference|Reading]]'), 0, component);
+        const heading = view.daysEl.querySelector<HTMLAnchorElement>('.llr-reflection-name a')!;
+        const linkedSummary = heading.closest('summary')!;
+        const linkedDetails = linkedSummary.parentElement as HTMLDetailsElement;
+
+        heading.click();
+        expect(view.app.workspace.openLinkText).toHaveBeenCalledWith('Reference', '', 'tab');
+        expect(linkedDetails.open).toBe(false);
+
+        linkedSummary.click();
+        await view.pending;
+        expect(linkedDetails.open).toBe(true);
+        heading.click();
+        expect(linkedDetails.open).toBe(true);
+        expect(view.app.workspace.openLinkText).toHaveBeenCalledTimes(2);
+    });
+    it('preserves multiple title links and navigates each one independently', async () => {
+        const { view, component } = await setup();
+        view.daysEl.empty();
+        await view.makeBlock(view.daysEl, day, block(720, '[[First|One]] and [[Second|Two]]'), 0, component);
+        const links = Array.from(view.daysEl.querySelectorAll<HTMLAnchorElement>('.llr-reflection-name a'));
+        expect(links.map(link => link.textContent)).toEqual(['One', 'Two']);
+        links[0].click();
+        links[1].click();
+        expect(view.app.workspace.openLinkText.mock.calls.map((call: unknown[]) => call[0])).toEqual(['First', 'Second']);
+    });
+    it('keeps an unlinked activity title as plain text', async () => {
+        const { view } = await setup();
+        expect(view.daysEl.querySelector('.llr-reflection-name')?.textContent).toBe('Lunch');
+        expect(view.daysEl.querySelector('.llr-reflection-name a')).toBeNull();
+    });
+    it('leaves an external heading link uncancelled and does not toggle its activity', async () => {
+        const { view, details } = await setup();
+        const heading = view.daysEl.querySelector('.llr-reflection-name')!;
+        const external = document.createElement('a');
+        external.href = 'https://example.com';
+        external.textContent = 'External';
+        heading.append(external);
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+
+        external.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(details.open).toBe(false);
+        await view.pending;
+        expect(details.open).toBe(false);
+    });
+    it('shows a zero-minute record time once', async () => {
+        const { view, component } = await setup();
+        view.daysEl.empty();
+        const zero = { ...record('Point'), actualStart: '12:00', actualEnd: '12:00', startMinute: 720, endMinute: 720 };
+        await view.makeBlock(view.daysEl, day, { id: 720, title: 'Point', startMinute: 720, endMinute: 720, tasks: [zero] }, 0, component);
+        await view.setAllDetails(true);
+        expect(view.daysEl.querySelector('.llr-reflection-record-time')?.textContent).toBe('12:00');
     });
     it('supports mixed individual/bulk states and new activities inherit the bulk default', async () => {
         const { view, component, summary, details } = await setup();

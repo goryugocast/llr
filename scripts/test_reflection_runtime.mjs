@@ -4,14 +4,20 @@ import { execFileSync } from 'node:child_process';
 
 async function checkReflectionRuntime() {
     const assert = (condition, message) => { if (!condition) throw new Error(message); };
-    const view = app.workspace.getLeavesOfType('llr-reflection-view')[0]?.view;
+    const unified = app.workspace.getLeavesOfType('llr-summary-view')[0]?.view;
+    const view = unified?.timeline ?? app.workspace.getLeavesOfType('llr-reflection-view')[0]?.view;
     assert(view, 'Open the reflection tab before running these checks.');
+    if (unified?.timeline === view) {
+        assert(unified.containerEl.parentElement.querySelectorAll(':scope > .workspace-leaf-content').length === 1, 'Embedded renderers must not leave empty sibling panes that consume height.');
+        assert(getComputedStyle(view.contentEl).padding === '0px', 'Embedded renderers must not add native padding a second time.');
+    }
     await view.pending;
-    const navigation = view.contentEl.querySelector('.llr-reflection-date-nav');
-    assert(navigation && Math.abs(navigation.getBoundingClientRect().height - view.currentDayLabel.getBoundingClientRect().height) < 1, 'The date picker input must not add an invisible second row to navigation.');
+    const navigation = view.contentEl.querySelector('.llr-reflection-toolbar');
+    const picker = view.contentEl.querySelector('.llr-reflection-date-picker');
+    assert(picker && Math.abs(picker.getBoundingClientRect().height - view.currentDayLabel.getBoundingClientRect().height) < 1, 'The date picker input must not add an invisible second row to navigation.');
     assert(getComputedStyle(view.dateInput).position === 'absolute' && getComputedStyle(view.dateInput).opacity === '0', 'The native date input must not duplicate the visible date or occupy navigation space.');
     assert(getComputedStyle(view.currentDayLabel).alignItems === 'center', 'The date text must share the vertical center of the other controls.');
-    const controls = [view.currentDayLabel, ...navigation.querySelectorAll('.llr-nav-btn'), view.expandButton].filter(el => !el.hidden);
+    const controls = [view.currentDayLabel, ...navigation.querySelectorAll('.llr-nav-btn,.llr-display-switch'), view.expandButton].filter(el => !el.hidden);
     const centers = controls.map(el => { const rect = el.getBoundingClientRect(); return rect.top + rect.height / 2; });
     assert(Math.max(...centers) - Math.min(...centers) < 1, 'Date, navigation and bulk controls must share one vertical center.');
     assert(view.expandButton.querySelector('svg.lucide-move-vertical'), 'Bulk expansion must use the same vertical movement icon as Backlinks.');
@@ -95,8 +101,9 @@ async function checkReflectionRuntime() {
         let details = host.querySelector('details');
         assert(details && !details.open, 'Details must begin collapsed.');
         assert(host.querySelectorAll('.llr-reflection-count').length === 0, 'The redundant task count UI must be removed.');
-        assert(host.querySelectorAll('.llr-reflection-name a').length === 0, 'The representative heading must be plain rendered text.');
-        assert(host.querySelector('.llr-reflection-name')?.textContent.includes('見出しの別名'), 'The representative wiki alias must remain visible as text.');
+        const headingLink = host.querySelector('.llr-reflection-name a');
+        assert(headingLink?.textContent === '見出しの別名', 'The representative title must remain a rendered note link in the activity heading.');
+        assert(headingLink?.getAttribute('data-href') === 'Reflection test reference', 'The activity heading link must preserve its wiki target.');
         assert(host.querySelector('.llr-reflection-name')?.closest('summary')?.querySelector('input[type="checkbox"]') === null, 'The collapsed heading must not expose task status checkboxes.');
         const steps = [...host.querySelectorAll('.llr-reflection-row:first-child .llr-reflection-axis-tick')];
         assert(steps.length === 3 && steps.map(step => step.textContent).join(',') === '10,,12', 'Axis labels must be plain hour numbers every two hours.');
@@ -110,6 +117,8 @@ async function checkReflectionRuntime() {
         assert(!host.querySelector('.llr-reflection-chevron'), 'A block must not require a repeated expansion arrow.');
         assert(host.querySelector('.llr-reflection-row').classList.contains('is-collapsed'), 'A collapsed block must expose one whole-block hover target.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 0, 'Collapsed details must not render their bodies.');
+        headingLink.click();
+        assert(requestedLink?.target === 'Reflection test reference' && !details.open, 'Following a collapsed heading link must navigate without opening the activity.');
         const childrenWhileClosed = component._children.length;
         steps[1].click();
         await view.pending;
@@ -123,7 +132,8 @@ async function checkReflectionRuntime() {
         steps[1].click();
         await view.pending;
         assert(details.open, 'Continued-hour clicks must not collapse an open reading area.');
-        assert(host.querySelector('.llr-reflection-record-title a')?.textContent === '見出しの別名', 'Task wiki alias must render as a link.');
+        const renderedRecord = host.querySelector('.llr-reflection-record');
+        assert(!renderedRecord.querySelector('.llr-reflection-record-title'), 'The representative title must not be repeated after expansion.');
         assert(host.querySelector('.llr-reflection-supplement strong')?.textContent === '大切なメモ', 'Memo Markdown must render rather than show raw syntax.');
         assert(host.querySelectorAll('.llr-reflection-supplement > p').length >= 2, 'Multi-paragraph memos must retain separate paragraphs.');
         assert(host.querySelector('.llr-reflection-supplement a')?.textContent === '補足の別名', 'Memo wiki alias must render as a link.');
@@ -131,7 +141,6 @@ async function checkReflectionRuntime() {
         const boxes = [...host.querySelectorAll('input[type="checkbox"]')];
         assert(boxes.length === 2 && boxes.every(box => box.disabled), 'Nested memo checkboxes must be native and read-only.');
         assert(!host.querySelector('.llr-reflection-source'), 'Records must not repeat a redundant daily-note navigation control.');
-        const renderedRecord = host.querySelector('.llr-reflection-record');
         assert(renderedRecord.querySelector('.llr-reflection-record-time')?.parentElement === renderedRecord, 'Actual times must sit beneath the title instead of creating a wide title column.');
         const checkedBefore = boxes.map(box => box.checked).join(',');
         boxes.forEach(box => box.click());
@@ -139,7 +148,7 @@ async function checkReflectionRuntime() {
         host.querySelector('.llr-reflection-supplement').click();
         await view.pending;
         assert(details.open, 'Selecting or clicking memo text must not collapse the reading area.');
-        host.querySelector('.llr-reflection-record-title a').click();
+        headingLink.click();
         assert(requestedLink?.target === 'Reflection test reference' && requestedLink.newLeaf === 'tab', 'Wiki links must dispatch tab navigation.');
         assert(details.open, 'Following a title link must not collapse details.');
 
@@ -256,7 +265,7 @@ async function checkReflectionRuntime() {
             if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
         }
         return { passed: true, checks: ['single-row date navigation without duplicate input',
-            'narrow-pane typography, gutter and responsive hour geometry', 'plain representative heading and whole-row toggling', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
+            'narrow-pane typography, gutter and responsive hour geometry', 'linked representative heading and separate disclosure', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;
         view.expansion = originalExpansion;

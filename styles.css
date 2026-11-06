@@ -732,3 +732,48 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-task-entry { margin: 0; padding: 0; border: 0; background: transparent; }
 .llr-reflection-task-heading, .llr-reflection-task-heading .llr-row-top { cursor: default; }
 .llr-reflection-task-heading .llr-task-name > p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* One LLR pane: the existing task body stays intact; both modes share action slots. */
+.llr-unified-view { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; container-type: inline-size; }
+.llr-unified-view > .view-content { flex: 1; min-width: 0; min-height: 0; width: 100%; }
+.llr-unified-view > .view-content[hidden] { display: none !important; }
+.llr-unified-date-nav, .llr-unified-timeline .llr-reflection-toolbar {
+    display: grid; grid-template-columns: minmax(max-content, 1fr) 110px 64px;
+    align-items: center; column-gap: 2px; box-sizing: border-box;
+    min-height: 38px; height: 38px; padding: 3px 8px; border-bottom: 0;
+}
+.llr-unified-timeline .llr-reflection-toolbar { border-bottom: 1px solid var(--background-modifier-border); height: 39px; }
+.llr-unified-timeline .llr-reflection-date-nav { display: contents; }
+.llr-unified-date-nav .llr-date-label, .llr-unified-timeline button.llr-reflection-date-label {
+    align-items: center; font-size: var(--llr-date-size); padding: 0; gap: 6px;
+    line-height: 1.05; height: 32px; min-width: 0;
+}
+.llr-unified-timeline .llr-reflection-date-weekday { font-size: var(--llr-date-dow-size); }
+.llr-unified-date-nav .llr-nav-btns, .llr-unified-timeline .llr-nav-btns {
+    display: grid; grid-template-columns: 24px 54px 24px; column-gap: 4px; margin: 0;
+}
+.llr-unified-date-nav .llr-nav-btn, .llr-unified-timeline button.llr-nav-btn {
+    box-sizing: border-box; min-width: 0; width: 100%; height: 32px; margin: 0; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.llr-unified-date-nav .llr-nav-btn:nth-child(2), .llr-unified-timeline .llr-reflection-today {
+    font-size: 14px; letter-spacing: 0.8px; text-transform: uppercase;
+}
+.llr-display-tools { display: grid; grid-template-columns: 28px 32px; gap: 4px; width: 64px; align-items: center; }
+.llr-bulk-slot { width: 28px; height: 32px; }
+button.llr-display-switch { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0; box-shadow: none; border: 0; background: transparent; color: var(--text-muted); border-radius: 4px; }
+button.llr-display-switch:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+button.llr-display-switch:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
+.llr-display-switch svg { display: block; width: 18px; height: 18px; }
+.llr-unified-timeline .llr-reflection-name { font-family: var(--font-interface); }
+.llr-unified-timeline .llr-reflection-name a.internal-link { color: var(--link-color); text-decoration-line: underline; text-decoration-thickness: var(--link-decoration-thickness, 1px); text-underline-offset: 2px; }
+.llr-unified-timeline .llr-reflection-name a.internal-link:hover { color: var(--link-color-hover); }
+@container (max-width: 305px) {
+    .llr-unified-date-nav, .llr-unified-timeline .llr-reflection-toolbar { grid-template-columns: minmax(max-content, 1fr) 94px 64px; padding-inline: 4px; column-gap: 0; }
+    .llr-unified-date-nav .llr-nav-btns, .llr-unified-timeline .llr-nav-btns { grid-template-columns: 24px 46px 24px; column-gap: 0; }
+    .llr-unified-date-nav .llr-nav-btn:nth-child(2), .llr-unified-timeline .llr-reflection-today { letter-spacing: 0; }
+}
+.is-mobile .llr-unified-date-nav .llr-date-label, .is-mobile .llr-unified-timeline button.llr-reflection-date-label { font-size: 23px; }
+.is-mobile .llr-unified-timeline .llr-reflection-date-weekday { font-size: 15px; }
+/* Native ItemView content padding must not be applied again inside the host. */
+.llr-unified-view > .view-content { padding: 0 !important; }

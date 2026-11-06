@@ -12,6 +12,7 @@ export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
  * プラグイン ID 変更・private 構造変更に弱いので、必要な値だけを注入で受け取る。
  */
 export interface SummaryViewDelegate {
+    showTimeline?: () => void;
     getRoutineFolder(): string;
     /** parseSectionTimeToInt 済み・日付境界で正規化した時刻順のセクション境界。 */
     getSectionBoundaries(): Array<{ value: number; label: string }>;
@@ -54,6 +55,22 @@ export class SummaryView extends ItemView {
 
     getIcon() {
         return 'list-checks';
+    }
+
+    getDisplayDate(): string { return this.currentDate.format('YYYY-MM-DD'); }
+
+    async setDisplayDate(date: string): Promise<void> {
+        const parsed = moment(date, 'YYYY-MM-DD', true);
+        if (!parsed.isValid() || date === this.getDisplayDate()) return;
+        this.currentDate = parsed;
+        this.updateTargetFile();
+        await this.requestRefresh();
+        this.contentEl.querySelector('.llr-list-container')?.scrollTo(0, 0);
+    }
+
+    onClose(): Promise<void> {
+        if (this.debouncedRefresh) clearTimeout(this.debouncedRefresh);
+        return Promise.resolve();
     }
 
     onOpen(): Promise<void> {
@@ -311,6 +328,15 @@ export class SummaryView extends ItemView {
             this.requestAutoScrollToRunning();
             void this.requestRefresh();
         };
+
+        if (this.delegate.showTimeline) {
+            dateNav.addClass('llr-unified-date-nav');
+            const tools = dateNav.createDiv('llr-display-tools');
+            tools.createDiv({ cls: 'llr-bulk-slot', attr: { 'aria-hidden': 'true' } });
+            const toggle = tools.createEl('button', { cls: 'clickable-icon llr-display-switch', attr: { 'aria-label': 'タイムラインを表示' } });
+            setIcon(toggle, 'clock');
+            toggle.onclick = this.delegate.showTimeline;
+        }
 
         // サマリー行
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });
