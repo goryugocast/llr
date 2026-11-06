@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -6,7 +7,7 @@ export default defineConfig({
         environment: 'node',
         include: ['tests/**/*.test.ts'],
         alias: {
-            'obsidian': './tests/mocks/obsidian.ts',
+            'obsidian': fileURLToPath(new URL('./tests/mocks/obsidian.ts', import.meta.url)),
         },
     },
 });

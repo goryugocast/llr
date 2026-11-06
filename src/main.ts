@@ -8,7 +8,10 @@ import { parseRoutineRescheduleMarker, replaceRoutineRescheduleMarker } from './
 import { hasPendingRoutineAtDoneMarker, replacePendingRoutineAtDoneMarker } from './service/routine-atdone-marker';
 import { routineSortKey, groupRoutineLinesWithSections, expandRoutineNotesBySection } from './service/routine-sort';
 import { firstWikilink, resolveOpenFocus, findStartedLineLinkingTo } from './service/start-and-open';
-import { SummaryView, SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { SummaryViewDelegate, VIEW_TYPE_SUMMARY } from './view/summary-view';
+import { LlrView, type LlrDisplayMode } from './view/llr-view';
+import { ReflectionView, VIEW_TYPE_REFLECTION } from './view/reflection-view';
+import { migrateLlrViews } from './view/migrate-llr-views';
 import { CheckboxInteractionController } from './view/checkbox-interaction-controller';
 import { getCM6View } from './view/editor-internal';
 import { requestRefreshIfSupported } from './view/refreshable-view';
@@ -115,8 +118,15 @@ export default class LlrPlugin extends Plugin {
         };
         this.registerView(
             VIEW_TYPE_SUMMARY,
-            (leaf) => new SummaryView(leaf, summaryDelegate)
+            (leaf) => new LlrView(leaf, summaryDelegate)
         );
+        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings()));
+        this.addCommand({
+            id: 'open-reflection-view',
+            name: '振り返りを開く',
+            icon: 'history',
+            callback: () => { void this.activateReflectionView(); },
+        });
 
         this.addRibbonIcon('list-checks', this.t('ribbon.openSummary'), () => {
             void this.activateView();
@@ -166,6 +176,8 @@ export default class LlrPlugin extends Plugin {
         );
         this.app.workspace.onLayoutReady(() => {
             this.dailyAutoInsert.tryStartup();
+            const migrate = window.setTimeout(() => { void migrateLlrViews(this.app.workspace); }, 0);
+            this.register(() => window.clearTimeout(migrate));
         });
         // Checkbox override + long-press support
         this.registerDomEvent(document, 'pointerdown', (ev) => this.checkbox.onPointerDown(ev));
@@ -666,7 +678,11 @@ export default class LlrPlugin extends Plugin {
         }, 500);
     }
 
-    private async activateView() {
+    private async activateReflectionView() {
+        await this.activateView('timeline');
+    }
+
+    private async activateView(mode: LlrDisplayMode = 'tasks') {
         const { workspace } = this.app;
 
         let leaf: WorkspaceLeaf | null = null;
@@ -687,7 +703,9 @@ export default class LlrPlugin extends Plugin {
         }
 
         if (leaf) {
-            void workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
+            await leaf.loadIfDeferred();
+            if (leaf.view instanceof LlrView) await leaf.view.showMode(mode);
             // モバイル環境でサイドバーが閉じている場合に確実に開く
             if (Platform.isMobile) {
                 (this.app.workspace as unknown as { leftSplit?: { collapse?: () => void } }).leftSplit?.collapse?.(); // 左は閉じる（任意）

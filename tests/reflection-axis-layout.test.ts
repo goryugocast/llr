@@ -1,0 +1,150 @@
+import { describe, expect, it } from 'vitest';
+import type { ReflectionBlock } from '../src/service/reflection-timeline';
+import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks, reflectionTimeHeight } from '../src/service/reflection-axis-layout';
+
+const block = (startMinute: number | null, endMinute: number | null, title = 'work'): ReflectionBlock => ({
+    id: 0, title, startMinute, endMinute, tasks: [],
+});
+
+describe('reflection axis layout', () => {
+    it('groups point records into hour cells without changing their actual times', () => {
+        const point = (id: number, minute: number, title: string) => ({
+            id, kind: 'task' as const, line: id, sourceLine: id + 1, title, status: 'x' as const,
+            actualStart: '20:01', actualEnd: '20:01', source: title, supplements: '', supplement: '',
+            startMinute: minute, endMinute: minute,
+        });
+        const activity = { ...block(1140, 1260, 'break'), id: 0 };
+        const coveredTask = point(1, 1201, 'break');
+        const covered = { ...block(1201, 1201, 'break'), id: 1, tasks: [coveredTask] };
+        const firstTask = point(2, 1261, 'book');
+        const first = { ...block(1261, 1261, 'book'), id: 2, tasks: [firstTask] };
+        const secondTask = point(3, 1288, 'task');
+        const second = { ...block(1288, 1288, 'task'), id: 3, tasks: [secondTask] };
+        const nextHour = { ...block(1320, null, 'call'), id: 4, tasks: [point(4, 1320, 'call')] };
+        const untimed = { ...block(null, null, 'untimed'), id: 5 };
+        const input = [activity, covered, first, second, nextHour, untimed];
+        const before = structuredClone(input);
+
+        const result = reflectionDisplayBlocks(input);
+
+        expect(result.find(item => item.id === activity.id)?.tasks).toEqual(covered.tasks);
+        expect(result.filter(item => item.startMinute === 1260)).toHaveLength(1);
+        const bookHour = result.find(item => item.id === first.id);
+        expect(bookHour).toMatchObject({ startMinute: 1260, endMinute: 1320, title: 'book' });
+        expect(bookHour?.tasks.map(task => task.id)).toEqual([2, 3]);
+        expect(bookHour?.tasks.map(task => [task.startMinute, task.endMinute])).toEqual([[1261, 1261], [1288, 1288]]);
+        expect(result.find(item => item.startMinute === 1320 && item.endMinute === 1380)?.title).toBe('call');
+        expect(result.find(item => item.id === untimed.id)).toBeDefined();
+        expect(input).toEqual(before);
+    });
+
+    it('uses one consistent height per elapsed hour', () => {
+        expect(reflectionTimeHeight(60)).toBe(32);
+        expect(reflectionTimeHeight(120)).toBe(64);
+        expect(reflectionTimeHeight(180)).toBe(96);
+        expect(reflectionTimeHeight(600)).toBe(320);
+        expect(reflectionTimeHeight(60, 48)).toBe(48);
+        expect(reflectionTimeHeight(180, 48)).toBe(144);
+        expect(reflectionTimeHeight(600, 48)).toBe(480);
+        expect(reflectionTimeHeight(0)).toBe(0);
+        expect(reflectionTimeHeight(-60)).toBe(0);
+    });
+
+    it('keeps every hourly tick evenly spaced and labels only every two hours', () => {
+        const ticks = reflectionOverviewTicks(12 * 60, 15 * 60);
+        expect(ticks).toEqual([
+            { minute: 12 * 60, fraction: 0, label: '12' },
+            { minute: 13 * 60, fraction: 1 / 3, label: '' },
+            { minute: 14 * 60, fraction: 2 / 3, label: '14' },
+        ]);
+
+        // The same fractions remain one-hour apart for any expanded block height.
+        for (const height of [32, 96, 240]) {
+            const positions = ticks.map(tick => tick.fraction * height);
+            expect(positions[1] - positions[0]).toBeCloseTo(height / 3);
+            expect(positions[2] - positions[1]).toBeCloseTo(height / 3);
+        }
+    });
+
+    it('labels even absolute hours across midnight and omits the end boundary', () => {
+        expect(reflectionOverviewTicks(23 * 60, 27 * 60)).toEqual([
+            { minute: 23 * 60, fraction: 0, label: '' },
+            { minute: 24 * 60, fraction: 1 / 4, label: '0' },
+            { minute: 25 * 60, fraction: 1 / 2, label: '' },
+            { minute: 26 * 60, fraction: 3 / 4, label: '2' },
+        ]);
+    });
+
+    it('starts at the next whole hour and returns no ticks for an empty range', () => {
+        expect(reflectionOverviewTicks(12 * 60 + 15, 14 * 60)).toEqual([
+            { minute: 13 * 60, fraction: 45 / 105, label: '' },
+        ]);
+        expect(reflectionOverviewTicks(14 * 60, 14 * 60)).toEqual([]);
+        expect(reflectionOverviewTicks(15 * 60, 14 * 60)).toEqual([]);
+    });
+
+    it('fills elapsed time with gaps while retaining activity positions', () => {
+        const result = buildReflectionAxisLayout([
+            block(300, 360), // 05:00–06:00
+            block(600, 660), // 10:00–11:00
+        ]);
+        expect(result.segments).toEqual([
+            { kind: 'gap', startMinute: 180, endMinute: 300 },
+            { kind: 'activity', startMinute: 300, endMinute: 360, blockIndex: 0 },
+            { kind: 'gap', startMinute: 360, endMinute: 600 },
+            { kind: 'activity', startMinute: 600, endMinute: 660, blockIndex: 1 },
+            { kind: 'gap', startMinute: 660, endMinute: 1620 },
+        ]);
+        expect(result.endMinute).toBe(1620);
+        expect(result.outsideDay).toEqual([]);
+        expect(result.segments.filter(segment => segment.kind !== 'point').reduce((minutes, segment) => minutes + segment.endMinute - segment.startMinute, 0)).toBe(1440);
+    });
+
+    it('keeps zero-duration and open-ended blocks as points without adding elapsed time', () => {
+        const result = buildReflectionAxisLayout([
+            block(300, 360),
+            block(400, 400, 'zero'),
+            block(500, null, 'open'),
+            block(3000, 3000, 'later point'),
+        ]);
+        expect(result.segments.filter(segment => segment.kind === 'point')).toEqual([
+            { kind: 'point', startMinute: 400, endMinute: 400, blockIndex: 1 },
+            { kind: 'point', startMinute: 500, endMinute: 500, blockIndex: 2 },
+            { kind: 'point', startMinute: 3000, endMinute: 3000, blockIndex: 3 },
+        ]);
+        expect(result.endMinute).toBe(1620);
+        expect(result.segments.filter(segment => segment.kind !== 'point').reduce((minutes, segment) => minutes + segment.endMinute - segment.startMinute, 0)).toBe(1440);
+    });
+
+    it('clips overnight intervals and collects intervals wholly outside the day axis', () => {
+        const blocks = [
+            block(0, 100, 'before'),
+            block(1560, 1740, 'overnight'),
+            block(1700, 1800, 'after'),
+            block(null, null, 'untimed'),
+        ];
+        const before = structuredClone(blocks);
+        const result = buildReflectionAxisLayout(blocks);
+        expect(result.endMinute).toBe(1620);
+        expect(result.segments).toContainEqual({ kind: 'activity', startMinute: 1560, endMinute: 1620, blockIndex: 1 });
+        expect(result.outsideDay).toEqual([0, 2]);
+        expect(result.untimed).toEqual([3]);
+        expect(blocks).toEqual(before);
+    });
+
+    it('keeps point records outside the day axis as points without adding elapsed time', () => {
+        const result = buildReflectionAxisLayout([block(3000, 3000, 'later point')]);
+        expect(result.segments).toEqual([
+            { kind: 'point', startMinute: 3000, endMinute: 3000, blockIndex: 0 },
+            { kind: 'gap', startMinute: 180, endMinute: 1620 },
+        ]);
+        expect(result.outsideDay).toEqual([]);
+        expect(result.endMinute).toBe(1620);
+    });
+
+    it('formats clocks on the absolute axis', () => {
+        expect(formatReflectionClock(180)).toBe('03:00');
+        expect(formatReflectionClock(1440)).toBe('00:00');
+        expect(formatReflectionClock(3060)).toBe('03:00');
+    });
+});
