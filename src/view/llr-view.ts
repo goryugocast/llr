@@ -47,7 +47,7 @@ export class LlrView extends ItemView {
             let created: ReflectionView | null = null;
             try {
                 if (mode === 'timeline' && !this.timeline) {
-                    this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks')));
+                    this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks'), date => this.summary.openDateNote(date)));
                     created = this.timeline;
                     this.contentEl.append(this.timeline.contentEl);
                     this.timeline.containerEl.remove();

@@ -11,6 +11,7 @@ const renderer = vi.hoisted(() => {
         openCount = 0;
         closeCount = 0;
         refresh = vi.fn(async () => {});
+        openDateNote = vi.fn(async (_date: string) => {});
         setDate = vi.fn(async (date: string) => { this.date = date; this.scrollTop = 0; });
         constructor(leaf: { containerEl: HTMLElement }) {
             this.containerEl = document.createElement('div');
@@ -35,7 +36,7 @@ const renderer = vi.hoisted(() => {
         requestRefresh() { return this.refresh(); }
     }
     
-    return { MockView, summaryInstances: [] as Array<{ view: MockView; options: Record<string, unknown> }>, timelineInstances: [] as Array<{ view: MockView; onTasks: () => void }> };
+    return { MockView, summaryInstances: [] as Array<{ view: MockView; options: Record<string, unknown> }>, timelineInstances: [] as Array<{ view: MockView; onTasks: () => void; openNote: (date: string) => Promise<void> }> };
 });
 vi.mock('obsidian', () => ({
     ItemView: class {
@@ -62,8 +63,8 @@ vi.mock('../src/view/summary-view', () => ({
 }));
 vi.mock('../src/view/reflection-view', () => ({
     ReflectionView: class extends renderer.MockView {
-        constructor(leaf: { containerEl: HTMLElement }, _settings: () => unknown, onTasks: () => void) {
-            super(leaf); renderer.timelineInstances.push({ view: this, onTasks });
+        constructor(leaf: { containerEl: HTMLElement }, _settings: () => unknown, onTasks: () => void, openNote: (date: string) => Promise<void>) {
+            super(leaf); renderer.timelineInstances.push({ view: this, onTasks, openNote });
         }
     },
 }));
@@ -129,6 +130,15 @@ describe('unified LLR view', () => {
         expect(view.containerEl.parentElement?.children).toHaveLength(1);
         expect(view.timeline).toBeNull();
         expect(renderer.timelineInstances).toHaveLength(0);
+    });
+
+    it('opens the timeline date through the existing summary note route without switching views', async () => {
+        const { view } = setup();
+        await view.onOpen();
+        await view.showMode('timeline', '2026-11-05');
+        await renderer.timelineInstances[0].openNote('2026-11-04');
+        expect(view.summary.openDateNote).toHaveBeenCalledWith('2026-11-04');
+        expect(view.mode).toBe('timeline');
     });
 
     it('creates the timeline once and switches back through the existing header switch', async () => {
