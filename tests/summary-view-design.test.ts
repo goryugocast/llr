@@ -101,6 +101,12 @@ describe('SummaryView unified design', () => {
         expect(header.querySelector('.llr-bulk-slot')).toBeNull();
     });
 
+    it('shows only the finish estimate even when a wake estimate is available', () => {
+        const header = document.createElement('div');
+        makeView()['renderHeader'](header, { header: { date: '11-06 (金)', total: '10h6m', end: '03:36', wake: '11:36' }, pastGroups: [], futureGroups: [], hiddenItems: [] });
+        expect(Array.from(header.querySelectorAll('.llr-info-value')).map(value => value.textContent)).toEqual(['10h6m', '03:36']);
+    });
+
     it('renders each task title before its time row and keeps mixed links intact', () => {
         const view = makeView();
         const host = document.createElement('div');

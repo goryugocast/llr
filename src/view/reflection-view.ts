@@ -118,6 +118,8 @@ export class ReflectionView extends ItemView {
             if (this.scroller.clientHeight) {
                 this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
                 this.restorePendingDate();
+                // Wrapping can change the first visible day without a scroll event.
+                this.syncCurrentDay();
             }
         });
         viewportObserver.observe(this.scroller);
@@ -497,7 +499,11 @@ export class ReflectionView extends ItemView {
         row.toggleClass('is-time-band', isTimed);
         row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
-        if (isTimed) row.style.minHeight = `calc(${displayDuration / 60} * var(--llr-reflection-hour-height))`;
+        if (isTimed) {
+            const bandHeight = `calc(${displayDuration / 60} * var(--llr-reflection-hour-height))`;
+            row.style.minHeight = bandHeight;
+            row.style.setProperty('--llr-reflection-band-height', bandHeight);
+        }
         const timeLabel = block.startMinute === null ? '' : formatReflectionClock(block.startMinute);
         const makeTicks = () => {
             if (!isTimed || block.startMinute === null) return;

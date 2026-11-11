@@ -405,13 +405,7 @@ export class SummaryView extends ItemView {
 
         const endBox = infoRow.createEl('div', { cls: 'llr-info-box' });
         endBox.createEl('span', { text: 'Est finish', cls: 'llr-info-label' });
-        if (data.header.wake) {
-            const valueRow = endBox.createEl('span', { cls: 'llr-info-value llr-info-value-inline' });
-            valueRow.createSpan({ text: data.header.end });
-            valueRow.createSpan({ text: `- ${data.header.wake}`, cls: 'llr-info-value-tail' });
-        } else {
-            endBox.createEl('span', { text: data.header.end, cls: 'llr-info-value' });
-        }
+        endBox.createEl('span', { text: data.header.end, cls: 'llr-info-value' });
     }
 
     private navigateDate(): void {
