@@ -213,7 +213,7 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-collapse-icon, .llr-spacer { display: none !important; }
 
 /* Reflection: native note typography and one equal cell per hour. */
-.llr-reflection { --llr-reflection-gutter: 16px; --llr-reflection-gap: 4px; --llr-reflection-face-inset: 12px; --llr-reflection-content-inset: 20px; --llr-reflection-hour-height: max(var(--llr-reflection-min-hour, 40px), calc(1lh + var(--size-4-1, 4px) * 2)); background-color: var(--background-primary); color: var(--text-normal); container-type: inline-size; font-family: var(--font-text); font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
+.llr-reflection { --llr-reflection-gutter: 24px; --llr-reflection-gap: 8px; --llr-reflection-face-inset: 32px; --llr-reflection-content-inset: 40px; --llr-reflection-hour-height: max(var(--llr-reflection-min-hour, 40px), calc(1lh + var(--size-4-1, 4px) * 2)); background-color: var(--background-primary); color: var(--text-normal); container-type: inline-size; font-family: var(--font-text); font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
 .llr-reflection-toolbar { font-family: var(--font-interface); font-size: var(--font-ui-medium); line-height: var(--line-height-tight); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: nowrap; padding: 12px 20px; border-bottom: 1px solid var(--background-modifier-border); }
 .llr-reflection-date-nav { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .llr-reflection-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }

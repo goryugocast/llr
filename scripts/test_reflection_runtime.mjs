@@ -85,12 +85,26 @@ async function checkReflectionRuntime() {
         const responsiveSummary = responsive.querySelector('summary');
         const responsiveName = responsive.querySelector('.llr-reflection-name');
         assert(getComputedStyle(responsiveScroll).fontSize === '15px', 'Timeline names must use the shared 15px activity text size.');
-        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 20) < 1, 'Narrow panes must use the shared 20px content inset before the title.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Narrow panes must reserve the time-label column and clearance before the title.');
         assert(Math.abs(responsiveRow.getBoundingClientRect().height - view.hourHeight() * 3) < 1, 'Narrow panes must keep the same hour scale for all three hours.');
         responsive.style.width = '700px';
         assert(getComputedStyle(responsiveScroll).fontSize === getComputedStyle(responsive).fontSize, 'Wide panes must keep native note typography.');
-        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 20) < 1, 'Wide panes must keep the shared 20px content inset.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Wide panes must retain the independent time-label column.');
         assert(Math.abs(responsiveRow.getBoundingClientRect().height - view.hourHeight() * 3) < 1, 'Resizing must update the hour scale without redrawing the records.');
+        for (const width of [282, 300, 322, 400, 522]) {
+            responsive.style.width = `${width}px`;
+            for (const label of responsive.querySelectorAll('.llr-reflection-axis-label')) {
+                if (!label.textContent) continue;
+                const labelRect = label.getBoundingClientRect();
+                const row = label.closest('.llr-reflection-row');
+                const surfaceLeft = row.getBoundingClientRect().left + parseFloat(getComputedStyle(row, '::before').left);
+                assert(surfaceLeft - labelRect.right >= 7.9, `Time labels need a clear lane before the activity surface at ${width}px.`);
+                const range = document.createRange();
+                range.selectNodeContents(label);
+                const textRect = range.getBoundingClientRect();
+                assert(textRect.left >= labelRect.left - 0.5 && textRect.right <= labelRect.right + 0.5, 'The full hour digits must fit within their lane.');
+            }
+        }
         responsive.remove();
         const secondTask = makeTask(1, 780, '別の記録', '二つ目の本文');
         const secondBlock = { id: 1, title: secondTask.title, startMinute: 780, endMinute: 840, tasks: [secondTask] };
@@ -112,7 +126,7 @@ async function checkReflectionRuntime() {
         assert(Math.abs(host.querySelector('.llr-reflection-row').getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'A three-hour overview must occupy exactly three cells.');
         assert(!host.querySelector('.llr-reflection-duration'), 'Representative headings must not duplicate actual duration metadata.');
         assert(steps.every(step => !step.querySelector('.llr-reflection-continuation-name')), 'Continued hours must not repeat the activity heading.');
-        assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::before').left === '12px', 'The activity surface must begin after the independent time axis.');
+        assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::before').left === '32px', 'The activity surface must begin after the independent time axis.');
         assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::after').content === 'none', 'The activity must not be enclosed by a continuation bracket.');
         const disclosure = host.querySelector('.llr-reflection-disclosure-icon');
         assert(disclosure?.querySelector('svg.lucide-chevron-down'), 'Each activity heading must expose the shared disclosure chevron.');
