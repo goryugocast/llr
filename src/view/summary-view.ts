@@ -3,6 +3,7 @@ import { SummaryItem, SummaryPresentation, SummaryRenderGroup, buildSummaryPrese
 import { calculateDuration } from '../service/time-calculator';
 import type { DailyNoteSettings } from '../service/daily-note-context';
 import { resolveSectionLabel } from '../service/section-timeline';
+import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -352,7 +353,7 @@ export class SummaryView extends ItemView {
         dateInput.value = this.getDisplayDate();
         dateInput.onchange = () => {
             const selectedDate = dateInput.value;
-            dateLabel.focus({ preventScroll: true });
+            finishNativeDateSelection(dateLabel, dateInput);
             if (selectedDate) void this.setDisplayDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
         };
         dateInput.onblur = () => {
@@ -360,11 +361,7 @@ export class SummaryView extends ItemView {
             this.refreshDeferredForDatePicker = false;
             void this.requestRefresh();
         };
-        dateLabel.onclick = () => {
-            dateInput.focus({ preventScroll: true });
-            if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
-            else dateInput.click();
-        };
+        wireNativeDatePicker(dateLabel, dateInput);
 
         const navBtns = dateControls.createEl('div', { cls: 'llr-nav-btns' });
         const prevBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '前の日', title: '前の日' } });

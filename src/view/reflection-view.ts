@@ -1,5 +1,6 @@
 import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
+import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -82,14 +83,10 @@ export class ReflectionView extends ItemView {
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
-        this.currentDayLabel.onclick = () => {
-            this.dateInput.focus({ preventScroll: true });
-            if (typeof this.dateInput.showPicker === 'function') this.dateInput.showPicker();
-            else this.dateInput.click();
-        };
+        wireNativeDatePicker(this.currentDayLabel, this.dateInput);
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
-            this.currentDayLabel.focus({ preventScroll: true });
+            finishNativeDateSelection(this.currentDayLabel, this.dateInput);
             void this.enqueue(() => this.jump(date));
         };
         this.expandButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });

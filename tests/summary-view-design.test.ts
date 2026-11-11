@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ setIcon: vi.fn(), notices: [] as string[] }));
 vi.mock('obsidian', () => ({
+    Platform: { isMobile: false },
     ItemView: class {},
     TFile: class TFile { constructor(public path: string) {} },
     Notice: class Notice { constructor(message: string) { mocks.notices.push(message); } },

@@ -351,6 +351,8 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 .llr-summary-date-nav { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 .llr-summary-container .llr-reflection-date-picker { position: relative; }
 .llr-summary-container input.llr-reflection-date-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.llr-native-date-picker > input.llr-reflection-date-input { pointer-events: auto; z-index: 1; font-size: 16px; cursor: pointer; }
+.llr-native-date-picker > button { pointer-events: none; }
 @container (width < 320px) { .llr-summary-date-nav { gap: 4px; } }
 
 /* A closed title belongs to the whole time band; open records read from the top. */
