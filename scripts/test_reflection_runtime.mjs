@@ -274,6 +274,7 @@ async function checkReflectionRuntime() {
                 assert(summaryHost.querySelectorAll('.llr-info-value')[1].textContent === '16:30', 'The finish estimate must omit the sleep-adjusted wake time.');
 
                 assert(infoBoxes[0].right <= infoBoxes[1].left + 1, `The 1h 30m summary columns must not overlap at ${width}px.`);
+                assert(infoBoxes[1].left - infoBoxes[0].right <= 29, `Summary estimates must remain one compact group rather than spread across a wide pane at ${width}px.`);
             }
             const taskNames = [...summaryHost.querySelectorAll('.llr-task-name')];
             const taskRows = [...summaryHost.querySelectorAll('.llr-item-self')];

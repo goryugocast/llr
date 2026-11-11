@@ -184,7 +184,7 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-date-dow { font-size: var(--llr-date-dow-size); font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
 .llr-date-dow.day-saturday { color: var(--text-accent); }
 .llr-date-dow.day-sunday { color: var(--text-error); }
-.llr-summary-info { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 20px 16px; }
+.llr-summary-info { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); justify-content: start; column-gap: clamp(16px, 5cqw, 28px); padding: 12px 20px 16px; }
 .llr-info-box { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; min-width: 0; text-align: left; }
 .llr-info-label { color: var(--text-muted); font-family: var(--font-interface); font-size: 11px; line-height: 1.5; font-weight: 400; text-transform: uppercase; overflow-wrap: anywhere; }
 .llr-info-value { font-size: 15px; line-height: 1.5; font-weight: 400; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
