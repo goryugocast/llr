@@ -34,13 +34,13 @@ There are many task plugins for Obsidian. LLR is different in four specific ways
 2. Search for **"LLR"** and install
 3. Enable LLR
 
-### BRAT (latest beta)
+### BRAT (GitHub releases)
 
 1. Install and enable the **BRAT** community plugin
 2. In BRAT settings, choose **Add Beta plugin** and enter `goryugocast/llr`
 3. Enable LLR in community plugins
 
-Requires Obsidian **1.7.2** or later.
+Requires Obsidian **1.7.2** or later. Both installation methods use published releases; they do not install unreleased changes from this branch.
 
 ---
 
@@ -162,21 +162,33 @@ Details: [SRS spec](https://github.com/goryugocast/llr/blob/main/docs/specs/SRS%
 ## LLR View
 
 <!-- LLR_UNRELEASED_README -->
-> **Planned for the next release / 次回リリース予定:** The unified task/timeline view described below is available on `main`, but is not included in the current tagged release (0.4.2).
+> **Planned for the next release / 次回リリース予定:** The unified task/timeline view described below is shown here as a development preview and is not included in the current tagged release (0.4.2).
 
 The LLR pane combines the existing task view and a read-only timeline. Use the clock/list button in the header to switch between them. The task view keeps its existing task interactions and estimate summaries; it does not show memo items.
 
 The timeline uses a consistent hourly scale to show when completed activities happened, and lets you scroll across multiple days. Click outside a linked title to expand the activity and read its records and inline notes; the activity grows to make room for the text. The header control expands or collapses all activities. Clicking a linked title opens its note without toggling the activity. The view reads daily notes without changing them or storing a separate database.
 
+### Navigation and controls
+
+| Control | Action |
+|---|---|
+| Clock / list icon (right edge) | Switch between tasks and timeline while keeping the displayed date |
+| Date label | Open the date picker and change the displayed date |
+| Left / right arrows, `Today` | Move to the previous / next day, or return to today |
+| Paper icon | Open the displayed date’s daily note (requires the core Daily Notes plugin) |
+| Expand / collapse icon (timeline only) | Expand or collapse all loaded activities |
+
+Choosing a date only changes the view; it does not create or open a daily note. The paper icon uses the existing Daily Notes route for today and opens an existing note for other dates; it does not add a new past-date note creation feature. The timeline is limited to today and earlier, with a 03:00 day boundary; the task view keeps its midnight boundary.
+
 ### Task view
 
-Screenshots use sample records rendered in Obsidian.
+Screenshots use fictional sample records rendered in Obsidian; they contain no personal daily-note records.
 
 ![LLR task view](assets/llr-tasks.png)
 
 - Tasks stacked: completed → running → upcoming
 - `EST. TOTAL` and `EST. FINISH` updated dynamically as the day progresses
-- Tasks tagged `summary_role: sleep` are excluded from the main totals; a separate sleep-aware finish time is shown alongside
+- Tasks whose first linked note is directly inside the configured routine folder and has `summary_role: sleep` are excluded from the main totals. `EST. FINISH` shows the remaining work’s finish time without adding sleep.
 - A running task remains visible even when it sits below the sleep boundary, but it stays excluded from totals and is grouped with the other running tasks
 - Click a row to jump to that line in the editor; click a `[[wikilink]]` to open the linked note
 - Section dividers driven by the `Routine Sections` setting (time + label pairs)
@@ -184,6 +196,8 @@ Screenshots use sample records rendered in Obsidian.
 ### Timeline view
 
 ![LLR timeline view](assets/llr-timeline.png)
+
+Click an activity’s heading or background to read its records and notes in place. Click its heading again to collapse it. Linked titles and links inside notes open their targets independently.
 
 ![LLR timeline with an activity expanded to show its records and notes](assets/llr-timeline-expanded.png)
 
