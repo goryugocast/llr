@@ -84,13 +84,27 @@ async function checkReflectionRuntime() {
         const responsiveRow = responsive.querySelector('.llr-reflection-row');
         const responsiveSummary = responsive.querySelector('summary');
         const responsiveName = responsive.querySelector('.llr-reflection-name');
-        assert(getComputedStyle(responsiveScroll).fontSize === '17px', 'Narrow panes must use the LLR sidebar text size.');
-        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Narrow panes must reserve only 40px before the title.');
-        assert(Math.abs(responsiveRow.getBoundingClientRect().height - responsiveSummary.getBoundingClientRect().height * 3) < 1, 'Narrow panes must keep the same hour scale for all three hours.');
+        assert(getComputedStyle(responsiveScroll).fontSize === '15px', 'Timeline names must use the shared 15px activity text size.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Narrow panes must reserve the time-label column and clearance before the title.');
+        assert(Math.abs(responsiveRow.getBoundingClientRect().height - view.hourHeight() * 3) < 1, 'Narrow panes must keep the same hour scale for all three hours.');
         responsive.style.width = '700px';
         assert(getComputedStyle(responsiveScroll).fontSize === getComputedStyle(responsive).fontSize, 'Wide panes must keep native note typography.');
-        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 88) < 1, 'Wide panes must preserve the original gutter.');
-        assert(Math.abs(responsiveRow.getBoundingClientRect().height - responsiveSummary.getBoundingClientRect().height * 3) < 1, 'Resizing must update the hour scale without redrawing the records.');
+        assert(Math.abs(responsiveName.getBoundingClientRect().left - responsive.getBoundingClientRect().left - 40) < 1, 'Wide panes must retain the independent time-label column.');
+        assert(Math.abs(responsiveRow.getBoundingClientRect().height - view.hourHeight() * 3) < 1, 'Resizing must update the hour scale without redrawing the records.');
+        for (const width of [282, 300, 322, 400, 522]) {
+            responsive.style.width = `${width}px`;
+            for (const label of responsive.querySelectorAll('.llr-reflection-axis-label')) {
+                if (!label.textContent) continue;
+                const labelRect = label.getBoundingClientRect();
+                const row = label.closest('.llr-reflection-row');
+                const surfaceLeft = row.getBoundingClientRect().left + parseFloat(getComputedStyle(row, '::before').left);
+                assert(surfaceLeft - labelRect.right >= 7.9, `Time labels need a clear lane before the activity surface at ${width}px.`);
+                const range = document.createRange();
+                range.selectNodeContents(label);
+                const textRect = range.getBoundingClientRect();
+                assert(textRect.left >= labelRect.left - 0.5 && textRect.right <= labelRect.right + 0.5, 'The full hour digits must fit within their lane.');
+            }
+        }
         responsive.remove();
         const secondTask = makeTask(1, 780, '別の記録', '二つ目の本文');
         const secondBlock = { id: 1, title: secondTask.title, startMinute: 780, endMinute: 840, tasks: [secondTask] };
@@ -112,9 +126,12 @@ async function checkReflectionRuntime() {
         assert(Math.abs(host.querySelector('.llr-reflection-row').getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'A three-hour overview must occupy exactly three cells.');
         assert(!host.querySelector('.llr-reflection-duration'), 'Representative headings must not duplicate actual duration metadata.');
         assert(steps.every(step => !step.querySelector('.llr-reflection-continuation-name')), 'Continued hours must not repeat the activity heading.');
-        assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::before').left === '56px', 'The activity surface must begin after the independent time axis.');
+        assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::before').left === '32px', 'The activity surface must begin after the independent time axis.');
         assert(getComputedStyle(host.querySelector('.llr-reflection-row'), '::after').content === 'none', 'The activity must not be enclosed by a continuation bracket.');
-        assert(!host.querySelector('.llr-reflection-chevron'), 'A block must not require a repeated expansion arrow.');
+        const disclosure = host.querySelector('.llr-reflection-disclosure-icon');
+        assert(disclosure?.querySelector('svg.lucide-chevron-down'), 'Each activity heading must expose the shared disclosure chevron.');
+        assert(disclosure.getBoundingClientRect().width === 16 && disclosure.getBoundingClientRect().height === 16, 'The disclosure chevron must occupy a 16px control area.');
+        assert(disclosure.getBoundingClientRect().left >= host.querySelector('.llr-reflection-name').getBoundingClientRect().right, 'The disclosure chevron must remain outside the activity name.');
         assert(host.querySelector('.llr-reflection-row').classList.contains('is-collapsed'), 'A collapsed block must expose one whole-block hover target.');
         assert(host.querySelectorAll('.llr-reflection-record').length === 0, 'Collapsed details must not render their bodies.');
         headingLink.click();
@@ -208,6 +225,84 @@ async function checkReflectionRuntime() {
         await view.pending;
         assert(!details.open && !host.querySelector('.llr-reflection-record'), 'Collapse must release the rendered body.');
         assert(!expansion.isOpen(firstKey), 'Individual collapse must be remembered.');
+
+        // Exercise the real SummaryView renderer in a detached synthetic host. No
+        // summary/app state is changed and no note-opening or vault API is invoked.
+        const summary = unified?.summary;
+        assert(summary, 'The unified task summary is unavailable.');
+        const summaryHost = document.createElement('section');
+        summaryHost.className = 'llr-summary-container llr-unified-view';
+        summaryHost.style.cssText = `position:fixed;left:-10000px;top:0;width:360px;height:800px;overflow:hidden;font-family:${getComputedStyle(summary.contentEl).fontFamily};`;
+        document.body.append(summaryHost);
+        const summaryRenderer = Object.create(Object.getPrototypeOf(summary));
+        Object.assign(summaryRenderer, {
+            currentDate: summary.currentDate.clone(),
+            delegate: summary.delegate,
+            targetFile: summary.targetFile,
+        });
+        let dateChanged = null;
+        let noteOpened = null;
+        summaryRenderer.setDisplayDate = async date => { dateChanged = date; };
+        summaryRenderer.openDateNote = date => { noteOpened = date; };
+        const summaryData = {
+            header: { date: '2026-11-11', total: '1h 30m', end: '16:30', wake: '00:30' },
+            pastGroups: [],
+            futureGroups: [{ sectionLabel: null, showSection: false, items: [
+                { text: '🧩 [[Design|設計レビュー]] のあと長い実行中タスク名', displayText: '🧩 [[Design|設計レビュー]] のあと長い実行中タスク名', times: ['09:00', '09:30'], estimate: '30m', line: 1, status: '[/]', isDone: false, isRunning: true, duration: 30, displayStartTime: '09:00', displayEndTime: '09:30', role: 'running' },
+                { text: '📅 [[Meeting|会議]]の準備', displayText: '📅 [[Meeting|会議]]の準備', times: ['10:00'], estimate: '30m', line: 2, status: '[-]', isDone: false, isRunning: false, duration: 30, displayStartTime: '10:15', displayEndTime: '10:45', role: 'future' },
+                { text: '資料を読み返す', displayText: '資料を読み返す', times: ['11:00', '11:15'], estimate: '15m', line: 3, status: 'x', isDone: true, isRunning: false, duration: 15, displayStartTime: '11:00', displayEndTime: '11:15', role: 'done' },
+                { text: '次の作業を整理する', displayText: '次の作業を整理する', times: ['11:15', '11:30'], estimate: '15m', line: 4, status: 'x', isDone: true, isRunning: false, duration: 15, displayStartTime: '11:15', displayEndTime: '11:30', role: 'done' },
+            ] }],
+            hiddenItems: [],
+        };
+        const previousFocus = document.activeElement;
+        try {
+            summaryRenderer.renderHeader(summaryHost, summaryData);
+            summaryRenderer.renderList(summaryHost, summaryData);
+            const dateButton = summaryHost.querySelector('.llr-date-label');
+            const dateInput = summaryHost.querySelector('.llr-reflection-date-input');
+            const originalShowPicker = dateInput.showPicker;
+            let pickerOpened = false;
+            dateInput.showPicker = () => { pickerOpened = true; };
+            try {
+                dateButton.click();
+                assert(pickerOpened, 'Clicking the SummaryView date must open its native picker.');
+                dateInput.value = '2026-11-12';
+                dateInput.dispatchEvent(new Event('change'));
+                assert(dateChanged === '2026-11-12' && noteOpened === null, 'Changing the selected day must move the display date without opening a note.');
+            } finally {
+                dateInput.showPicker = originalShowPicker;
+            }
+            const dateControls = summaryHost.querySelector('.llr-summary-date-nav');
+            const tools = summaryHost.querySelector('.llr-display-tools');
+            for (const width of [280, 320, 520]) {
+                summaryHost.style.width = `${width}px`;
+                const leftRect = dateControls.getBoundingClientRect();
+                const rightRect = tools.getBoundingClientRect();
+                assert(rightRect.left + 1 >= leftRect.right, `Summary controls must not overlap at ${width}px.`);
+                const infoBoxes = [...summaryHost.querySelectorAll('.llr-info-box')].map(box => box.getBoundingClientRect());
+                const firstLabel = summaryHost.querySelector('.llr-info-label').getBoundingClientRect();
+                const firstValue = summaryHost.querySelector('.llr-info-value').getBoundingClientRect();
+                const firstTask = summaryHost.querySelector('.llr-task-name').getBoundingClientRect();
+                assert(Math.abs(firstLabel.left - firstTask.left) < 1 && Math.abs(firstValue.left - firstTask.left) < 1, `Summary labels and values must share the task text edge at ${width}px.`);
+                assert(summaryHost.querySelectorAll('.llr-info-value')[1].textContent === '16:30', 'The finish estimate must omit the sleep-adjusted wake time.');
+
+                assert(infoBoxes[0].right <= infoBoxes[1].left + 1, `The 1h 30m summary columns must not overlap at ${width}px.`);
+                assert(infoBoxes[1].left - infoBoxes[0].right <= 29, `Summary estimates must remain one compact group rather than spread across a wide pane at ${width}px.`);
+            }
+            const taskNames = [...summaryHost.querySelectorAll('.llr-task-name')];
+            const taskRows = [...summaryHost.querySelectorAll('.llr-item-self')];
+            assert(taskNames.length === 4 && taskRows.every(row => row.children[0]?.classList.contains('llr-row-bottom') && row.children[1]?.classList.contains('llr-row-top')), 'Task names must precede their time and bar rows.');
+            assert(taskNames.every(name => getComputedStyle(name).fontSize === '15px'), 'Summary task names must use the shared 15px activity typography.');
+            assert(taskRows.every(row => getComputedStyle(row).gap === '4px' && getComputedStyle(row).paddingTop === '8px' && getComputedStyle(row).paddingBottom === '8px'), 'Summary task rows must keep the shared 4px gap and 8px vertical inset.');
+            const bars = [...summaryHost.querySelectorAll('.llr-bar-wrap')];
+            assert(bars.every(bar => getComputedStyle(bar).height === '2px' && parseFloat(getComputedStyle(bar).maxWidth) <= 92), 'Summary duration bars must remain 2px high and no wider than 92px.');
+            const rowRects = taskRows.map(row => row.getBoundingClientRect());
+            assert(rowRects.every((rect, index) => index === 0 || rowRects[index - 1].bottom <= rect.top + 1), 'Aggregated task rows must not overlap.');
+        } finally {
+            if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true });
+            summaryHost.remove();
+        }
         // The removed native body component must unload rather than accumulate.
         assert(component._children.length === childrenWhileClosed, 'Collapse must dispose the rendered body component.');
         assert(!view.daysEl.querySelector('.llr-reflection-record'), 'The fixture must release rendered bodies before cleanup.');
@@ -237,7 +332,7 @@ async function checkReflectionRuntime() {
         const originalRead = app.vault.cachedRead;
         const fixtureFile = { path: '__llr_axis_runtime_fixture__.md' };
         let fixtureSection;
-        let fixtureText = '- [x] 活動 10:00 - 11:00\n- [x] 時刻のみ 12:30 - 12:30';
+        let fixtureText = '- [x] 活動 10:00 - 11:00\n- [x] 時刻のみ 12:30 - 12:30\n- [x] 時刻なし';
         app.vault.cachedRead = function(file) {
             if (file === fixtureFile) return Promise.resolve(fixtureText);
             return originalRead.apply(this, arguments);
@@ -247,6 +342,7 @@ async function checkReflectionRuntime() {
             host.append(fixtureSection);
             const axis = fixtureSection.querySelector('.llr-reflection-axis');
             assert(!fixtureSection.querySelector('.llr-reflection-point-list'), 'Point records must not be isolated in a confusing separate category.');
+            assert(!fixtureSection.querySelector('.llr-reflection-untimed') && !fixtureSection.textContent.includes('時刻なし'), 'Untimed records must stay in source data but be omitted from the timeline display.');
             assert(!!axis.querySelector('.llr-reflection-axis-tick[data-minute="720"]'), 'A point record must appear in its own hourly overview.');
             assert(Math.abs(axis.getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'The overview must retain equal cells between the first and last recorded hours.');
             view.releaseDay(fixtureSection); fixtureSection.remove();
@@ -264,7 +360,7 @@ async function checkReflectionRuntime() {
             app.vault.cachedRead = originalRead;
             if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
         }
-        return { passed: true, checks: ['single-row date navigation without duplicate input',
+        return { passed: true, checks: ['single-row date navigation without duplicate input', 'SummaryView rendering at 280/320/520px with non-overlapping controls and summary columns', 'Summary date picker changes the displayed date without opening a note', '15px summary activity names, title-first rows, shared 4px/8px spacing and 2px bars capped at 92px', '1h 30m aggregated task rows do not overlap',
             'narrow-pane typography, gutter and responsive hour geometry', 'linked representative heading and separate disclosure', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;

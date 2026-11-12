@@ -3,6 +3,7 @@ import { SummaryItem, SummaryPresentation, SummaryRenderGroup, buildSummaryPrese
 import { calculateDuration } from '../service/time-calculator';
 import type { DailyNoteSettings } from '../service/daily-note-context';
 import { resolveSectionLabel } from '../service/section-timeline';
+import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -40,6 +41,7 @@ export class SummaryView extends ItemView {
     private manualScrollSuppressedUntilMs = 0;
     private ignoreScrollEventsUntilMs = 0;
     private lastRunningItemKey: string | null = null;
+    private refreshDeferredForDatePicker = false;
 
     constructor(leaf: WorkspaceLeaf, private readonly delegate: SummaryViewDelegate) {
         super(leaf);
@@ -180,6 +182,13 @@ export class SummaryView extends ItemView {
     async refresh() {
         if (this.isClosed) return;
         const container = this.contentEl;
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLInputElement
+            && activeElement.classList.contains('llr-reflection-date-input')
+            && container.contains(activeElement)) {
+            this.refreshDeferredForDatePicker = true;
+            return;
+        }
         const dateAtStart = this.getDisplayDate();
 
         this.routineSummaryRoleCache.clear();
@@ -205,7 +214,6 @@ export class SummaryView extends ItemView {
         this.renderHeader(innerContainer, data);
         this.renderList(innerContainer, data);
 
-        const activeElement = document.activeElement;
         const keepSwitchFocus = activeElement instanceof HTMLElement
             && container.contains(activeElement)
             && activeElement.classList.contains('llr-display-switch');
@@ -324,11 +332,12 @@ export class SummaryView extends ItemView {
 
     private renderHeader(container: HTMLElement, data: SummaryPresentation) {
         const navHeader = container.createEl('div', { cls: 'llr-nav-header' });
-
         const dateNav = navHeader.createEl('div', { cls: 'llr-date-nav' });
-
-        const dateLabel = dateNav.createEl('div', {
-            cls: 'llr-date-label'
+        const dateControls = dateNav.createDiv('llr-summary-date-nav');
+        const datePicker = dateControls.createDiv('llr-reflection-date-picker');
+        const dateLabel = datePicker.createEl('button', {
+            cls: 'llr-date-label',
+            attr: { type: 'button', 'aria-label': `${data.header.date}、日付を選ぶ`, title: '日付を選ぶ' },
         });
         dateLabel.createSpan({
             cls: 'llr-date-main',
@@ -336,46 +345,50 @@ export class SummaryView extends ItemView {
         });
         dateLabel.createSpan({
             cls: `llr-date-dow ${this.getWeekdayToneClass(this.currentDate)}`,
-            text: `(${this.getJapaneseWeekday(this.currentDate)})`
+            text: this.getJapaneseWeekday(this.currentDate)
         });
-        dateLabel.setAttribute('aria-label', data.header.date);
-        dateLabel.onclick = () => {
-            void this.openCurrentDateNote();
+        const dateInput = datePicker.createEl('input', {
+            type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '表示日を選ぶ', tabindex: '-1' },
+        });
+        dateInput.value = this.getDisplayDate();
+        dateInput.onchange = () => {
+            const selectedDate = dateInput.value;
+            finishNativeDateSelection(dateLabel, dateInput);
+            if (selectedDate) void this.setDisplayDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
         };
+        dateInput.onblur = () => {
+            if (!this.refreshDeferredForDatePicker) return;
+            this.refreshDeferredForDatePicker = false;
+            void this.requestRefresh();
+        };
+        wireNativeDatePicker(dateLabel, dateInput);
 
-        const navBtns = dateNav.createEl('div', { cls: 'llr-nav-btns' });
-
-        const prevBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日' } });
+        const navBtns = dateControls.createEl('div', { cls: 'llr-nav-btns' });
+        const prevBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '前の日', title: '前の日' } });
         setIcon(prevBtn, 'chevron-left');
-        prevBtn.onclick = () => {
-            this.currentDate.subtract(1, 'day');
-            this.updateTargetFile();
-            this.requestAutoScrollToRunning();
-            void this.requestRefresh();
-        };
+        prevBtn.onclick = () => { this.currentDate.subtract(1, 'day'); this.navigateDate(); };
 
-        const todayBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { 'aria-label': '今日へ移動' } });
-        todayBtn.onclick = () => {
-            this.currentDate = moment();
-            this.updateTargetFile();
-            this.requestAutoScrollToRunning();
-            void this.requestRefresh();
-        };
+        const todayBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { type: 'button', 'aria-label': '今日へ移動', title: '今日へ移動' } });
+        todayBtn.onclick = () => { this.currentDate = moment(); this.navigateDate(); };
 
-        const nextBtn = navBtns.createEl('div', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日' } });
+        const nextBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '次の日', title: '次の日' } });
         setIcon(nextBtn, 'chevron-right');
-        nextBtn.onclick = () => {
-            this.currentDate.add(1, 'day');
-            this.updateTargetFile();
-            this.requestAutoScrollToRunning();
-            void this.requestRefresh();
-        };
+        nextBtn.onclick = () => { this.currentDate.add(1, 'day'); this.navigateDate(); };
 
+        const tools = dateNav.createDiv('llr-display-tools');
+        const noteDate = this.getDisplayDate();
+        const openNote = tools.createEl('button', {
+            cls: 'clickable-icon llr-nav-btn llr-open-daily-note',
+            attr: { type: 'button', 'aria-label': `${noteDate}のノートを開く`, title: `${noteDate}のノートを開く` },
+        });
+        setIcon(openNote, 'file-text');
+        openNote.onclick = () => { void this.openDateNote(noteDate); };
         if (this.delegate.showTimeline) {
             dateNav.addClass('llr-unified-date-nav');
-            const tools = dateNav.createDiv('llr-display-tools');
-            tools.createDiv({ cls: 'llr-bulk-slot', attr: { 'aria-hidden': 'true' } });
-            const toggle = tools.createEl('button', { cls: 'clickable-icon llr-display-switch', attr: { 'aria-label': 'タイムラインを表示' } });
+            const toggle = tools.createEl('button', {
+                cls: 'clickable-icon llr-display-switch',
+                attr: { type: 'button', 'aria-label': 'タイムラインを表示', title: 'タイムラインを表示' },
+            });
             setIcon(toggle, 'clock');
             toggle.onclick = this.delegate.showTimeline;
         }
@@ -389,13 +402,13 @@ export class SummaryView extends ItemView {
 
         const endBox = infoRow.createEl('div', { cls: 'llr-info-box' });
         endBox.createEl('span', { text: 'Est finish', cls: 'llr-info-label' });
-        if (data.header.wake) {
-            const valueRow = endBox.createEl('span', { cls: 'llr-info-value llr-info-value-inline' });
-            valueRow.createSpan({ text: data.header.end });
-            valueRow.createSpan({ text: `- ${data.header.wake}`, cls: 'llr-info-value-tail' });
-        } else {
-            endBox.createEl('span', { text: data.header.end, cls: 'llr-info-value' });
-        }
+        endBox.createEl('span', { text: data.header.end, cls: 'llr-info-value' });
+    }
+
+    private navigateDate(): void {
+        this.updateTargetFile();
+        this.requestAutoScrollToRunning();
+        void this.requestRefresh();
     }
 
     private renderList(container: HTMLElement, data: SummaryPresentation) {
@@ -460,31 +473,26 @@ export class SummaryView extends ItemView {
             void this.jumpToLine(item.line);
         };
 
-        const rowTop = self.createEl('div', { cls: 'llr-row-top' });
-        if (item.isProjected) rowTop.addClass('llr-is-projected');
-
-        const startTime = item.displayStartTime ?? '-';
-        const endTime = item.displayEndTime ?? '-';
-        const timeStr = `${startTime} - ${endTime}`;
-        const timeEl = rowTop.createEl('span', { cls: 'llr-time', text: timeStr });
-        this.applyReservedStartTint(timeEl, item);
-
-        const barPct = item.duration > 0
-            ? Math.min(100, (item.duration / maxScaleMin) * 100)
-            : 0;
-        const barWrap = rowTop.createEl('div', { cls: 'llr-bar-wrap' });
-        const barFill = barWrap.createEl('div', { cls: 'llr-bar-fill' });
-        barFill.style.width = `${barPct}%`;
-
         const rowBottom = self.createEl('div', { cls: 'llr-row-bottom' });
         const taskNameEl = rowBottom.createEl('span', {
             cls: 'nav-file-title-content llr-task-name',
         });
         this.renderTaskName(taskNameEl, item.displayText || '(無題)');
 
+        const rowTop = self.createEl('div', { cls: 'llr-row-top' });
+        if (item.isProjected) rowTop.addClass('llr-is-projected');
+        const startTime = item.displayStartTime ?? '-';
+        const endTime = item.displayEndTime ?? '-';
+        const timeEl = rowTop.createEl('span', { cls: 'llr-time', text: `${startTime} - ${endTime}` });
+        this.applyReservedStartTint(timeEl, item);
+        const barPct = item.duration > 0 ? Math.min(100, (item.duration / maxScaleMin) * 100) : 0;
+        const barWrap = rowTop.createEl('div', { cls: 'llr-bar-wrap' });
+        const barFill = barWrap.createEl('div', { cls: 'llr-bar-fill' });
+        barFill.style.width = `${barPct}%`;
+
         if (this.isReservedStartItem(item)) {
             const reserved = item.times[0];
-            const tailEl = taskNameEl.createEl('span', {
+            const tailEl = rowTop.createEl('span', {
                 cls: 'llr-reserved-tail',
                 attr: {
                     title: `予定開始: ${reserved}`,
@@ -585,23 +593,21 @@ export class SummaryView extends ItemView {
         }
     }
 
-    private async openCurrentDateNote() {
-        const file = await this.ensureCurrentDateNote();
-        if (!file) {
-            void this.requestRefresh();
-            return;
-        }
-
+    async openDateNote(date: string): Promise<void> {
+        const requestedDate = moment(date, 'YYYY-MM-DD', true);
+        if (!requestedDate.isValid()) return;
+        const file = await this.ensureDateNote(requestedDate);
+        if (!file) return;
         await this.app.workspace.getLeaf(false).openFile(file);
-        void this.requestRefresh();
+        if (date === this.getDisplayDate()) void this.requestRefresh();
     }
 
-    private async ensureCurrentDateNote(): Promise<TFile | null> {
+    private async ensureDateNote(date: moment.Moment): Promise<TFile | null> {
         type DailyNotesPlugin = { enabled?: boolean; instance?: { getDailyNote?: (date: unknown, createIfNotExists?: boolean) => Promise<TFile> | TFile | null } };
         type AppInternal = { internalPlugins?: { getPluginById?: (id: string) => DailyNotesPlugin | null } };
         const dailyNotesPlugin = (this.app as unknown as AppInternal).internalPlugins?.getPluginById?.('daily-notes');
         if (!dailyNotesPlugin?.enabled) {
-            new Notice('Enable the core daily notes plugin to open or create daily notes.');
+            new Notice('Enable the core daily notes plugin to open daily notes.');
             return null;
         }
 
@@ -610,27 +616,27 @@ export class SummaryView extends ItemView {
             return null;
         }
 
-        if (!this.currentDate.isSame(moment(), 'day')) {
-            this.updateTargetFile();
-            if (this.targetFile) {
-                return this.targetFile;
+        if (date.isSame(moment(), 'day')) {
+            try {
+                const dailyNote = await dailyNotesPlugin.instance.getDailyNote(date.clone());
+                if (dailyNote instanceof TFile) {
+                    if (date.format('YYYY-MM-DD') === this.getDisplayDate()) {
+                        this.targetFile = dailyNote;
+                    }
+                    return dailyNote;
+                }
+            } catch (error) {
+                console.error('[LLR] Failed to get daily note via core API', error);
             }
-
-            new Notice(`Daily note not found: ${this.currentDate.format('YYYY-MM-DD')}`);
+            new Notice(`Daily note could not be opened: ${date.format('YYYY-MM-DD')}`);
             return null;
         }
 
-        try {
-            const dailyNote = await dailyNotesPlugin.instance.getDailyNote(this.currentDate.clone());
-            if (dailyNote instanceof TFile) {
-                this.targetFile = dailyNote;
-                return dailyNote;
-            }
-        } catch (error) {
-            console.error('[LLR] Failed to get daily note via core API', error);
-        }
-
-        new Notice(`Daily note could not be opened: ${this.currentDate.format('YYYY-MM-DD')}`);
+        const existing = this.getDailyNotePathCandidates(date)
+            .map(path => this.app.vault.getAbstractFileByPath(path))
+            .find(file => file instanceof TFile);
+        if (existing instanceof TFile) return existing;
+        new Notice(`Daily note not found: ${date.format('YYYY-MM-DD')}`);
         return null;
     }
 

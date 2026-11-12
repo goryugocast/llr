@@ -7,10 +7,7 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 
 ## まず読む（最短導線）
 - [CHANGELOG](CHANGELOG.md): Git履歴から生成した変更一覧
-- [0.4.2 リリースノート](releases/0.4.2.md): 今回の新機能・改善・修正
-- [オープンベータ案内](open-beta.md): いま何を試してほしいかの短い案内
-- [ベータチェックリスト](beta-checklist.md): 実地テスト前の最小確認
-- [ベータ確認スナップショット](beta-verification.md): いま何を確認済みか
+- [0.5.0 リリースノート](releases/0.5.0.md): 今回の新機能・改善・修正
 - [クイックマニュアル](クイックマニュアル.md): 実用優先の操作マニュアル
 - [チートシート](チートシート.md): `repeat` / 操作の早見表 + 逆引き「こんな時 → これ」
 - [実装状況サマリー](specs/STATE_実装状況サマリー.md): 実装済み / 未実装 / **廃止・範囲外** の現状まとめ
@@ -44,9 +41,7 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 
 ## 構成の役割（短い説明）
 - `docs/index.md`: 人間/生成AI共通の入口。読む順番と分類を定義する。
-- `docs/open-beta.md`: いまの試し方と期待値を短く共有する。
-- `docs/beta-checklist.md`: 実地テスト前の最小チェック項目をまとめる。
-- `docs/beta-verification.md`: 現時点での build/test/reload と手元確認の状況を残す。
+- `docs/open-beta.md` / `beta-checklist.md` / `beta-verification.md`: 初期ベータ時点の案内・確認記録。現在の導入手順はREADMEとクイックマニュアルを参照する。
 - `docs/クイックマニュアル.md`: 実用優先の操作説明（まず使う時の入口）。
 - `docs/チートシート.md`: 手元カンペ（`repeat` / 操作の早見表）。
 - `docs/specs/`: 公開前提の詳細仕様・設計・現状サマリー。
@@ -55,11 +50,9 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 ## 読む順番の目安
 
 ### 1) まず試したい
-1. [オープンベータ案内](open-beta.md)
-2. [ベータチェックリスト](beta-checklist.md)
-3. [ベータ確認スナップショット](beta-verification.md)
-4. [クイックマニュアル](クイックマニュアル.md)
-5. [チートシート](チートシート.md)
+1. [READMEの導入手順](../README.md#install)
+2. [クイックマニュアル](クイックマニュアル.md)
+3. [チートシート](チートシート.md)
 
 ### 2) 全体把握だけしたい
 1. [実装状況サマリー](specs/STATE_実装状況サマリー.md)
@@ -83,9 +76,6 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 ## Function（機能仕様）
 - [クイックマニュアル](クイックマニュアル.md)
 - [チートシート](チートシート.md)
-- [オープンベータ案内](open-beta.md)
-- [ベータチェックリスト](beta-checklist.md)
-- [ベータ確認スナップショット](beta-verification.md)
 
 - [記録フォーマット](specs/記録フォーマット.md): 記録フォーマットと中断記録の扱い
 - [コマンド仕様](specs/コマンド仕様.md): Toggle / Force / Align / Reset / アイコン
@@ -116,4 +106,12 @@ Obsidian 上の LLR プラグインの公開ドキュメント入口。
 - [CHANGELOG](CHANGELOG.md)
 
 ---
-最終更新: 2026-08-19
+最終更新: 2026-11-12
+
+## 初期ベータの履歴資料
+
+現在の導入・更新手順ではなく、当時の確認記録です。
+
+- [オープンベータ案内](open-beta.md)
+- [ベータチェックリスト](beta-checklist.md)
+- [ベータ確認スナップショット](beta-verification.md)

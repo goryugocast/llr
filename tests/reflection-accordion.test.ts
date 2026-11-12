@@ -2,7 +2,7 @@
 // DOM behavior only: happy-dom does not validate CSS geometry or native Markdown.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Component, WorkspaceLeaf } from 'obsidian';
-import type { ReflectionBlock, ReflectionTask } from '../src/service/reflection-timeline';
+import { buildReflectionTimeline, type ReflectionBlock, type ReflectionTask } from '../src/service/reflection-timeline';
 import { ReflectionExpansionState } from '../src/service/reflection-expansion';
 
 vi.mock('obsidian', async () => {
@@ -11,12 +11,17 @@ vi.mock('obsidian', async () => {
         addChild(child: ComponentStub) { this.children.push(child); return child; }
         removeChild(child: ComponentStub) { this.children = this.children.filter(item => item !== child); }
         registerDomEvent(element: HTMLElement, name: string, callback: EventListener) { element.addEventListener(name, callback); }
+        register() {}
+        registerEvent() {}
     }
     return {
         Component: ComponentStub,
         ItemView: class extends ComponentStub {
             contentEl = document.createElement('div');
-            app = { workspace: { openLinkText: vi.fn() }, vault: { cachedRead: vi.fn() } };
+            app = {
+                workspace: { openLinkText: vi.fn(), on: vi.fn() },
+                vault: { cachedRead: vi.fn(), getMarkdownFiles: vi.fn(() => []), on: vi.fn() },
+            };
             onPaneMenu() {}
         },
         TFile: class {}, Notice: class {}, Platform: { isMobile: false },
@@ -92,6 +97,11 @@ interface Harness {
     captureAnchor(): null; restoreAnchor(anchor: unknown): void;
     updateEdges(): void; jump(date: string): Promise<void>; today(): string;
     renderMarkdown(host: HTMLElement, markdown: string, day: Day, component: Component): Promise<void>;
+    syncCurrentDay(): void;
+    openNoteButton: HTMLButtonElement | null;
+    pendingDisplayDate: string | null;
+    onOpen(): Promise<void>;
+    onClose(): Promise<void>;
 }
 async function setup() {
     const view = new ReflectionView({} as WorkspaceLeaf, () => ({ enabled: true, folder: '', format: 'YYYY-MM-DD' })) as unknown as Harness;
@@ -200,6 +210,77 @@ describe('reflection accordion source DOM behavior', () => {
         await view.makeBlock(view.daysEl, day, { id: 720, title: 'Point', startMinute: 720, endMinute: 720, tasks: [zero] }, 0, component);
         await view.setAllDetails(true);
         expect(view.daysEl.querySelector('.llr-reflection-record-time')?.textContent).toBe('12:00');
+    });
+    it('hides only untimed records while preserving them in parsed timeline data and keeping timed zero-minute items', async () => {
+        const markdown = [
+            '## Morning',
+            '- [x] Untimed journal item',
+            '## Noon',
+            '- [x] Point record 12:00 - 12:00',
+        ].join('\n');
+        const timeline = buildReflectionTimeline(markdown);
+        expect(timeline.tasks.map(task => [task.title, task.startMinute, task.endMinute])).toContainEqual(['Untimed journal item', null, null]);
+        expect(timeline.blocks.some(item => item.startMinute === null && item.endMinute === null)).toBe(true);
+
+        const view = new ReflectionView({} as WorkspaceLeaf, () => ({ enabled: true, folder: '', format: 'YYYY-MM-DD' })) as unknown as Harness;
+        view.app.vault.cachedRead.mockResolvedValue(markdown);
+        const rendered = await view.makeDay({ date: day.date, file: { path: 'daily/2026-11-05.md' } });
+
+        expect(rendered.querySelector('.llr-reflection-untimed')).toBeNull();
+        expect(rendered.textContent).not.toContain('Untimed journal item');
+        expect(rendered.querySelector('.llr-reflection-row.is-time-band')).not.toBeNull();
+        expect(rendered.textContent).toContain('Point record');
+    });
+    it('places the disclosure icon after the name and updates the expanded state', async () => {
+        const { view, summary, details } = await setup();
+        const name = summary.querySelector('.llr-reflection-name');
+        const icon = summary.querySelector('.llr-reflection-disclosure-icon');
+        expect(icon).not.toBeNull();
+        expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        expect(icon?.getAttribute('data-icon')).toBe('chevron-down');
+        expect(Array.from(summary.children).indexOf(icon!)).toBeGreaterThan(Array.from(summary.children).indexOf(name!));
+        expect(summary.getAttribute('aria-expanded')).toBe('false');
+
+        summary.click(); await view.pending;
+        expect(summary.getAttribute('aria-expanded')).toBe('true');
+        expect(details.open).toBe(true);
+    });
+    it('opens the note for the day currently tracked by timeline scrolling', async () => {
+        const openDateNote = vi.fn(async (_date: string) => {});
+        const view = new ReflectionView({} as WorkspaceLeaf, () => ({ enabled: true, folder: '', format: 'YYYY-MM-DD' }), () => {}, openDateNote) as unknown as Harness;
+        await view.onOpen();
+        view.pendingDisplayDate = null;
+        const scroller = view.scroller;
+        vi.spyOn(scroller, 'clientHeight', 'get').mockReturnValue(400);
+        vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue({ top: 100 } as DOMRect);
+        const earlier: Day = { date: '2026-11-10', file: null };
+        const displayed: Day = { date: '2026-11-09', file: null };
+        view.visible = [earlier, displayed];
+        const earlierSection = document.createElement('section');
+        const displayedSection = document.createElement('section');
+        vi.spyOn(earlierSection, 'getBoundingClientRect').mockReturnValue({ bottom: 110 } as DOMRect);
+        vi.spyOn(displayedSection, 'getBoundingClientRect').mockReturnValue({ bottom: 180 } as DOMRect);
+        view.sections = new Map([[earlier.date, earlierSection], [displayed.date, displayedSection]]);
+
+        view.syncCurrentDay();
+        view.openNoteButton?.click();
+
+        expect(openDateNote).toHaveBeenCalledWith(displayed.date);
+        expect(view.dateInput.value).toBe(displayed.date);
+        await view.onClose();
+    });
+    it('keeps the bulk control disabled while an async expansion is running', async () => {
+        const { view } = await setup();
+        const button = document.createElement('button');
+        view.expandButton = button;
+        let release!: () => void;
+        view.renderMarkdown = async () => await new Promise<void>(resolve => { release = resolve; });
+
+        const operation = view.setAllDetails(true);
+        expect(button.disabled).toBe(true);
+        release();
+        await operation;
+        expect(button.disabled).toBe(false);
     });
     it('supports mixed individual/bulk states and new activities inherit the bulk default', async () => {
         const { view, component, summary, details } = await setup();

@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-10-07
+- Generated: 2026-11-12
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,61 @@
 
 ## Git History Snapshot
 
+### 2026-11-12
+- Release LLR 0.5.0 with the unified task and timeline view (`07e350d`)
+- Refresh LLR view documentation and anonymous screenshots (`3442f6f`)
+- Activate mobile date pickers through their native inputs (`fb39744`)
+### 2026-11-11
+- Reserve an independent lane for timeline hour labels (`377963b`)
+- Keep sidebar estimates grouped across pane widths (`6d4a929`)
+- Balance sidebar estimates and shared spacing (`3e47bbe`)
+- Unify task and timeline sidebar design (`47ad34b`)
+### 2026-11-06
+- Mark the timeline as planned for the next release (`b5978ff`)
+- Use Japanese sample records in LLR screenshots (`4480880`)
+- Use Markdown image syntax in the README (`b404b89`)
+- Document the unified LLR timeline with screenshots (`5b4f6b8`)
+- Harden LLR view state and remove obsolete task rendering (`d4ce569`)
+- Unify LLR task and timeline views (`c9d420a`)
+- Record unified LLR view design direction (`3e22c92`)
+- Center reflection header controls (`77ef58f`)
+- Align reflection accordion with approved layout direction (`77c89a9`)
+- Preserve unfinished reflection display draft for handoff (`d1e9eb6`)
+### 2026-11-05
+- Record design handoff and the latest display constraints (`0a2557f`)
+- Remove the rejected reflection list comparison (`9ee610e`)
+- Add a sidebar-style reading list for comparison (`cff8f26`)
+- Fit reflection reading to narrow Obsidian panes (`7c422d0`)
+- Record calendar reuse and daily note creation options (`db03885`)
+- Open the reflection calendar from the date label (`72daf8e`)
+- Clarify that date navigation roles remain undecided (`d65c1bc`)
+- Align reflection navigation with the LLR sidebar (`49af977`)
+- Match Backlinks expansion control and align header text (`1364bb3`)
+- Remove unnecessary reflection region label (`1d516b3`)
+- Unify reflection date navigation with LLR controls (`cdf3742`)
+- Distribute reflection ticks across expanded activity bands (`14bbf06`)
+- Record reflection expansion design review (`2488c48`)
+- Separate reflection continuity from hover interaction (`d515818`)
+- Align reflection typography and restore equal hour cells (`cecea00`)
+- Improve reflection reading space and day context (`178cfad`)
+- Record unresolved reflection design findings (`27fbe75`)
+- Use a proportional reading timeline for reflection (`2ec8f22`)
+- Define equal conditions for reflection design comparison (`beaa4cc`)
+- Record reflection visual design findings (`9795a54`)
+- Add a single reflection details toggle (`41f10f4`)
+- Add repeatable reflection rendering regression checks (`342677d`)
+- Keep daily-note preamble out of reflection (`c244853`)
+- Exclude unfinished tasks and SRS from reflection (`6fe0a0e`)
+- Restore readable memos in the reflection view (`2cf1a2d`)
+- Preserve deployed fixes before reflection rollout (`3dbb250`)
+- Add a central reflection timeline view (`52bfa6c`)
+### 2026-10-10
+- Ignore Obsidian property checkboxes and guard task source lines (`6e1430e`)
+- Add regression coverage for YAML property checkbox and task-line guard (`1e060b3`)
+### 2026-10-18
+- Fix Japanese whole-hour routine sections (`310ea42`)
 ### 2026-10-07
+- Refresh changelog for 0.4.2 (`4410221`)
 - Prepare the 0.4.2 section ordering release (`18b3d16`)
 - Keep extended sleep sections after midnight routines (`11d4ed8`)
 - Align section ordering with the existing logical day (`706e605`)
@@ -53,60 +107,4 @@
 - Implement start-and-open loop: complete linked note and close tab (`8dc4ded`)
 - Consolidate start-and-open logic into handleToggleTask (`07c666c`)
 - Adjust start-and-open to respect active tab handling with open_focus (`5d99390`)
-- Fix start-and-open to always open in new tab regardless of existing tabs (`f4506bf`)
-### 2026-07-07
-- Implement start-and-open-note command with SRS-aware cursor control (`599d41c`)
-- Add Start and Open feature specification (`50a3e8c`)
-- Add blank line between last section and section-less routines (`ea0cee8`)
-- Add done marker spec, manual command spec, and completion edge case docs (`8e37f5f`)
-### 2026-07-06
-- Mark SRS batch as done when no candidates remain (`aa36a02`)
-- Add edge case tests for SRS batch completion with memo lines (`6b9bc5a`)
-- Add replenish-srs command to command palette (`d6aef72`)
-- Fix SRS batch replenishment after plugin reload (`0b55276`)
-- Simplify SRS note due-date determination logic (`f8c2176`)
-- Update SRS vault-wide sort order implementation and tests (`9639ef2`)
-- Move section-less routines after sectioned ones in daily note sort order (`df67dce`)
-- Simplify HTML comment markers for SRS batch display (`b452955`)
-- Extract generic batch display logic into reusable module (`f4f6a5d`)
-- Refactor SRS batch logic into pure functions with comprehensive tests (`eb80688`)
-- Implement SRS batch loading with markers and auto-refill (`c3f5b01`)
-### 2026-07-05
-- Bump version to 0.2.3 (`9841722`)
-- Fix startup contention with Templater on daily note creation (`8119bd8`)
-- Fix retry logic to avoid file read conflicts after content exists (`c06a729`)
-- Add SRS section to README and remove absorbed incubate docs (`44f3362`)
-- Update SRS docs: add usage section and reflect current branch state (`a806db9`)
-- Bump version to 0.2.2 (`3ce9da0`)
-- Support slash-containing daily note formats (year/month subfolders) (`47d9774`)
-### 2026-05-30
-- Unify routine due catch-up loops into advanceDueUntil (`431ec69`)
-### 2026-07-02
-- Fix remaining doc drift: unavailable commands, stale toggle matrix, orphan setting (`2052dde`)
-- Sync specs, README, and docs index with the current implementation (`ae6900b`)
-- Split main.ts and inject SummaryView settings via delegate (`3ccecf0`)
-### 2026-07-01
-- Insert a blank line before SRS notes in daily note insertion (`bc5dc03`)
-### 2026-06-30
-- Give SRS settings their own section heading (`a3fb2b6`)
-- Move SRS settings under Advanced section (`b11b8b9`)
-- Add srsMaxDaily setting to limit SRS notes per day (`34aa3b5`)
-- Place SRS notes at bottom of daily note insertion (`5180780`)
-- Update SRS spec for vault-wide approach and overdue growth (`eead4ad`)
-- Update SRS spec for vault-wide approach and overdue growth (`502ad6a`)
-- SRS overdue growth: use elapsed days when longer than repeat (`4d4c7a1`)
-- Add srsGrowthEnabled setting and routine/ subfolder exclusion (`af8cc02`)
-- SRS recognition: vault-wide by repeat field instead of srs/ folder (`a1c7046`)
-- Implement SRS completion with folder-based recognition (`ed03179`)
-- Add utility function tests for yaml-parser module (`ea1e016`)
-- Remove dead code and add 34 tests for uncovered branches (`696a73d`)
-- Add 80 tests to cover untested pure-function branches (`0a1d907`)
-- Add SRS configuration constants and options to routine engine (`9cb377a`)
-### 2026-05-29
-- Extract daily-note routine auto-insert into controller (`3b3cb88`)
-- Extract routine completion snapshot store (`ba95bb7`)
-- Extract checkbox gesture handling into CheckboxInteractionController (`e2acbd4`)
-- Document module layout and main.ts split plan (`70f484b`)
-- Remove dead type aliases and unused binding (`2db5707`)
-- Extract debug logging into DebugLog service (`a92a368`)
 
