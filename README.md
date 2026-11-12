@@ -40,7 +40,7 @@ There are many task plugins for Obsidian. LLR is different in four specific ways
 2. In BRAT settings, choose **Add Beta plugin** and enter `goryugocast/llr`
 3. Enable LLR in community plugins
 
-Requires Obsidian **1.7.2** or later. Both installation methods use published releases; they do not install unreleased changes from this branch.
+Requires Obsidian **1.7.2** or later. The task and timeline views below are included in **0.5.0 and later**. Existing users can update LLR in Community Plugins or through BRAT.
 
 ---
 
@@ -161,18 +161,17 @@ Details: [SRS spec](https://github.com/goryugocast/llr/blob/main/docs/specs/SRS%
 
 ## LLR View
 
-<!-- LLR_UNRELEASED_README -->
-> **Planned for the next release / 次回リリース予定:** The unified task/timeline view described below is shown here as a development preview and is not included in the current tagged release (0.4.2).
+Available in **0.5.0 and later**.
 
 The LLR pane combines the existing task view and a read-only timeline. Use the clock/list button in the header to switch between them. The task view keeps its existing task interactions and estimate summaries; it does not show memo items.
 
-The timeline uses a consistent hourly scale to show when completed activities happened, and lets you scroll across multiple days. Click outside a linked title to expand the activity and read its records and inline notes; the activity grows to make room for the text. The header control expands or collapses all activities. Clicking a linked title opens its note without toggling the activity. The view reads daily notes without changing them or storing a separate database.
+The timeline shows completed activities along a time axis and lets you scroll across days. Press an activity to expand its summary in place and read its recorded times and notes. Collapse the summary when finished, or use the header control to expand or collapse all loaded summaries. Links open their linked notes separately. The timeline reads daily notes without changing them or storing a separate database.
 
 ### Navigation and controls
 
 | Control | Action |
 |---|---|
-| Clock / list icon (right edge) | Switch between tasks and timeline while keeping the displayed date |
+| Clock / list icon (right edge) | Switch between tasks and timeline; future task dates return to today in the timeline |
 | Date label | Open the date picker and change the displayed date |
 | Left / right arrows, `Today` | Move to the previous / next day, or return to today |
 | Paper icon | Open the displayed date’s daily note (requires the core Daily Notes plugin) |
@@ -197,7 +196,7 @@ Screenshots use fictional sample records rendered in Obsidian; they contain no p
 
 ![LLR timeline view](assets/llr-timeline.png)
 
-Click an activity’s heading or background to read its records and notes in place. Click its heading again to collapse it. Linked titles and links inside notes open their targets independently.
+Expand an activity’s summary to read its recorded times and notes without leaving the timeline. Links in titles and notes open their linked notes.
 
 ![LLR timeline with an activity expanded to show its records and notes](assets/llr-timeline-expanded.png)
 

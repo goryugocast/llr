@@ -1,6 +1,6 @@
 # LLR view screenshots
 
-The three PNGs below show the development preview documented in the main README. They are fictional examples, not personal daily-note records.
+The three PNGs below show the LLR 0.5.0 views documented in the main README. They are fictional examples, not personal daily-note records.
 
 | Image | Use | Pixels |
 |---|---|---|
