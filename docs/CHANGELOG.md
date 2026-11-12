@@ -14,6 +14,7 @@
 ## Git History Snapshot
 
 ### 2026-11-12
+- Release LLR 0.5.0 with the unified task and timeline view (`07e350d`)
 - Refresh LLR view documentation and anonymous screenshots (`3442f6f`)
 - Activate mobile date pickers through their native inputs (`fb39744`)
 ### 2026-11-11
@@ -106,5 +107,4 @@
 - Implement start-and-open loop: complete linked note and close tab (`8dc4ded`)
 - Consolidate start-and-open logic into handleToggleTask (`07c666c`)
 - Adjust start-and-open to respect active tab handling with open_focus (`5d99390`)
-- Fix start-and-open to always open in new tab regardless of existing tabs (`f4506bf`)
 
