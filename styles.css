@@ -175,6 +175,9 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 }
 .llr-summary-container { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--background-primary); container-type: inline-size; }
 .nav-files-container.llr-list-container { flex: 1; min-height: 0; overflow-y: auto !important; padding: 0 12px 16px !important; }
+.is-mobile.is-floating-nav .workspace-drawer .nav-files-container.llr-list-container { padding-bottom: 64px !important; }
+/* Keep scrollable LLR content clear of Obsidian’s floating fade in the mobile drawer. */
+.is-mobile.is-floating-nav .workspace-drawer .llr-reflection-scroll { padding-bottom: 64px; }
 .llr-nav-header { flex-shrink: 0; background: var(--background-primary); }
 .llr-section-divider-row { display: flex; align-items: center; padding: 0 8px 8px; margin-top: 16px; user-select: none; }
 .llr-section-divider-row:first-child { margin-top: 0; }
@@ -354,6 +357,59 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 .llr-native-date-picker > input.llr-reflection-date-input { pointer-events: auto; z-index: 1; font-size: 16px; cursor: pointer; }
 .llr-native-date-picker > button { pointer-events: none; }
 @container (width < 320px) { .llr-summary-date-nav { gap: 4px; } }
+
+/* Use Obsidian's preferred phone text size inside the narrow mobile drawer. */
+.is-mobile .llr-summary-container,
+.is-mobile .llr-reflection {
+    font-size: max(17px, var(--font-ui-medium));
+}
+.is-mobile .llr-section-divider-label,
+.is-mobile .llr-info-label,
+.is-mobile .llr-time,
+.is-mobile .llr-reserved-tail,
+.is-mobile .llr-reflection-day h2,
+.is-mobile .llr-reflection-hour,
+.is-mobile .llr-reflection-record-time,
+.is-mobile .llr-reflection-supplement {
+    font-size: max(13px, var(--font-ui-smaller));
+}
+.is-mobile .llr-info-value {
+    font-size: max(17px, var(--font-ui-medium));
+}
+.is-mobile .llr-task-name,
+.is-mobile .llr-reflection-name,
+.is-mobile .llr-reflection-record-title {
+    font-size: max(17px, var(--font-ui-medium));
+}
+.is-mobile .llr-task-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+.is-mobile .llr-row-top {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 8px;
+    row-gap: 4px;
+    align-items: center;
+}
+.is-mobile .llr-row-top > .llr-time {
+    grid-column: 1;
+    grid-row: 1;
+}
+.is-mobile .llr-row-top > .llr-reserved-tail {
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+}
+.is-mobile .llr-row-top > .llr-bar-wrap {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    max-width: none;
+}
 
 /* A closed title belongs to the whole time band; open records read from the top. */
 .llr-reflection-row.is-collapsed > details > summary,
