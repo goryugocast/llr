@@ -89,7 +89,7 @@ export default class LlrPlugin extends Plugin {
         await this.loadSettings();
         this.timelineDiagnostics = new TimelineDiagnostics(this.app, {
             baseVersion: this.manifest.version,
-            buildId: 'timeline-jump-diag-20261113-2-mobile-date',
+            buildId: 'timeline-jump-diag-20261113-3-date-fit',
             platform: Platform.isIosApp ? 'ios' : Platform.isAndroidApp ? 'android' : 'desktop',
             onFailure: () => this.showLlrNotice('タイムライン診断ログを保存できませんでした。空き容量と同期状態を確認してください。'),
         });

@@ -59,7 +59,10 @@ function openMobileDateChooser(app: App, label: HTMLButtonElement, source: HTMLI
     cancel.type = 'button';
     cancel.textContent = 'キャンセル';
     actions.append(cancel);
-    modal.contentEl.append(date, actions);
+    const field = document.createElement('div');
+    field.className = 'llr-date-chooser-field';
+    field.append(date);
+    modal.contentEl.append(field, actions);
     cancel.addEventListener('click', () => modal.close());
 
     modal.open();
