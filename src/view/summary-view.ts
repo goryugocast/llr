@@ -350,6 +350,8 @@ export class SummaryView extends ItemView {
             cls: `llr-date-dow ${this.getWeekdayToneClass(this.currentDate)}`,
             text: this.getJapaneseWeekday(this.currentDate)
         });
+        const dateChevron = dateLabel.createSpan({ cls: 'llr-date-chevron', attr: { 'aria-hidden': 'true' } });
+        setIcon(dateChevron, 'chevron-down');
         const dateInput = datePicker.createEl('input', {
             type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '表示日を選ぶ', tabindex: '-1' },
         });

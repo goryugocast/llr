@@ -114,6 +114,8 @@ export class ReflectionView extends ItemView {
         this.currentDayLabel = dateLabel.createEl('button', { cls: 'llr-reflection-date-label', attr: { 'aria-label': '日付を選ぶ', title: '日付を選ぶ' } });
         this.currentDayMain = this.currentDayLabel.createSpan({ cls: 'llr-date-main', text: moment(this.today()).format('MM-DD') });
         this.currentDayWeekday = this.currentDayLabel.createSpan('llr-date-dow llr-reflection-date-weekday');
+        const dateChevron = this.currentDayLabel.createSpan({ cls: 'llr-date-chevron', attr: { 'aria-hidden': 'true' } });
+        setIcon(dateChevron, 'chevron-down');
         const navigation = dateNavigation.createDiv('llr-nav-btns');
         this.previousDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日', title: '前の日' } });
         setIcon(this.previousDayButton, 'chevron-left');
