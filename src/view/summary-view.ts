@@ -367,7 +367,7 @@ export class SummaryView extends ItemView {
             this.refreshDeferredForDatePicker = false;
             void this.requestRefresh();
         };
-        wireNativeDatePicker(dateLabel, dateInput, this.app);
+        wireNativeDatePicker(dateLabel, dateInput);
 
         const navBtns = dateControls.createEl('div', { cls: 'llr-nav-btns' });
         const prevBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '前の日', title: '前の日' } });

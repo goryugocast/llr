@@ -129,7 +129,7 @@ export class ReflectionView extends ItemView {
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
         this.calendarDisplayDate = this.dateInput.value;
-        wireNativeDatePicker(this.currentDayLabel, this.dateInput, this.app, () => this.today());
+        wireNativeDatePicker(this.currentDayLabel, this.dateInput);
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
             finishNativeDateSelection(this.currentDayLabel, this.dateInput);
