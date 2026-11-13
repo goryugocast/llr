@@ -4,6 +4,7 @@ import { calculateDuration } from '../service/time-calculator';
 import type { DailyNoteSettings } from '../service/daily-note-context';
 import { resolveSectionLabel } from '../service/section-timeline';
 import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
+import type { TimelineDiagnostics } from '../service/timeline-diagnostics';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -13,6 +14,7 @@ export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
  * プラグイン ID 変更・private 構造変更に弱いので、必要な値だけを注入で受け取る。
  */
 export interface SummaryViewDelegate {
+    timelineDiagnostics?: TimelineDiagnostics;
     showTimeline?: () => void;
     getRoutineFolder(): string;
     /** parseSectionTimeToInt 済み・日付境界で正規化した時刻順のセクション境界。 */
@@ -392,6 +394,7 @@ export class SummaryView extends ItemView {
             setIcon(toggle, 'clock');
             toggle.onclick = this.delegate.showTimeline;
         }
+
 
         // サマリー行
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });

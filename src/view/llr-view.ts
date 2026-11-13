@@ -47,7 +47,7 @@ export class LlrView extends ItemView {
             let created: ReflectionView | null = null;
             try {
                 if (mode === 'timeline' && !this.timeline) {
-                    this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks'), date => this.summary.openDateNote(date)));
+                    this.timeline = this.addChild(new ReflectionView(this.leaf, this.delegate.getDailyNoteSettings, () => this.switchFromButton('tasks'), date => this.summary.openDateNote(date), this.delegate.timelineDiagnostics));
                     created = this.timeline;
                     this.contentEl.append(this.timeline.contentEl);
                     this.timeline.containerEl.remove();
@@ -85,6 +85,7 @@ export class LlrView extends ItemView {
     }
 
     requestRefresh(): Promise<void> { return this.summary?.requestRefresh() ?? Promise.resolve(); }
+    recordTimelineDiagnosticSnapshot(): void { this.timeline?.recordDiagnosticSnapshot(); }
 
     getState(): Record<string, unknown> {
         return { displayMode: this.mode, date: (this.mode === 'tasks' ? this.summary : this.timeline)?.getDisplayDate() };

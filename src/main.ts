@@ -17,6 +17,7 @@ import { getCM6View } from './view/editor-internal';
 import { requestRefreshIfSupported } from './view/refreshable-view';
 import { isDailyNoteMatch, isFutureDailyNoteDate, resolveDailyNoteDate, resolveDailyNoteFolder, resolveMutationReferenceDate, resolveReferenceDate, type DailyNoteSettings as DailyNoteSettingsSpec } from './service/daily-note-context';
 import { DebugLog } from './service/debug-log';
+import { TimelineDiagnostics } from './service/timeline-diagnostics';
 import { RoutineCompletionSnapshotStore, buildRoutineCompletionSignature } from './service/routine-completion-snapshot';
 import { DailyNoteAutoInsertController } from './service/daily-note-auto-insert';
 import { TaskParser } from './service/task-parser';
@@ -69,6 +70,7 @@ export default class LlrPlugin extends Plugin {
     // Debug log I/O is delegated to DebugLog. Logs live outside the routine folder
     // (llrlog/) so Base views on routines don't react to debug writes.
     private debug!: DebugLog;
+    private timelineDiagnostics!: TimelineDiagnostics;
 
     async onload() {
         this.debug = new DebugLog(
@@ -85,6 +87,12 @@ export default class LlrPlugin extends Plugin {
             updateUI: () => this.updateUI(),
         });
         await this.loadSettings();
+        this.timelineDiagnostics = new TimelineDiagnostics(this.app, {
+            baseVersion: this.manifest.version,
+            buildId: 'timeline-jump-diag-20261113-1',
+            platform: Platform.isIosApp ? 'ios' : Platform.isAndroidApp ? 'android' : 'desktop',
+            onFailure: () => this.showLlrNotice('タイムライン診断ログを保存できませんでした。空き容量と同期状態を確認してください。'),
+        });
         this.syncMobileLargeCheckboxClass();
         this.addSettingTab(new LlrSettingTab(this.app, this));
 
@@ -112,6 +120,7 @@ export default class LlrPlugin extends Plugin {
         this.statusBar.setText('');
 
         const summaryDelegate: SummaryViewDelegate = {
+            timelineDiagnostics: this.timelineDiagnostics,
             getRoutineFolder: () => this.settings.routineFolder,
             getSectionBoundaries: () => this.getSortedSectionBoundaries(),
             getDailyNoteSettings: () => this.getDailyNoteSettings(),
@@ -120,7 +129,29 @@ export default class LlrPlugin extends Plugin {
             VIEW_TYPE_SUMMARY,
             (leaf) => new LlrView(leaf, summaryDelegate)
         );
-        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings()));
+        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings(), undefined, undefined, this.timelineDiagnostics));
+        this.addCommand({
+            id: 'timeline-diagnostic-start',
+            name: 'タイムライン診断ログを開始',
+            callback: async () => {
+                const path = await this.timelineDiagnostics.start();
+                if (!path) return;
+                await this.activateView('timeline');
+                for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SUMMARY)) {
+                    if (leaf.view instanceof LlrView) leaf.view.recordTimelineDiagnosticSnapshot();
+                }
+                this.showLlrNotice('タイムライン診断ログを開始しました。症状を再現後、「タイムライン診断ログを停止して保存」を実行してください。');
+            },
+        });
+        this.addCommand({
+            id: 'timeline-diagnostic-stop',
+            name: 'タイムライン診断ログを停止して保存',
+            callback: async () => {
+                const result = await this.timelineDiagnostics.stop();
+                if (result.reason === 'io-error') return;
+                this.showLlrNotice(result.path ? `診断ログを保存しました: ${result.path}` : 'タイムライン診断ログは開始されていません。');
+            },
+        });
         this.addCommand({
             id: 'open-reflection-view',
             name: '振り返りを開く',
@@ -1037,6 +1068,7 @@ export default class LlrPlugin extends Plugin {
     }
 
     onunload() {
+        this.timelineDiagnostics?.unload();
         console.debug('Unloading Llr Plugin...');
         document.body.classList.remove('llr-mobile-large-checkbox');
         if (this.statusBarDebounce) clearTimeout(this.statusBarDebounce);
