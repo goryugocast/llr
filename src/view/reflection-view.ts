@@ -44,6 +44,7 @@ export class ReflectionView extends ItemView {
     private readonly diagnosticViewId = ++diagnosticViewSequence;
     private readonly diagnosticAnchors = new Map<string, number>();
     private diagnosticSession: string | null = null;
+    private calendarDisplayDate: string | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -51,6 +52,7 @@ export class ReflectionView extends ItemView {
         private readonly showTasks?: () => void,
         private readonly openDateNote?: (date: string) => Promise<void>,
         private readonly diagnostics?: TimelineDiagnostics,
+        private readonly selectCalendarDate?: (date: string) => Promise<void>,
     ) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
@@ -124,11 +126,15 @@ export class ReflectionView extends ItemView {
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
-        wireNativeDatePicker(this.currentDayLabel, this.dateInput);
+        this.calendarDisplayDate = this.dateInput.value;
+        wireNativeDatePicker(this.currentDayLabel, this.dateInput, this.app, () => this.today());
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
             finishNativeDateSelection(this.currentDayLabel, this.dateInput);
-            void this.enqueue(() => this.jump(date));
+            // Keep the displayed date stable until the selected note can be opened.
+            this.dateInput.value = this.calendarDisplayDate ?? this.today();
+            if (this.selectCalendarDate) void this.selectCalendarDate(date).catch(() => {});
+            else void this.enqueue(() => this.jump(date));
         };
         this.expandButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
         setIcon(this.expandButton, 'move-vertical');
@@ -278,6 +284,7 @@ export class ReflectionView extends ItemView {
             this.updateEdges();
         }
         this.dateInput.value = date;
+        this.calendarDisplayDate = date;
         this.dateInput.max = this.today();
         // Saved workspace state can arrive before the leaf is shown. Zero-sized
         // geometry cannot position a day; retain the requested date until visible.
@@ -552,7 +559,10 @@ export class ReflectionView extends ItemView {
             setTooltip(this.openNoteButton, label);
         }
         if (this.followingDayButton) this.followingDayButton.disabled = day.date >= this.today();
-        if (document.activeElement !== this.dateInput) this.dateInput.value = day.date;
+        if (document.activeElement !== this.dateInput) {
+            this.dateInput.value = day.date;
+            this.calendarDisplayDate = day.date;
+        }
     }
 
     private async renderHeading(parent: HTMLElement, day: DayEntry, title: string, component: Component) {

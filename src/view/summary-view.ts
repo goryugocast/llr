@@ -44,6 +44,7 @@ export class SummaryView extends ItemView {
     private ignoreScrollEventsUntilMs = 0;
     private lastRunningItemKey: string | null = null;
     private refreshDeferredForDatePicker = false;
+    private calendarNavigation = Promise.resolve();
 
     constructor(leaf: WorkspaceLeaf, private readonly delegate: SummaryViewDelegate) {
         super(leaf);
@@ -355,15 +356,16 @@ export class SummaryView extends ItemView {
         dateInput.value = this.getDisplayDate();
         dateInput.onchange = () => {
             const selectedDate = dateInput.value;
+            dateInput.value = this.getDisplayDate();
             finishNativeDateSelection(dateLabel, dateInput);
-            if (selectedDate) void this.setDisplayDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
+            if (selectedDate) void this.selectCalendarDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
         };
         dateInput.onblur = () => {
             if (!this.refreshDeferredForDatePicker) return;
             this.refreshDeferredForDatePicker = false;
             void this.requestRefresh();
         };
-        wireNativeDatePicker(dateLabel, dateInput);
+        wireNativeDatePicker(dateLabel, dateInput, this.app);
 
         const navBtns = dateControls.createEl('div', { cls: 'llr-nav-btns' });
         const prevBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '前の日', title: '前の日' } });
@@ -394,7 +396,6 @@ export class SummaryView extends ItemView {
             setIcon(toggle, 'clock');
             toggle.onclick = this.delegate.showTimeline;
         }
-
 
         // サマリー行
         const infoRow = navHeader.createEl('div', { cls: 'llr-summary-info' });
@@ -603,6 +604,32 @@ export class SummaryView extends ItemView {
         if (!file) return;
         await this.app.workspace.getLeaf(false).openFile(file);
         if (date === this.getDisplayDate()) void this.requestRefresh();
+    }
+
+    selectCalendarDate(date: string, display: Pick<SummaryView, 'getDisplayDate' | 'setDisplayDate'> = this): Promise<void> {
+        const operation = (this.calendarNavigation ?? Promise.resolve()).then(async () => {
+            const requested = moment(date, 'YYYY-MM-DD', true);
+            if (!requested.isValid()) return;
+            const previousDate = display.getDisplayDate();
+            const previousFile = this.app.workspace.getActiveFile();
+            const file = await this.ensureDateNote(requested);
+            if (!file) {
+                // The native input changes before onchange; restore its visible label on failure.
+                await display.setDisplayDate(previousDate);
+                return;
+            }
+            try {
+                await display.setDisplayDate(date);
+                await this.app.workspace.getLeaf(false).openFile(file);
+            } catch (error) {
+                await display.setDisplayDate(previousDate);
+                if (previousFile) await this.app.workspace.getLeaf(false).openFile(previousFile);
+                new Notice('日付を移動できませんでした。元の日付へ戻しました。');
+                throw error;
+            }
+        });
+        this.calendarNavigation = operation.catch(() => {});
+        return operation;
     }
 
     private async ensureDateNote(date: moment.Moment): Promise<TFile | null> {
