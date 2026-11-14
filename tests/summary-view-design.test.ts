@@ -87,7 +87,7 @@ describe('SummaryView unified design', () => {
 
     afterEach(() => document.body.replaceChildren());
 
-    it('uses the date button to open a picker and keeps note opening as a separate action', () => {
+    it('opens the picker without opening a note until a date is confirmed', () => {
         const view = makeView();
         const header = document.createElement('div');
         view['renderHeader'](header, { header: { date: '11-06 (金)', total: '1:00', end: '10:00' }, pastGroups: [], futureGroups: [], hiddenItems: [] });
@@ -100,6 +100,44 @@ describe('SummaryView unified design', () => {
         expect(openDateNote).not.toHaveBeenCalled();
         expect(header.querySelector<HTMLButtonElement>('.llr-open-daily-note')).not.toBeNull();
         expect(header.querySelector('.llr-bulk-slot')).toBeNull();
+    });
+
+    it('keeps the note and sidebar date unchanged when the selected note is missing', async () => {
+        const view = makeView();
+        const openFile = vi.fn();
+        Object.assign(view, { app: { workspace: { getActiveFile: () => file('daily/old.md'), getLeaf: () => ({ openFile }) } } });
+        vi.spyOn(view as unknown as { ensureDateNote(): Promise<TFile | null> }, 'ensureDateNote').mockResolvedValue(null);
+        let date = '2026-11-06';
+        const display = { getDisplayDate: () => date, setDisplayDate: vi.fn(async (value: string) => { date = value; }) };
+        await view.selectCalendarDate('2026-11-05', display);
+        expect(date).toBe('2026-11-06');
+        expect(openFile).not.toHaveBeenCalled();
+    });
+
+    it('serializes confirmed calendar selections and opens each matching note', async () => {
+        const view = makeView();
+        const visited: string[] = [];
+        const openFile = vi.fn(async (value: TFile) => { visited.push(`note:${value.path}`); });
+        Object.assign(view, { app: { workspace: { getActiveFile: (): TFile | null => null, getLeaf: () => ({ openFile }) } } });
+        vi.spyOn(view as unknown as { ensureDateNote(date: { format(format: string): string }): Promise<TFile | null> }, 'ensureDateNote').mockImplementation(async date => file(date.format('YYYY-MM-DD')));
+        let date = '2026-11-06';
+        const display = { getDisplayDate: () => date, setDisplayDate: vi.fn(async (value: string) => { date = value; visited.push(`sidebar:${value}`); }) };
+        await Promise.all([view.selectCalendarDate('2026-11-05', display), view.selectCalendarDate('2026-11-04', display)]);
+        expect(visited).toEqual(['sidebar:2026-11-05', 'note:2026-11-05', 'sidebar:2026-11-04', 'note:2026-11-04']);
+        expect(date).toBe('2026-11-04');
+    });
+
+    it('restores the note and sidebar when opening the selected file fails', async () => {
+        const view = makeView();
+        const oldFile = file('daily/old.md');
+        const openFile = vi.fn().mockRejectedValueOnce(new Error('open failed')).mockResolvedValue(undefined);
+        Object.assign(view, { app: { workspace: { getActiveFile: () => oldFile, getLeaf: () => ({ openFile }) } } });
+        vi.spyOn(view as unknown as { ensureDateNote(): Promise<TFile | null> }, 'ensureDateNote').mockResolvedValue(file('daily/new.md'));
+        let date = '2026-11-06';
+        const display = { getDisplayDate: () => date, setDisplayDate: async (value: string) => { date = value; } };
+        await expect(view.selectCalendarDate('2026-11-05', display)).rejects.toThrow('open failed');
+        expect(date).toBe('2026-11-06');
+        expect(openFile).toHaveBeenLastCalledWith(oldFile);
     });
 
     it('shows only the finish estimate even when a wake estimate is available', () => {

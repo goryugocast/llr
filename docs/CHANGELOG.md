@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-11-12
+- Generated: 2026-11-13
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,14 @@
 
 ## Git History Snapshot
 
+### 2026-11-13
+- Open mobile native date picker directly (`0c24b1e`)
+- Align the mobile header date with its content (`5d8632d`)
+- Constrain the mobile date field to the dialog (`9b1d323`)
+- Simplify mobile date controls and link calendar selection (`476fc30`)
+- Add opt-in timeline jump diagnostics (`9254f07`)
 ### 2026-11-12
+- Release 0.5.1 with mobile sidebar spacing fixes (`a94c250`)
 - Record the published 0.5.0 view status (`f0fca81`)
 - Record the 0.5.0 release preparation in the documentation index (`81b2700`)
 - Release LLR 0.5.0 with the unified task and timeline view (`07e350d`)
@@ -98,13 +105,4 @@
 - Derive an initial due date for routines without next_due (`eed3411`)
 ### 2026-07-20
 - Implement multi-section routine expansion for sorting (`f55c00d`)
-- Update spec docs for multi-section routine expansion (`2ac9bd6`)
-### 2026-07-12
-- Fix position of off-plan running tasks in future section (`069d00c`)
-- Display running tasks below sleep boundary in sidebar, exclude from estimates (`453331d`)
-### 2026-07-09
-- Bump version to 0.3.0 (`92b3953`)
-- Fix implicit any type errors in routine-sort-order tests (`cfcb39d`)
-### 2026-07-08
-- Implement start-and-open loop: complete linked note and close tab (`8dc4ded`)
 

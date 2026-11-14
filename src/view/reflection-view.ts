@@ -1,6 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, moment, setIcon, setTooltip } from 'obsidian';
 import { buildReflectionAxisLayout, formatReflectionClock, reflectionDisplayBlocks, reflectionOverviewTicks } from '../service/reflection-axis-layout';
 import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
+import type { TimelineDiagnostics, TimelineDiagnosticEvent } from '../service/timeline-diagnostics';
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
@@ -8,6 +9,7 @@ import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } fr
 export const VIEW_TYPE_REFLECTION = 'llr-reflection-view';
 interface DayEntry { date: string; file: TFile | null }
 interface Anchor { key: string; offset: number; top: number; day?: string; dayOffset?: number }
+let diagnosticViewSequence = 0;
 
 /** Read-only central timeline. No task mutation or running-task auto-follow. */
 export class ReflectionView extends ItemView {
@@ -39,16 +41,57 @@ export class ReflectionView extends ItemView {
     private readonly sections = new Map<string, HTMLElement>();
     private readonly extending = new Set<number>();
     private readonly dayComponents = new WeakMap<HTMLElement, Component>();
+    private readonly diagnosticViewId = ++diagnosticViewSequence;
+    private readonly diagnosticAnchors = new Map<string, number>();
+    private diagnosticSession: string | null = null;
+    private calendarDisplayDate: string | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
         private readonly getSettings: () => DailyNoteSettings,
         private readonly showTasks?: () => void,
         private readonly openDateNote?: (date: string) => Promise<void>,
+        private readonly diagnostics?: TimelineDiagnostics,
+        private readonly selectCalendarDate?: (date: string) => Promise<void>,
     ) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
     getIcon() { return 'history'; }
+
+    recordDiagnosticSnapshot(): void {
+        if (!this.diagnostics?.active) return;
+        this.traceAnchor('snapshot', this.captureAnchor());
+    }
+
+    private trace(event: TimelineDiagnosticEvent['event'], extra: Omit<TimelineDiagnosticEvent, 'event'> = {}): void {
+        if (!this.diagnostics?.active) return;
+        this.diagnostics.record({
+            event, viewId: this.diagnosticViewId, date: this.getDisplayDate(),
+            firstDate: this.visible[0]?.date ?? null, lastDate: this.visible[this.visible.length - 1]?.date ?? null,
+            visibleCount: this.visible.length, inputRevision: this.userScrollRevision,
+            top: this.scroller?.scrollTop ?? null, scrollHeight: this.scroller?.scrollHeight ?? null,
+            viewportHeight: this.scroller?.clientHeight ?? null, pendingDate: this.pendingDisplayDate,
+            ...extra,
+        });
+    }
+
+    private traceAnchor(event: TimelineDiagnosticEvent['event'], anchor: Anchor | null, outcome?: TimelineDiagnosticEvent['outcome']): void {
+        if (!this.diagnostics?.active) return;
+        if (this.diagnosticSession !== this.diagnostics.sessionId) {
+            this.diagnosticSession = this.diagnostics.sessionId;
+            this.diagnosticAnchors.clear();
+        }
+        // Record anchors can contain task titles. Only a session-local number leaves this view.
+        if (anchor && !this.diagnosticAnchors.has(anchor.key)) this.diagnosticAnchors.set(anchor.key, this.diagnosticAnchors.size + 1);
+        const kind = anchor?.key.split(':', 2)[1];
+        this.trace(event, {
+            anchorId: anchor ? this.diagnosticAnchors.get(anchor.key) ?? null : null,
+            anchorDay: anchor?.key.slice(0, 10) ?? null,
+            anchorKind: !anchor ? null : kind === 'block' || kind === 'time' || kind === 'record' ? kind : 'day',
+            anchorOffset: anchor?.offset ?? null, anchorTop: anchor?.top ?? null,
+            anchorDayOffset: anchor?.dayOffset ?? null, ...(outcome ? { outcome } : {}),
+        });
+    }
 
     getDisplayDate(): string { return this.dateInput?.value ?? this.today(); }
 
@@ -71,6 +114,8 @@ export class ReflectionView extends ItemView {
         this.currentDayLabel = dateLabel.createEl('button', { cls: 'llr-reflection-date-label', attr: { 'aria-label': '日付を選ぶ', title: '日付を選ぶ' } });
         this.currentDayMain = this.currentDayLabel.createSpan({ cls: 'llr-date-main', text: moment(this.today()).format('MM-DD') });
         this.currentDayWeekday = this.currentDayLabel.createSpan('llr-date-dow llr-reflection-date-weekday');
+        const dateChevron = this.currentDayLabel.createSpan({ cls: 'llr-date-chevron', attr: { 'aria-hidden': 'true' } });
+        setIcon(dateChevron, 'chevron-down');
         const navigation = dateNavigation.createDiv('llr-nav-btns');
         this.previousDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日', title: '前の日' } });
         setIcon(this.previousDayButton, 'chevron-left');
@@ -83,11 +128,15 @@ export class ReflectionView extends ItemView {
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
         this.dateInput.max = this.today();
         this.dateInput.value = this.today();
+        this.calendarDisplayDate = this.dateInput.value;
         wireNativeDatePicker(this.currentDayLabel, this.dateInput);
         this.dateInput.onchange = () => {
             const date = this.dateInput.value;
             finishNativeDateSelection(this.currentDayLabel, this.dateInput);
-            void this.enqueue(() => this.jump(date));
+            // Keep the displayed date stable until the selected note can be opened.
+            this.dateInput.value = this.calendarDisplayDate ?? this.today();
+            if (this.selectCalendarDate) void this.selectCalendarDate(date).catch(() => {});
+            else void this.enqueue(() => this.jump(date));
         };
         this.expandButton = tools.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-reflection-expand-all', attr: { 'aria-label': 'すべて展開' } });
         setIcon(this.expandButton, 'move-vertical');
@@ -114,6 +163,7 @@ export class ReflectionView extends ItemView {
         const viewportObserver = new ResizeObserver(() => {
             if (this.scroller.clientHeight) {
                 this.scroller.style.setProperty('--llr-reflection-viewport-height', `${this.scroller.clientHeight}px`);
+                this.trace('viewport');
                 this.restorePendingDate();
                 // Wrapping can change the first visible day without a scroll event.
                 this.syncCurrentDay();
@@ -127,14 +177,20 @@ export class ReflectionView extends ItemView {
         this.daysEl = this.scroller.createDiv('llr-reflection-days');
         this.nextButton = this.scroller.createEl('button', { cls: 'llr-reflection-edge', text: '新しい記録 ↓' });
         this.nextButton.onclick = () => this.requestExtend(1);
-        this.registerDomEvent(this.scroller, 'pointerdown', () => { this.userScrollRevision++; });
-        this.registerDomEvent(this.scroller, 'wheel', () => { this.userScrollRevision++; });
-        this.registerDomEvent(this.scroller, 'touchmove', () => { this.userScrollRevision++; });
+        this.registerDomEvent(this.scroller, 'pointerdown', () => { this.userScrollRevision++; this.trace('input', { inputKind: 'pointerdown' }); });
+        this.registerDomEvent(this.scroller, 'wheel', event => { this.userScrollRevision++; this.trace('input', { inputKind: 'wheel', deltaY: event.deltaY }); });
+        this.registerDomEvent(this.scroller, 'touchmove', () => { this.userScrollRevision++; this.trace('input', { inputKind: 'touchmove' }); });
+        this.registerDomEvent(this.scroller, 'touchstart', () => this.trace('input', { inputKind: 'touchstart' }), { passive: true });
+        this.registerDomEvent(this.scroller, 'touchend', () => this.trace('input', { inputKind: 'touchend' }), { passive: true });
         this.registerDomEvent(this.scroller, 'keydown', event => {
-            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) this.userScrollRevision++;
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+                this.userScrollRevision++;
+                this.trace('input', { inputKind: 'key' });
+            }
         });
         this.registerDomEvent(this.scroller, 'scroll', () => {
             if (!this.scroller.clientHeight || this.isSettingAllDetails) return;
+            this.trace('scroll');
             this.anchor = this.captureAnchor();
             this.syncCurrentDay();
             if (this.scroller.scrollTop < 160) this.requestExtend(-1);
@@ -143,6 +199,8 @@ export class ReflectionView extends ItemView {
             }
         });
         const changed = (file: TFile) => {
+            // Diagnostic flushes must not schedule timeline redraws of their own.
+            if (file.path.startsWith('llrlog/timeline-') && file.path.endsWith('.jsonl')) return;
             this.dirty.add(file.path);
             this.scheduleRefresh();
         };
@@ -159,10 +217,13 @@ export class ReflectionView extends ItemView {
                 this.scheduleRefresh();
             }
         }));
+        this.trace('open');
         return this.enqueue(() => this.jump(this.today()));
     }
 
     onClose(): Promise<void> {
+        this.trace('close');
+        this.diagnosticAnchors?.clear();
         this.closed = true;
         this.sections.forEach(section => this.releaseDay(section));
         if (this.timer) clearTimeout(this.timer);
@@ -205,6 +266,7 @@ export class ReflectionView extends ItemView {
     private async jump(date: string) {
         if (!moment(date, 'YYYY-MM-DD', true).isValid()) return;
         date = date > this.today() ? this.today() : date;
+        this.trace('jump-start', { date });
         this.rebuildIndex();
         if (!this.index.some(day => day.date === date)) {
             this.index.push({ date, file: null });
@@ -224,12 +286,14 @@ export class ReflectionView extends ItemView {
             this.updateEdges();
         }
         this.dateInput.value = date;
+        this.calendarDisplayDate = date;
         this.dateInput.max = this.today();
         // Saved workspace state can arrive before the leaf is shown. Zero-sized
         // geometry cannot position a day; retain the requested date until visible.
         this.pendingDisplayDate = this.scrollToDate(date) ? null : date;
         this.anchor = this.pendingDisplayDate ? null : this.captureAnchor();
         this.syncExpandButton();
+        this.trace('jump-end');
     }
 
     private scrollToDate(date: string): boolean {
@@ -255,6 +319,7 @@ export class ReflectionView extends ItemView {
     }
 
     private requestExtend(direction: -1 | 1) {
+        this.trace('extend-request', { direction: direction < 0 ? 'past' : 'next', outcome: this.extending.has(direction) ? 'guarded' : 'ok' });
         if (this.extending.has(direction)) return;
         this.extending.add(direction);
         void this.enqueue(async () => {
@@ -263,21 +328,29 @@ export class ReflectionView extends ItemView {
     }
 
     private async extend(direction: -1 | 1) {
-        if (!this.visible.length) return;
+        const traceDirection = direction < 0 ? 'past' : 'next';
+        this.trace('extend-start', { direction: traceDirection });
+        if (!this.visible.length) { this.trace('extend-end', { direction: traceDirection, outcome: 'unavailable' }); return; }
         this.rebuildIndex();
         const first = this.visible[0].date, last = this.visible[this.visible.length - 1].date;
         const candidates = direction < 0 ? this.index.filter(day => day.date < first).slice(-5) : this.index.filter(day => day.date > last).slice(0, 5);
-        if (!candidates.length) { this.updateEdges(); return; }
-        const sections = await Promise.all(candidates.map(day => this.makeDay(day)));
-        if (this.closed) { sections.forEach(section => this.releaseDay(section)); return; }
+        if (!candidates.length) { this.updateEdges(); this.trace('extend-end', { direction: traceDirection, outcome: 'no-candidates' }); return; }
+        let sections: HTMLElement[];
+        try { sections = await Promise.all(candidates.map(day => this.makeDay(day))); }
+        catch (error) { this.trace('extend-end', { direction: traceDirection, outcome: 'failed' }); throw error; }
+        this.trace('extend-ready', { direction: traceDirection });
+        if (this.closed) { sections.forEach(section => this.releaseDay(section)); this.trace('extend-end', { direction: traceDirection, outcome: 'unavailable' }); return; }
         // Capture after I/O: the reader may have moved while files were loading.
         const anchor = this.captureAnchor();
+        this.trace('prepend-before', { direction: traceDirection });
         sections.forEach((section, i) => this.sections.set(candidates[i].date, section));
         if (direction < 0) { this.daysEl.prepend(...sections); this.visible.unshift(...candidates); }
         else { this.daysEl.append(...sections); this.visible.push(...candidates); }
+        this.trace('prepend-after', { direction: traceDirection });
         // Bound DOM/body data while allowing either edge to be reloaded later.
         if (this.visible.length > 35) {
             const removed = direction < 0 ? this.visible.splice(35) : this.visible.splice(0, this.visible.length - 35);
+            this.trace('trim', { direction: traceDirection, removedCount: removed.length, removedFirstDate: removed[0]?.date ?? null, removedLastDate: removed[removed.length - 1]?.date ?? null });
             for (const day of removed) {
                 const section = this.sections.get(day.date);
                 if (section) { this.releaseDay(section); section.remove(); }
@@ -288,6 +361,7 @@ export class ReflectionView extends ItemView {
         this.restoreAnchor(anchor);
         this.anchor = this.captureAnchor();
         this.syncExpandButton();
+        this.trace('extend-end', { direction: traceDirection, outcome: 'ok' });
     }
 
     private updateEdges() {
@@ -316,6 +390,7 @@ export class ReflectionView extends ItemView {
     }
 
     private async refresh() {
+        this.trace('refresh-start');
         this.dateInput.max = this.today();
         this.rebuildIndex();
         const dirty = this.dirty;
@@ -339,27 +414,39 @@ export class ReflectionView extends ItemView {
         this.restoreAnchor(anchor);
         this.anchor = this.captureAnchor();
         this.syncExpandButton();
+        this.trace('refresh-end');
     }
 
     private captureAnchor(): Anchor | null {
-        if (this.scroller.clientHeight === 0) return this.anchor;
+        if (this.scroller.clientHeight === 0) { this.traceAnchor('anchor-capture', this.anchor, 'unavailable'); return this.anchor; }
         const top = this.scroller.getBoundingClientRect().top;
         const elements = Array.from(this.daysEl.querySelectorAll<HTMLElement>('[data-anchor]'));
         const element = elements.find(el => el.getBoundingClientRect().bottom > top);
-        if (!element) return null;
+        if (!element) { this.traceAnchor('anchor-capture', null, 'missing-anchor'); return null; }
         const day = element.dataset.anchor?.slice(0, 10);
         const heading = day ? this.sections.get(day)?.querySelector('h2') : null;
-        return { key: element.dataset.anchor ?? '', offset: element.getBoundingClientRect().top - top, top: this.scroller.scrollTop, day, dayOffset: heading ? heading.getBoundingClientRect().top - top : undefined };
+        const anchor = { key: element.dataset.anchor ?? '', offset: element.getBoundingClientRect().top - top, top: this.scroller.scrollTop, day, dayOffset: heading ? heading.getBoundingClientRect().top - top : undefined };
+        this.traceAnchor('anchor-capture', anchor);
+        return anchor;
     }
 
     private restoreAnchor(anchor: Anchor | null) {
-        if (!anchor || this.scroller.clientHeight === 0) return;
+        this.traceAnchor('anchor-restore-before', anchor);
+        if (!anchor || this.scroller.clientHeight === 0) { this.traceAnchor('anchor-restore-after', anchor, 'unavailable'); return; }
         const element = Array.from(this.daysEl.querySelectorAll<HTMLElement>('[data-anchor]')).find(el => el.dataset.anchor === anchor.key);
-        if (element) this.scroller.scrollTop += element.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.offset;
+        if (element) {
+            this.scroller.scrollTop += element.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.offset;
+            this.traceAnchor('anchor-restore-after', anchor, 'element');
+        }
         else {
             const heading = anchor.day ? this.sections.get(anchor.day)?.querySelector('h2') : null;
-            if (heading && anchor.dayOffset !== undefined) this.scroller.scrollTop += heading.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.dayOffset;
-            else this.scroller.scrollTop = anchor.top;
+            if (heading && anchor.dayOffset !== undefined) {
+                this.scroller.scrollTop += heading.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top - anchor.dayOffset;
+                this.traceAnchor('anchor-restore-after', anchor, 'day-fallback');
+            } else {
+                this.scroller.scrollTop = anchor.top;
+                this.traceAnchor('anchor-restore-after', anchor, 'top-fallback');
+            }
         }
     }
 
@@ -451,6 +538,7 @@ export class ReflectionView extends ItemView {
             return rect && rect.bottom > top + 24;
         });
         if (!day) return;
+        if (day.date !== this.getDisplayDate()) this.trace('date-sync', { date: day.date });
         const parsed = moment(day.date);
         const dateText = parsed.format('MM-DD');
         const weekday = ['日', '月', '火', '水', '木', '金', '土'][parsed.day()];
@@ -473,7 +561,10 @@ export class ReflectionView extends ItemView {
             setTooltip(this.openNoteButton, label);
         }
         if (this.followingDayButton) this.followingDayButton.disabled = day.date >= this.today();
-        if (document.activeElement !== this.dateInput) this.dateInput.value = day.date;
+        if (document.activeElement !== this.dateInput) {
+            this.dateInput.value = day.date;
+            this.calendarDisplayDate = day.date;
+        }
     }
 
     private async renderHeading(parent: HTMLElement, day: DayEntry, title: string, component: Component) {

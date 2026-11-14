@@ -67,6 +67,23 @@ describe('reflection viewport continuity', () => {
     beforeEach(() => { vi.stubGlobal('getComputedStyle', () => ({ overflowY: 'auto' })); });
     afterEach(() => { vi.unstubAllGlobals(); });
 
+    it('records anonymous anchor identity without exposing a task title', () => {
+        const view = makeView([entry(1)], [entry(1)]);
+        const record = vi.fn();
+        Object.assign(view, {
+            diagnostics: { active: true, sessionId: 'session-a', record },
+            diagnosticAnchors: new Map(), diagnosticViewId: 1, diagnosticSession: null,
+        });
+        view.scroller.clientHeight = 500;
+        view.daysEl.items[0].dataset.anchor = '2026-10-01:record:Secret task title';
+        const anchor = view.captureAnchor();
+        view.restoreAnchor(anchor);
+        expect(record.mock.calls[0][0]).toMatchObject({ event: 'anchor-capture', anchorId: 1, anchorDay: '2026-10-01', anchorKind: 'record' });
+        expect(record.mock.calls.at(-1)?.[0]).toMatchObject({ event: 'anchor-restore-after', anchorId: 1, outcome: 'element' });
+        expect(JSON.stringify(record.mock.calls)).not.toContain('Secret');
+        expect(JSON.stringify(record.mock.calls)).not.toContain('anchorKey');
+    });
+
     it('keeps the restored date pending until plugin CSS makes the view scrollable', async () => {
         const all = [entry(1), entry(10), entry(20), entry(31)];
         const view = makeView(all, all.slice(0, 2));

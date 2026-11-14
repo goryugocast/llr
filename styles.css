@@ -416,3 +416,108 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 .llr-reflection-row > .llr-reflection-overview {
     height: var(--llr-reflection-band-height, var(--llr-reflection-hour-height));
 }
+
+/* The picker affordance is mobile-only; desktop keeps its day navigation. */
+.llr-date-chevron { display: none; }
+
+/* Mobile date and content share a stable leading edge in both views. */
+.is-mobile .llr-date-nav,
+.is-mobile .llr-reflection-toolbar {
+    gap: 12px;
+    padding: 12px 12px 12px 20px;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+.is-mobile .llr-summary-date-nav,
+.is-mobile .llr-reflection-date-nav {
+    flex: 1 1 100px;
+    min-width: 0;
+}
+.is-mobile .llr-summary-date-nav > .llr-nav-btns,
+.is-mobile .llr-reflection-date-nav > .llr-nav-btns {
+    display: none;
+}
+.is-mobile .llr-summary-container .llr-reflection-date-picker,
+.is-mobile .llr-reflection .llr-reflection-date-picker {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+.is-mobile .llr-summary-container button.llr-date-label,
+.is-mobile .llr-reflection button.llr-reflection-date-label {
+    width: 100%;
+    min-width: 44px;
+    height: 44px;
+    justify-content: flex-start;
+    color: var(--text-normal);
+    font-size: max(20px, var(--font-ui-medium));
+    font-weight: var(--font-normal);
+    letter-spacing: 0;
+}
+.is-mobile .llr-date-chevron {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 3px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.is-mobile .llr-date-chevron svg { width: 10px; height: 10px; }
+.is-mobile .llr-summary-container button.llr-date-label:is(:hover, :active),
+.is-mobile .llr-reflection button.llr-reflection-date-label:is(:hover, :active),
+.is-mobile .llr-display-tools > button:active,
+.is-mobile .llr-reflection-tools > button:active {
+    background: var(--background-modifier-hover);
+}
+.is-mobile .llr-summary-container button.llr-date-label:focus-visible,
+.is-mobile .llr-reflection button.llr-reflection-date-label:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: -2px;
+}
+.is-mobile .llr-date-dow,
+.is-mobile .llr-reflection-date-weekday {
+    font-size: max(13px, var(--font-ui-small));
+    font-weight: var(--font-normal);
+}
+.is-mobile input.llr-reflection-date-input {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: auto;
+    z-index: 1;
+}
+.is-mobile .llr-reflection-date-picker:has(> input:focus-visible) {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: -2px;
+}
+.is-mobile .llr-date-nav > .llr-display-tools,
+.is-mobile .llr-reflection-toolbar > .llr-reflection-tools {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+    margin: 0;
+}
+.is-mobile .llr-display-tools > button,
+.is-mobile .llr-reflection-tools > button {
+    flex: 0 0 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+}
+.is-mobile .llr-display-tools svg,
+.is-mobile .llr-reflection-tools svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    stroke-width: var(--icon-stroke);
+}

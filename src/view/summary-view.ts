@@ -4,6 +4,7 @@ import { calculateDuration } from '../service/time-calculator';
 import type { DailyNoteSettings } from '../service/daily-note-context';
 import { resolveSectionLabel } from '../service/section-timeline';
 import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
+import type { TimelineDiagnostics } from '../service/timeline-diagnostics';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -13,6 +14,7 @@ export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
  * プラグイン ID 変更・private 構造変更に弱いので、必要な値だけを注入で受け取る。
  */
 export interface SummaryViewDelegate {
+    timelineDiagnostics?: TimelineDiagnostics;
     showTimeline?: () => void;
     getRoutineFolder(): string;
     /** parseSectionTimeToInt 済み・日付境界で正規化した時刻順のセクション境界。 */
@@ -42,6 +44,7 @@ export class SummaryView extends ItemView {
     private ignoreScrollEventsUntilMs = 0;
     private lastRunningItemKey: string | null = null;
     private refreshDeferredForDatePicker = false;
+    private calendarNavigation = Promise.resolve();
 
     constructor(leaf: WorkspaceLeaf, private readonly delegate: SummaryViewDelegate) {
         super(leaf);
@@ -347,14 +350,17 @@ export class SummaryView extends ItemView {
             cls: `llr-date-dow ${this.getWeekdayToneClass(this.currentDate)}`,
             text: this.getJapaneseWeekday(this.currentDate)
         });
+        const dateChevron = dateLabel.createSpan({ cls: 'llr-date-chevron', attr: { 'aria-hidden': 'true' } });
+        setIcon(dateChevron, 'chevron-down');
         const dateInput = datePicker.createEl('input', {
             type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '表示日を選ぶ', tabindex: '-1' },
         });
         dateInput.value = this.getDisplayDate();
         dateInput.onchange = () => {
             const selectedDate = dateInput.value;
+            dateInput.value = this.getDisplayDate();
             finishNativeDateSelection(dateLabel, dateInput);
-            if (selectedDate) void this.setDisplayDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
+            if (selectedDate) void this.selectCalendarDate(selectedDate).catch(error => console.error('[LLR] Date navigation failed', error));
         };
         dateInput.onblur = () => {
             if (!this.refreshDeferredForDatePicker) return;
@@ -600,6 +606,32 @@ export class SummaryView extends ItemView {
         if (!file) return;
         await this.app.workspace.getLeaf(false).openFile(file);
         if (date === this.getDisplayDate()) void this.requestRefresh();
+    }
+
+    selectCalendarDate(date: string, display: Pick<SummaryView, 'getDisplayDate' | 'setDisplayDate'> = this): Promise<void> {
+        const operation = (this.calendarNavigation ?? Promise.resolve()).then(async () => {
+            const requested = moment(date, 'YYYY-MM-DD', true);
+            if (!requested.isValid()) return;
+            const previousDate = display.getDisplayDate();
+            const previousFile = this.app.workspace.getActiveFile();
+            const file = await this.ensureDateNote(requested);
+            if (!file) {
+                // The native input changes before onchange; restore its visible label on failure.
+                await display.setDisplayDate(previousDate);
+                return;
+            }
+            try {
+                await display.setDisplayDate(date);
+                await this.app.workspace.getLeaf(false).openFile(file);
+            } catch (error) {
+                await display.setDisplayDate(previousDate);
+                if (previousFile) await this.app.workspace.getLeaf(false).openFile(previousFile);
+                new Notice('日付を移動できませんでした。元の日付へ戻しました。');
+                throw error;
+            }
+        });
+        this.calendarNavigation = operation.catch(() => {});
+        return operation;
     }
 
     private async ensureDateNote(date: moment.Moment): Promise<TFile | null> {
