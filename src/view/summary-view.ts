@@ -5,6 +5,8 @@ import type { DailyNoteSettings } from '../service/daily-note-context';
 import { resolveSectionLabel } from '../service/section-timeline';
 import { finishNativeDateSelection, wireNativeDatePicker } from './native-date-picker';
 import type { TimelineDiagnostics } from '../service/timeline-diagnostics';
+import { resolveLanguage } from '../i18n';
+import type { UILanguage } from '../i18n';
 
 export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 
@@ -16,6 +18,7 @@ export const VIEW_TYPE_SUMMARY = 'llr-summary-view';
 export interface SummaryViewDelegate {
     timelineDiagnostics?: TimelineDiagnostics;
     showTimeline?: () => void;
+    getUiLanguage?: () => UILanguage;
     getRoutineFolder(): string;
     /** parseSectionTimeToInt 済み・日付境界で正規化した時刻順のセクション境界。 */
     getSectionBoundaries(): Array<{ value: number; label: string }>;
@@ -374,7 +377,9 @@ export class SummaryView extends ItemView {
         setIcon(prevBtn, 'chevron-left');
         prevBtn.onclick = () => { this.currentDate.subtract(1, 'day'); this.navigateDate(); };
 
-        const todayBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', text: 'Today', attr: { type: 'button', 'aria-label': '今日へ移動', title: '今日へ移動' } });
+        const japanese = resolveLanguage(this.delegate.getUiLanguage?.() ?? 'auto') === 'ja';
+        const todayLabel = japanese ? '今日' : 'Today';
+        const todayBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn llr-today-button', text: todayLabel, attr: { type: 'button', 'aria-label': japanese ? 'サイドバーを今日へ戻す' : 'Return sidebar to today', title: japanese ? 'サイドバーを今日へ戻す' : 'Return sidebar to today' } });
         todayBtn.onclick = () => { this.currentDate = moment(); this.navigateDate(); };
 
         const nextBtn = navBtns.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { type: 'button', 'aria-label': '次の日', title: '次の日' } });
