@@ -461,7 +461,9 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 .is-mobile .llr-summary-container .llr-reflection-date-picker,
 .is-mobile .llr-reflection .llr-reflection-date-picker {
     position: relative;
-    flex: 1 1 auto;
+    /* Use the same date slot in both views, independent of the right action count.
+       Reserve 32px insets + 140px actions + 12px gap + 44px Today + 6px date gap. */
+    flex: 0 0 clamp(44px, calc(100cqw - 234px), 94px);
     min-width: 0;
     overflow: hidden;
 }
@@ -483,7 +485,7 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 }
 .is-mobile .llr-date-main,
 .is-mobile .llr-date-dow,
-.is-mobile .llr-reflection-date-weekday { white-space: nowrap; }
+.is-mobile .llr-reflection-date-weekday { white-space: nowrap; line-height: 1; }
 .is-mobile .llr-date-chevron {
     display: inline-flex;
     align-items: center;
