@@ -383,7 +383,8 @@ export class ReflectionView extends ItemView {
         this.pastButton.disabled = !this.index.some(day => day.date < this.visible[0].date);
         this.pastButton.textContent = this.pastButton.disabled ? 'ここからが最初の記録' : '↑ 過去の記録';
         this.nextButton.disabled = this.visible[this.visible.length - 1].date >= this.today();
-        this.nextButton.textContent = this.nextButton.disabled ? 'ここまでが今日の記録' : '新しい記録 ↓';
+        this.nextButton.hidden = this.nextButton.disabled;
+        this.nextButton.textContent = '新しい記録 ↓';
         this.daysEl.querySelectorAll('.llr-reflection-gap').forEach(el => el.remove());
         for (let i = 1; i < this.visible.length; i++) {
             const gap = moment(this.visible[i].date).diff(moment(this.visible[i - 1].date), 'days') - 1;
