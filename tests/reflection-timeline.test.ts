@@ -2,6 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { buildReflectionTimeline } from '../src/service/reflection-timeline';
 
 describe('buildReflectionTimeline', () => {
+    it('shows running activity through now ahead of plans and removes elapsed plans', () => {
+        const result = buildReflectionTimeline([
+            '# 朝', '- [ ] 音楽練習 (60m)',
+            '# 午後', '- [ ] 午後の予定', '- [/] 実行中 13:10 -',
+            '- [ ] 12:00 過ぎた予約 (30m)',
+        ].join('\n'), 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 1300, label: '午後' }, { value: 1700, label: '夕方' }],
+            isSleep: () => false,
+        }, 14 * 60 + 20);
+        expect(result.tasks.map(task => task.title)).toEqual(['午後の予定', '実行中']);
+        expect(result.tasks.find(task => task.status === '/')?.endMinute).toBe(860);
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
+            [780, 900, '実行中'], [900, 1020, '午後の予定'],
+        ]);
+    });
+
+    it('normalizes running activity and now across midnight on the logical day', () => {
+        const result = buildReflectionTimeline('- [/] 夜の作業 23:30 -', 3, undefined, 30);
+        expect(result.tasks[0].startMinute).toBe(1410);
+        expect(result.tasks[0].endMinute).toBe(1470);
+    });
+
     it('gives recorded activity priority over a longer plan and only fills empty hours with plans', () => {
         const result = buildReflectionTimeline([
             '# 午後',

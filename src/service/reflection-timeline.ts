@@ -55,7 +55,7 @@ export interface ReflectionTimeline {
 export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, sectionPreview?: {
     sections: SectionBoundary[];
     isSleep: (line: string) => boolean;
-}): ReflectionTimeline {
+}, nowMinute?: number): ReflectionTimeline {
     const lines = excludeSrsBatch(markdown.split(/\r?\n/));
     const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
     const owned = new Set<number>();
@@ -202,6 +202,15 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             if (end < start) end += 1440;
             if (start < dayBoundaryHour * 60) { start += 1440; end += 1440; }
         }
+        const isRunning = parsed.status === '/' && start !== null && nowMinute !== undefined;
+        if (isRunning) {
+            const now = nowMinute < dayBoundaryHour * 60 ? nowMinute + 1440 : nowMinute;
+            end = Math.max(start, now);
+        }
+        if (isPlanned && start !== null && nowMinute !== undefined) {
+            const now = nowMinute < dayBoundaryHour * 60 ? nowMinute + 1440 : nowMinute;
+            start = Math.max(start, now);
+        }
         return {
             id,
             kind,
@@ -218,7 +227,8 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             startMinute: start,
             endMinute: end,
         };
-    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned)
+    }).filter(task => !task.isPlanned || (task.startMinute !== null && task.endMinute !== null && task.endMinute > task.startMinute))
+        .filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned || (task.status === '/' && task.startMinute !== null && nowMinute !== undefined))
         .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));

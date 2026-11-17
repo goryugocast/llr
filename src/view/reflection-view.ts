@@ -225,6 +225,12 @@ export class ReflectionView extends ItemView {
                 this.scheduleRefresh();
             }
         }));
+        this.registerInterval(window.setInterval(() => {
+            const day = this.visible.find(entry => entry.date === this.today());
+            if (!day?.file || !this.sections.get(day.date)?.querySelector('[data-status="/"], .is-planned')) return;
+            this.dirty.add(day.file.path);
+            this.scheduleRefresh();
+        }, 60_000));
         this.trace('open');
         return this.enqueue(() => this.jump(this.today()));
     }
@@ -481,7 +487,7 @@ export class ReflectionView extends ItemView {
                     const file = link ? this.app.metadataCache.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
                     return file instanceof TFile && this.app.metadataCache.getFileCache(file)?.frontmatter?.summary_role === 'sleep';
                 },
-            } : undefined);
+            } : undefined, day.date === this.today() ? moment().hours() * 60 + moment().minutes() : undefined);
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
         if (this.closed) return section;
         const component = this.addChild(new Component());
@@ -605,6 +611,7 @@ export class ReflectionView extends ItemView {
     private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component, interval?: { startMinute: number; endMinute: number }) {
         const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
         const row = section.createDiv('llr-reflection-row');
+        if (block.tasks.some(task => task.status === '/')) row.dataset.status = '/';
         const duration = Math.max(0, (block.endMinute ?? block.startMinute ?? 0) - (block.startMinute ?? 0));
         const displayDuration = interval ? interval.endMinute - interval.startMinute : duration;
         const isTimed = block.startMinute !== null && duration > 0;
