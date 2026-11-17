@@ -679,13 +679,14 @@ export class ReflectionView extends ItemView {
             if (details.open) {
                 bodyComponent = component.addChild(new Component());
                 const occurrences = new Map<string, number>();
+                const representativeIndex = block.tasks.findIndex(record => record.title === block.title);
                 for (const [index, task] of block.tasks.entries()) {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
                     // The heading retains its title links, so avoid repeating the
                     // same representative title in the expanded record.
-                    const repeatTitle = index !== 0 || task.title !== block.title;
+                    const repeatTitle = index !== representativeIndex;
                     await this.makeRecord(records, day, task, occurrence, bodyComponent, repeatTitle);
                 }
             }

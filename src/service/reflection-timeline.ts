@@ -180,7 +180,17 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         let interval: { start: number; end: number } | undefined;
         let afterSleep = false;
         const records = new Map(rawTasks.map(record => [record.sourceLine, record]));
+        fence = null;
+        inFrontmatter = false;
         lines.forEach((line, index) => {
+            if (index === 0 && line.trim() === '---') { inFrontmatter = true; return; }
+            if (inFrontmatter) { if (/^(---|\.\.\.)$/.test(line.trim())) inFrontmatter = false; return; }
+            const marker = line.match(/^\s*(`{3,}|~{3,})/);
+            if (fence) {
+                if (marker && marker[1][0] === fence.character && marker[1].length >= fence.length && line.trim() === marker[1]) fence = null;
+                return;
+            }
+            if (marker) { fence = { character: marker[1][0], length: marker[1].length }; return; }
             const heading = line.match(/^#{1,6}\s+(.+?)\s*$/);
             if (heading) {
                 const sectionIndex = sections.findIndex(section => section.label === heading[1]);
@@ -383,7 +393,13 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
     }
     const noActual = tasks.filter(task => task.startMinute === null && !task.isPlanned);
     if (noActual.length) blocks.push({ id: blocks.length, title: '実績時刻のない記録', startMinute: null, endMinute: null, tasks: noActual });
-    for (const block of blocks) block.tasks.sort((a, b) => (a.startMinute ?? Infinity) - (b.startMinute ?? Infinity) || a.id - b.id);
+    for (const block of blocks) {
+        block.tasks.sort((a, b) => (a.startMinute ?? Infinity) - (b.startMinute ?? Infinity) || a.id - b.id);
+        // Preserve recorded chronology while keeping the planned subsequence in source order.
+        const plans = block.tasks.filter(task => task.isPlanned).sort((a, b) => a.sourceLine - b.sourceLine);
+        let nextPlan = 0;
+        block.tasks = block.tasks.map(task => task.isPlanned ? plans[nextPlan++] : task);
+    }
     blocks.sort((a, b) => (a.startMinute ?? Number.MAX_SAFE_INTEGER) - (b.startMinute ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
     return {
         tasks,

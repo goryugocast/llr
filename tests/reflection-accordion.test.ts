@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // DOM behavior only: happy-dom does not validate CSS geometry or native Markdown.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Component, WorkspaceLeaf } from 'obsidian';
+import { moment, TFile, type Component, type WorkspaceLeaf } from 'obsidian';
 import { buildReflectionTimeline, type ReflectionBlock, type ReflectionTask } from '../src/service/reflection-timeline';
 import { ReflectionExpansionState } from '../src/service/reflection-expansion';
 
@@ -92,7 +92,7 @@ interface Harness {
     pending: Promise<void>; expansion: ReflectionExpansionState; userScrollRevision: number;
     dateInput: HTMLInputElement;
     visible: Day[]; sections: Map<string, HTMLElement>;
-    app: { vault: { cachedRead: ReturnType<typeof vi.fn> }; workspace: { openLinkText: ReturnType<typeof vi.fn> } };
+    app: { vault: { cachedRead: ReturnType<typeof vi.fn> }; workspace: { openLinkText: ReturnType<typeof vi.fn> }; metadataCache?: unknown };
     makeBlock(parent: HTMLElement, day: Day, block: ReflectionBlock, occurrence: number, component: Component): Promise<void>;
     makeDay(day: Day): Promise<HTMLElement>;
     setAllDetails(open: boolean): Promise<void>;
@@ -104,9 +104,11 @@ interface Harness {
     pendingDisplayDate: string | null;
     onOpen(): Promise<void>;
     onClose(): Promise<void>;
+    releaseDay(section: HTMLElement): void;
+    detailSetters: Map<HTMLDetailsElement, { setOpen(open: boolean): Promise<void> }>;
 }
-async function setup() {
-    const view = new ReflectionView({} as WorkspaceLeaf, () => ({ enabled: true, folder: '', format: 'YYYY-MM-DD' })) as unknown as Harness;
+async function setup(getSectionBoundaries?: () => { value: number; label: string }[]) {
+    const view = new ReflectionView({} as WorkspaceLeaf, () => ({ enabled: true, folder: '', format: 'YYYY-MM-DD' }), undefined, undefined, undefined, undefined, undefined, getSectionBoundaries) as unknown as Harness;
     view.scroller = document.createElement('div');
     view.daysEl = view.scroller.createDiv();
     view.expandButton = document.createElement('button');
@@ -354,5 +356,123 @@ describe('section-anchored planned clock display', () => {
         expect(view.daysEl.textContent).toContain('17:50 Dinner');
         expect(view.daysEl.querySelector('details')).toBeNull();
         expect(view.daysEl.querySelector('a')?.dataset.href).toBe('Dinner');
+    });
+});
+
+describe('timeline resolves linked routine frontmatter', () => {
+    it('resolves routine sections for today while retaining source clocks and completed actual times', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 10, 5, 16, 0));
+        try {
+            const boundaries = [
+                { value: 1730, label: '夕方' }, { value: 1800, label: '晩ごはん' },
+                { value: 2100, label: '夜' }, { value: 2359, label: '深夜' },
+            ];
+            const { view } = await setup(() => boundaries);
+            const dailyFile = new TFile() as TFile & { path: string };
+            dailyFile.path = 'daily/2026-11-05.md';
+            const dinnerFile = new TFile() as TFile & { path: string };
+            dinnerFile.path = 'routine/Dinner.md';
+            const reminderFile = new TFile() as TFile & { path: string };
+            reminderFile.path = 'routine/Bedroom.md';
+            const completedFile = new TFile() as TFile & { path: string };
+            completedFile.path = 'routine/Completed.md';
+            const files = new Map([
+                ['Dinner', { file: dinnerFile, frontmatter: { start: 1750, section: 1800 } }],
+                ['Bedroom', { file: reminderFile, frontmatter: { start: 2045, section: 2100 } }],
+                ['Completed', { file: completedFile, frontmatter: { start: 900, section: 900 } }],
+            ]);
+            const lookup = vi.fn((link: string) => files.get(link)?.file ?? null);
+            const getCache = vi.fn((file: TFile) => [...files.values()].find(item => item.file === file) ?? null);
+            Object.assign(view.app, {
+                metadataCache: { getFirstLinkpathDest: lookup, getFileCache: getCache },
+                vault: { cachedRead: vi.fn(async () => [
+                    '# 夕方',
+                    '- [ ] 🥢 [[Dinner]] (70m)',
+                    '# 晩ごはん',
+                    '- [ ] 17:50 🥢 [[Dinner]] (70m)',
+                    '- [ ] 20:45 🦁 [[Bedroom]] (15m)',
+                    '# 夜',
+                    '- [ ] 🎹 音楽 (60m)',
+                    '- [x] [[Completed]] 09:10 - 09:25',
+                ].join('\n')) },
+            });
+            const section = await view.makeDay({ date: moment().format('YYYY-MM-DD'), file: dailyFile });
+            const rows = Array.from(section.querySelectorAll('.llr-reflection-row'));
+            const rowWith = (text: string) => rows.find(row => row.textContent?.includes(text));
+            const dinner = rowWith('17:50 🥢');
+            const reminder = rowWith('20:45 🦁');
+            expect(dinner).toBeDefined();
+            expect(reminder).toBeDefined();
+            expect(dinner?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('1080');
+            expect(reminder?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('1260');
+            expect(dinner?.querySelector('.llr-reflection-name')?.textContent).toContain('17:50');
+            expect(reminder?.querySelector('.llr-reflection-name')?.textContent).toContain('20:45');
+            const completed = rowWith('Completed');
+            expect(completed).toBeDefined();
+            expect(completed?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('540');
+            expect(lookup).toHaveBeenCalledWith('Dinner', dailyFile.path);
+            expect(lookup).toHaveBeenCalledWith('Bedroom', dailyFile.path);
+            const original: string = await view.app.vault.cachedRead.mock.results[0].value;
+            expect(view.app.vault.cachedRead).toHaveBeenCalledWith(dailyFile);
+            expect(original).toContain('- [ ] 17:50 🥢 [[Dinner]] (70m)');
+            view.releaseDay(section);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('recognizes long sleep only from linked routine metadata on past days', async () => {
+        const { view } = await setup(() => [{ value: 600, label: '朝' }, { value: 2400, label: '睡眠' }]);
+        const dailyFile = new TFile() as TFile & { path: string };
+        dailyFile.path = 'daily/2026-11-04.md';
+        const sleepFile = new TFile() as TFile & { path: string };
+        sleepFile.path = 'routine/Sleep.md';
+        const normalFile = new TFile() as TFile & { path: string };
+        normalFile.path = 'routine/Work.md';
+        const files = new Map([
+            ['Sleep', { file: sleepFile, frontmatter: { summary_role: 'sleep' } }],
+            ['Work', { file: normalFile, frontmatter: {} }],
+        ]);
+        const lookup = vi.fn((link: string) => files.get(link)?.file ?? null);
+        const getCache = vi.fn((file: TFile) => [...files.values()].find(item => item.file === file) ?? null);
+        Object.assign(view.app, {
+            metadataCache: { getFirstLinkpathDest: lookup, getFileCache: getCache },
+            vault: { cachedRead: vi.fn(async () => [
+                '- [x] [[Sleep]] 20:00 - 09:00',
+                '- [x] [[Work]] 20:00 - 09:00',
+            ].join('\n')) },
+        });
+        const section = await view.makeDay({ date: '2026-11-04', file: dailyFile });
+        const details = Array.from(section.querySelectorAll('details'));
+        expect(lookup).toHaveBeenCalledWith('Sleep', dailyFile.path);
+        expect(lookup).toHaveBeenCalledWith('Work', dailyFile.path);
+        expect(details.length).toBe(1);
+        const row = details[0].closest<HTMLElement>('.llr-reflection-row')!;
+        expect(row.style.minHeight).toContain('7 * var(--llr-reflection-hour-height)');
+        await view.detailSetters.get(details[0])?.setOpen(true);
+        expect(row.textContent).toContain('20:00–09:00');
+        expect(row.textContent).toContain('Sleep');
+        expect(row.textContent).toContain('Work');
+        view.releaseDay(section);
+    });
+});
+
+
+describe('planned expansion order', () => {
+    it('shows hidden candidates in source order without repeating a later representative title', async () => {
+        const { view, component } = await setup();
+        view.daysEl.replaceChildren();
+        const plans = buildReflectionTimeline('# 夜\n- [ ] 22:30 [[hidden]] (5m)\n- [ ] [[zero]]\n- [ ] [[music]] (180m)', 3,
+            { sections: [{ value: 2100, label: '夜' }, { value: 2359, label: '深夜' }], isSleep: () => false }, 1200);
+        await view.makeBlock(view.daysEl, day, plans.blocks[0], 0, component);
+        view.daysEl.querySelector('summary')!.click();
+        await view.pending;
+        const records = Array.from(view.daysEl.querySelectorAll('.llr-reflection-record'));
+        expect(records).toHaveLength(3);
+        expect(records[0].textContent).toContain('22:30 hidden');
+        expect(records[1].textContent).toContain('zero');
+        expect(records[2].querySelector('.llr-reflection-record-title')).toBeNull();
+        expect(view.daysEl.querySelectorAll('a[data-href="music"]')).toHaveLength(1);
     });
 });
