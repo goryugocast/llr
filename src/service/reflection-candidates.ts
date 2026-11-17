@@ -1,44 +1,47 @@
-/** Select by estimate, then lay out selected candidates in source order.
- * Hour numbers are absolute on the logical-day axis, including after midnight. */
+export interface ReflectionCandidate {
+    id: number;
+    estimate: number;
+    startMinute?: number;
+    endMinute?: number;
+    fixed?: boolean;
+}
+
+/** Compare untimed remaining estimates with fixed plans' actual hourly overlap.
+ * Hours are absolute on the logical-day axis. Input order breaks score ties. */
 export function selectReflectionCandidates(
-    candidates: readonly { id: number; estimate: number }[],
+    candidates: readonly ReflectionCandidate[],
     hours: readonly number[],
 ): Map<number, number> {
-    const take = (available: number[], count: number): number[] => {
-        let best: number[] = [];
-        let run: number[] = [];
-        for (const hour of available) {
-            if (run.length && hour !== run[run.length - 1] + 1) run = [];
-            run.push(hour);
-            if (run.length > best.length) best = [...run];
-            if (run.length === count) break;
-        }
-        return best.slice(0, count);
-    };
-    let available = [...hours].sort((a, b) => a - b);
-    const selected = new Map<number, number>();
-    const ranked = candidates.map((candidate, index) => ({ ...candidate, index }))
-        .sort((a, b) => b.estimate - a.estimate || a.index - b.index);
-    for (const candidate of ranked) {
-        if (!available.length) break;
-        const reserved = take(available, Math.max(1, Math.ceil(candidate.estimate / 60)));
-        selected.set(candidate.id, reserved.length);
-        available = available.filter(hour => !reserved.includes(hour));
-    }
-    available = [...hours].sort((a, b) => a - b);
+    const remaining = new Map(candidates.map(candidate => [candidate.id, candidate.estimate]));
+    const used = new Set<number>();
     const result = new Map<number, number>();
-    for (const candidate of candidates) {
-        const count = selected.get(candidate.id);
-        if (!count) continue;
-        // Keep source order even when an occupied hour splits the free slots.
-        const reserved: number[] = [];
-        for (const hour of available) {
-            if (reserved.length && hour !== reserved[reserved.length - 1] + 1) break;
-            reserved.push(hour);
-            if (reserved.length === count) break;
+    let previousHour = -Infinity;
+    let previousId: number | undefined;
+    for (const hour of [...hours].sort((a, b) => a - b)) {
+        const eligible = candidates.filter(candidate => {
+            if ((candidate.startMinute ?? -Infinity) >= (hour + 1) * 60 || (candidate.endMinute ?? Infinity) <= hour * 60) return false;
+            if (candidate.fixed || !used.has(candidate.id)) return true;
+            return previousHour === hour - 1 && previousId === candidate.id && (remaining.get(candidate.id) ?? 0) > 30;
+        });
+        let best: ReflectionCandidate | undefined;
+        let bestScore = -1;
+        for (const candidate of eligible) {
+            const rest = remaining.get(candidate.id) ?? 0;
+            if (!candidate.fixed && used.has(candidate.id) && rest <= 45 && eligible.some(other => other.id !== candidate.id)) continue;
+            const score = candidate.fixed
+                ? Math.max(0, Math.min(candidate.endMinute ?? Infinity, (hour + 1) * 60) - Math.max(candidate.startMinute ?? -Infinity, hour * 60))
+                : rest;
+            if (score > bestScore) { best = candidate; bestScore = score; }
         }
-        for (const hour of reserved) result.set(hour, candidate.id);
-        available = available.filter(hour => !reserved.includes(hour));
+        if (best) {
+            result.set(hour, best.id);
+            if (!best.fixed) {
+                used.add(best.id);
+                remaining.set(best.id, Math.max(0, (remaining.get(best.id) ?? 0) - 60));
+            }
+        }
+        previousHour = hour;
+        previousId = best?.id;
     }
-    return new Map([...result].sort(([a], [b]) => a - b));
+    return result;
 }

@@ -15,7 +15,7 @@ describe('buildReflectionTimeline', () => {
         expect(result.blocks.flatMap(block => block.tasks).map(task => task.title).sort()).toEqual(result.tasks.map(task => task.title).sort());
         expect(result.tasks.find(task => task.status === '/')?.endMinute).toBe(860);
         expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
-            [780, 900, '実行中'], [900, 960, '午後の予定'],
+            [780, 900, '実行中'], [900, 960, '午後の予定'], [null, null, '音楽練習'],
         ]);
     });
 
@@ -307,7 +307,7 @@ describe('today section candidate integration', () => {
         const result = buildReflectionTimeline('# 朝\n- [ ] やり残し', 3, {
             sections: [{ value: 600, label: '朝' }, { value: 900, label: '午前' }], isSleep: () => false,
         }, 14 * 60);
-        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.tasks.map(task => task.title)])).toEqual([[840, 900, ['やり残し']]]);
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.tasks.map(task => task.title)])).toEqual([[null, null, ['やり残し']]]);
     });
     it('keeps all before-sleep unfinished items reachable even without a section slot', () => {
         const result = buildReflectionTimeline([
@@ -323,7 +323,7 @@ describe('today section candidate integration', () => {
         const visible = result.blocks.flatMap(block => block.tasks).filter(task => task.status === ' ').map(task => task.title);
         expect(visible.sort()).toEqual(['朝のやり残し', '枠なし候補', '見積なし予約', '見出し不一致', '睡眠'].sort());
         expect(new Set(visible).size).toBe(visible.length);
-        expect(result.blocks.filter(block => block.isPlanned).every(block => (block.startMinute ?? 0) >= 16 * 60)).toBe(true);
+        expect(result.blocks.filter(block => block.isPlanned && block.startMinute !== null).every(block => block.startMinute! >= 16 * 60)).toBe(true);
     });
     const preview = { sections: [{ value: 1400, label: '午後' }, { value: 1800, label: '夜' }], isSleep: (line: string) => line.includes('睡眠') };
     const rows = ['# 午後', '- [ ] テーマ', '- [ ] KS記事', '- [ ] iPad記事', '- [ ] dot'];
@@ -342,7 +342,7 @@ describe('today section candidate integration', () => {
         expect(result.blocks.map(block => block.title)).toEqual(['テーマ', '予約', '実績']);
         expect(result.blocks.filter(block => block.isPlanned).flatMap(block => block.tasks).some(task => task.title === '実績')).toBe(false);
     });
-    it('retains source order after estimate selection and excludes sleep tail and SRS', () => {
+    it('selects by estimate and excludes sleep tail and SRS', () => {
         const lines = ['# 午後', '- [ ] 充電 (5m)', '- [ ] 音楽 (60m)', '- [ ] 風呂 (30m)', '- [ ] 睡眠', '- [ ] 本', '<!-- llr:srs start -->', '- [ ] SRS', '<!-- llr:srs end -->'];
         const result = buildReflectionTimeline(lines.join('\n'), 3, preview, 16 * 60);
         expect(result.blocks.map(block => block.title)).toEqual(['音楽', '風呂']);

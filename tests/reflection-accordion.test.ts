@@ -121,6 +121,20 @@ async function setup() {
 }
 
 describe('reflection accordion source DOM behavior', () => {
+    it.each([
+        ['x', '14:18', '12:00–14:18'],
+        ['x', '12:00', '12:00'],
+        ['/', '', '12:00'],
+    ] as const)('exposes recorded times for a lone %s record ending %s without a memo', async (status, actualEnd, expected) => {
+        const { view, component } = await setup();
+        view.daysEl.empty();
+        const task = { ...record('昼ごはん'), status, actualEnd, supplement: '', supplements: '' };
+        await view.makeBlock(view.daysEl, day, { ...block(720, task.title), tasks: [task] }, 0, component);
+        const summary = view.daysEl.querySelector('summary');
+        expect(summary).not.toBeNull();
+        summary!.click(); await view.pending;
+        expect(view.daysEl.querySelector('.llr-reflection-record-time')?.textContent).toBe(expected);
+    });
     it('renders a lone plan without a disclosure, retaining its title link', async () => {
         const { view, component } = await setup();
         view.daysEl.empty();

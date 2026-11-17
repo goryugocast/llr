@@ -511,6 +511,9 @@ export class ReflectionView extends ItemView {
                 } else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex, segment);
             }
         }
+        for (const index of layout.untimed) {
+            if (blocks[index].isPlanned) await renderBlock(axis, index);
+        }
         if (layout.outsideDay.length) {
             const continuation = section.createDiv('llr-reflection-outside-day');
             continuation.createDiv({ cls: 'llr-reflection-section-label', text: 'このノートの日界後の記録' });
@@ -638,7 +641,7 @@ export class ReflectionView extends ItemView {
                 mark.style.top = `${tick.fraction * 100}%`;
             }
         };
-        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim());
+        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim() || task.actualStart || task.actualEnd);
         if (!hasDetails) {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
