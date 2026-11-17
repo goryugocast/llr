@@ -170,6 +170,7 @@ describe('reflection viewport continuity', () => {
         view.dateInput.value = '2026-11-01';
         await view.moveDay(-1);
         expect(view.jump).toHaveBeenLastCalledWith('2026-10-31');
+        view.index.push({ date: '2026-11-01', file: { path: '2026-11-01.md' } });
         view.dateInput.value = '2026-10-31';
         await view.moveDay(1);
         expect(view.jump).toHaveBeenLastCalledWith('2026-11-01');
@@ -238,7 +239,7 @@ describe('reflection viewport continuity', () => {
         expect(view.scroller.scrollTop).toBe(340);
     });
 
-    it('jumps to missing dates without creating a note, reuses loaded days and clamps the future', async () => {
+    it('jumps to missing past dates without creating a note and ignores missing future dates', async () => {
         const all = [entry(1), entry(10), entry(20), entry(31)];
         const view = makeView(all, all.slice(0, 2));
         const read = vi.spyOn(view, 'makeDay');
@@ -250,7 +251,8 @@ describe('reflection viewport continuity', () => {
         await view.jump('2026-10-10');
         expect(read.mock.calls.length).toBe(count);
         await view.jump('2026-12-01');
-        expect(view.dateInput.value).toBe('2026-10-31');
+        expect(view.dateInput.value).toBe('2026-10-10');
+        expect(view.index.some(day => day.date === '2026-12-01')).toBe(false);
         expect(view.visible.every(day => day.date <= '2026-10-31')).toBe(true);
     });
 
@@ -267,4 +269,56 @@ describe('reflection viewport continuity', () => {
         expect(view.visible).toEqual(all.slice(10, 45));
         expect(view.scroller.scrollTop).toBe(2700);
     });
+    it('indexes and navigates existing future notes without creating missing days', async () => {
+        const today = entry(31);
+        const future: Entry[] = [
+            { date: '2026-11-02', file: { path: 'daily/2026-11-02.md' } },
+            { date: '2026-11-04', file: { path: 'daily/2026-11-04.md' } },
+        ];
+        const view = makeView([today], [today]);
+        const create = vi.fn();
+        const files = [...future.map(day => ({ ...day.file, extension: 'md' })),
+            { path: 'other/2026-11-05.md', extension: 'md' }];
+        Object.assign(view, {
+            getSettings: () => ({ enabled: true, folder: 'daily', format: 'YYYY-MM-DD' }),
+            app: { vault: { getMarkdownFiles: () => files, create } },
+        });
+        view.rebuildIndex = (ReflectionView.prototype as unknown as Harness).rebuildIndex;
+        view.rebuildIndex();
+        expect(view.index.map(day => day.date)).toEqual(['2026-10-31', '2026-11-02', '2026-11-04']);
+        view.dateInput.value = '2026-10-31';
+        await view.moveDay(1);
+        expect(view.dateInput.value).toBe('2026-11-02');
+        expect(view.dateInput.max).toBe('2026-11-04');
+        await view.moveDay(1);
+        expect(view.dateInput.value).toBe('2026-11-04');
+        await view.moveDay(-1);
+        expect(view.dateInput.value).toBe('2026-11-02');
+        await view.jump('2026-11-03');
+        expect(view.dateInput.value).toBe('2026-11-02');
+        expect(view.index.some(day => day.date === '2026-11-03')).toBe(false);
+        expect(create).not.toHaveBeenCalled();
+    });
+    it('keeps the newer-records edge available until the last existing future note', () => {
+        const future: Entry = { date: '2026-11-01', file: { path: 'daily/2026-11-01.md' } };
+        const view = makeView([entry(31), future], [entry(31)]);
+        const next = { disabled: false, hidden: false, textContent: '' };
+        const following = { disabled: true };
+        view.dateInput.value = '2026-10-31';
+        Object.assign(view, { followingDayButton: following, nextButton: next, pastButton: { disabled: false, textContent: '' },
+            daysEl: { querySelectorAll: (): FakeSection[] => [] } });
+        view.updateEdges = (ReflectionView.prototype as unknown as Harness).updateEdges;
+        view.updateEdges();
+        expect(next.disabled).toBe(false);
+        expect(next.hidden).toBe(false);
+        expect(following.disabled).toBe(false);
+        view.dateInput.value = future.date;
+        view.visible = [future];
+        view.updateEdges();
+        expect(next.disabled).toBe(true);
+        expect(next.hidden).toBe(true);
+        expect(following.disabled).toBe(true);
+        expect(next.textContent).toBe('新しい記録 ↓');
+    });
+
 });

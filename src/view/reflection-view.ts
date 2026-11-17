@@ -134,7 +134,7 @@ export class ReflectionView extends ItemView {
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
         const tools = toolbar.createDiv('llr-reflection-tools');
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
-        this.dateInput.max = this.today();
+        this.dateInput.max = this.latestDate();
         this.dateInput.value = this.today();
         this.calendarDisplayDate = this.dateInput.value;
         wireNativeDatePicker(this.currentDayLabel, this.dateInput);
@@ -246,6 +246,11 @@ export class ReflectionView extends ItemView {
 
     private today(): string { return moment().subtract(3, 'hours').format('YYYY-MM-DD'); }
 
+    private latestDate(): string {
+        const last = this.index.at(-1)?.date;
+        return last && last > this.today() ? last : this.today();
+    }
+
     private enqueue(work: () => Promise<void>) {
         const operation = this.pending.then(async () => { if (!this.closed) await work(); });
         this.pending = operation.catch(error => {
@@ -265,7 +270,7 @@ export class ReflectionView extends ItemView {
             });
             if (!date) continue;
             const key = moment(date).format('YYYY-MM-DD');
-            if (key <= this.today()) dates.set(key, { date: key, file });
+            dates.set(key, { date: key, file });
         }
         if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
         this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -274,14 +279,22 @@ export class ReflectionView extends ItemView {
     private async moveDay(direction: -1 | 1) {
         const current = moment(this.dateInput.value, 'YYYY-MM-DD', true);
         if (!current.isValid()) return;
-        await this.jump(current.add(direction, 'day').format('YYYY-MM-DD'));
+        let date = current.add(direction, 'day').format('YYYY-MM-DD');
+        if (date > this.today()) {
+            this.rebuildIndex();
+            const available = direction > 0 ? this.index : [...this.index].reverse();
+            const next = available.find(day => direction > 0 ? day.date >= date : day.date <= date);
+            if (!next) return;
+            date = next.date;
+        }
+        await this.jump(date);
     }
 
     private async jump(date: string) {
         if (!moment(date, 'YYYY-MM-DD', true).isValid()) return;
-        date = date > this.today() ? this.today() : date;
-        this.trace('jump-start', { date });
         this.rebuildIndex();
+        if (date > this.today() && !this.index.some(day => day.date === date && day.file)) return;
+        this.trace('jump-start', { date });
         if (!this.index.some(day => day.date === date)) {
             this.index.push({ date, file: null });
             this.index.sort((a, b) => a.date.localeCompare(b.date));
@@ -301,7 +314,7 @@ export class ReflectionView extends ItemView {
         }
         this.dateInput.value = date;
         this.calendarDisplayDate = date;
-        this.dateInput.max = this.today();
+        this.dateInput.max = this.latestDate();
         // Saved workspace state can arrive before the leaf is shown. Zero-sized
         // geometry cannot position a day; retain the requested date until visible.
         this.pendingDisplayDate = this.scrollToDate(date) ? null : date;
@@ -382,9 +395,10 @@ export class ReflectionView extends ItemView {
         if (!this.visible.length) return;
         this.pastButton.disabled = !this.index.some(day => day.date < this.visible[0].date);
         this.pastButton.textContent = this.pastButton.disabled ? 'ここからが最初の記録' : '↑ 過去の記録';
-        this.nextButton.disabled = this.visible[this.visible.length - 1].date >= this.today();
+        this.nextButton.disabled = !this.index.some(day => day.date > this.visible[this.visible.length - 1].date);
         this.nextButton.hidden = this.nextButton.disabled;
         this.nextButton.textContent = '新しい記録 ↓';
+        if (this.followingDayButton) this.followingDayButton.disabled = !this.index.some(day => day.date > this.getDisplayDate());
         this.daysEl.querySelectorAll('.llr-reflection-gap').forEach(el => el.remove());
         for (let i = 1; i < this.visible.length; i++) {
             const gap = moment(this.visible[i].date).diff(moment(this.visible[i - 1].date), 'days') - 1;
@@ -406,8 +420,8 @@ export class ReflectionView extends ItemView {
 
     private async refresh() {
         this.trace('refresh-start');
-        this.dateInput.max = this.today();
         this.rebuildIndex();
+        this.dateInput.max = this.latestDate();
         const dirty = this.dirty;
         this.dirty = new Set();
         const updates: Array<{ day: DayEntry; section: HTMLElement }> = [];
@@ -490,7 +504,7 @@ export class ReflectionView extends ItemView {
             return typeof role === 'string' && role.trim().toLowerCase() === 'sleep';
         };
         const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file), 3,
-            day.date === this.today() && this.getSectionBoundaries ? {
+            day.date >= this.today() && this.getSectionBoundaries ? {
                 sections: this.getSectionBoundaries(),
                 isSleep,
                 getSections: line => {
@@ -604,7 +618,7 @@ export class ReflectionView extends ItemView {
             this.openNoteButton.setAttribute('aria-label', label);
             setTooltip(this.openNoteButton, label);
         }
-        if (this.followingDayButton) this.followingDayButton.disabled = day.date >= this.today();
+        if (this.followingDayButton) this.followingDayButton.disabled = !this.index.some(entry => entry.date > day.date);
         if (document.activeElement !== this.dateInput) {
             this.dateInput.value = day.date;
             this.calendarDisplayDate = day.date;

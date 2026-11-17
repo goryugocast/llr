@@ -476,3 +476,76 @@ describe('planned expansion order', () => {
         expect(view.daysEl.querySelectorAll('a[data-href="music"]')).toHaveLength(1);
     });
 });
+
+describe('future daily note timeline plans', () => {
+    it('keeps future sections visible independently of the current clock and uses linked section metadata', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 10, 5, 16, 0));
+        let section: HTMLElement | undefined;
+        let view: Harness | undefined;
+        try {
+            const boundaries = [
+                { value: 600, label: '朝' }, { value: 900, label: '午前' },
+                { value: 1100, label: '昼' }, { value: 1330, label: '午後' },
+                { value: 1730, label: '夕方' }, { value: 1800, label: '晩ごはん' },
+                { value: 2100, label: '夜' }, { value: 2359, label: '深夜' },
+                { value: 2400, label: '睡眠' },
+            ];
+            ({ view } = await setup(() => boundaries));
+            const dailyFile = new TFile() as TFile & { path: string };
+            dailyFile.path = 'daily/2026-11-06.md';
+            const linked = new Map<string, { file: TFile; frontmatter: Record<string, unknown> }>();
+            const addRoutine = (name: string, frontmatter: Record<string, unknown>) => {
+                const file = new TFile() as TFile & { path: string };
+                file.path = `routine/${name}.md`;
+                linked.set(name, { file, frontmatter });
+            };
+            addRoutine('Breakfast', { section: 600, estimate: 30 });
+            addRoutine('Dinner', { start: 1750, section: 1800, estimate: 70 });
+            addRoutine('Bedroom', { start: 2045, section: 2100, estimate: 15 });
+            addRoutine('Sleep', { section: 2400, estimate: 480, summary_role: 'sleep' });
+            const lookup = vi.fn((name: string) => linked.get(name)?.file ?? null);
+            const getCache = vi.fn((file: TFile) => [...linked.values()].find(item => item.file === file) ?? null);
+            const source = [
+                '# 朝',
+                '- [ ] [[Breakfast]] (30m)',
+                '# 晩ごはん',
+                '- [ ] 17:50 [[Dinner]] (70m)',
+                '- [ ] 20:45 [[Bedroom]] (15m)',
+                '# 午後',
+                '- [/] 未来日の実行中記録 15:00 -',
+                '# 夜',
+                '- [ ] [[Sleep]] (480m)',
+                '# 深夜',
+                '- [ ] 起床後の片付け',
+            ].join('\n');
+            Object.assign(view.app, {
+                metadataCache: { getFirstLinkpathDest: lookup, getFileCache: getCache },
+                vault: { cachedRead: vi.fn(async () => source) },
+            });
+
+            section = await view.makeDay({ date: '2026-11-06', file: dailyFile });
+            const rows = Array.from(section.querySelectorAll('.llr-reflection-row'));
+            const rowWith = (text: string) => rows.find(row => row.textContent?.includes(text));
+            const breakfast = rowWith('Breakfast');
+            const dinner = rowWith('17:50');
+            const reminder = rowWith('20:45');
+            expect(breakfast).toBeDefined();
+            expect(breakfast?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('360');
+            expect(dinner).toBeDefined();
+            expect(dinner?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('1080');
+            expect(reminder).toBeDefined();
+            expect(reminder?.querySelector('.llr-reflection-axis-tick')?.getAttribute('data-minute')).toBe('1260');
+            expect(rowWith('起床後の片付け')).toBeUndefined();
+            expect(rowWith('未来日の実行中記録')).toBeUndefined();
+            expect(lookup).toHaveBeenCalledWith('Breakfast', dailyFile.path);
+            expect(lookup).toHaveBeenCalledWith('Dinner', dailyFile.path);
+            expect(lookup).toHaveBeenCalledWith('Bedroom', dailyFile.path);
+            expect(lookup).toHaveBeenCalledWith('Sleep', dailyFile.path);
+            expect(view.app.vault.cachedRead).toHaveBeenCalledWith(dailyFile);
+        } finally {
+            if (section && view) view.releaseDay(section);
+            vi.useRealTimers();
+        }
+    });
+});
