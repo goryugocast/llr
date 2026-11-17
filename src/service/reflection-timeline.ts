@@ -1,5 +1,6 @@
 import { TaskParser, type ParsedTaskStatus } from './task-parser';
 import { SRS_BATCH_START, SRS_BATCH_END, SRS_BATCH_DONE } from './srs-batch';
+import { sectionTimelineMinute, type SectionBoundary } from './section-timeline';
 
 /** Internal default reflection policy. Keep this isolated so a future settings
  * control can select a different policy without changing extraction semantics. */
@@ -51,7 +52,10 @@ export interface ReflectionTimeline {
  * Extract logged tasks and a compact hourly summary from a daily note.
  * The configurable day boundary makes early-morning work part of the preceding day.
  */
-export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): ReflectionTimeline {
+export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, sectionPreview?: {
+    sections: SectionBoundary[];
+    isSleep: (line: string) => boolean;
+}): ReflectionTimeline {
     const lines = excludeSrsBatch(markdown.split(/\r?\n/));
     const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
     const owned = new Set<number>();
@@ -160,14 +164,37 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
     flushMemo();
     rawTasks.sort((a, b) => a.sourceLine - b.sourceLine);
 
+    const sectionIntervals = new Map<number, { start: number; end: number }>();
+    if (sectionPreview) {
+        const sections = [...sectionPreview.sections].sort((a, b) => sectionTimelineMinute(a.value) - sectionTimelineMinute(b.value));
+        let interval: { start: number; end: number } | undefined;
+        let afterSleep = false;
+        const records = new Map(rawTasks.map(record => [record.sourceLine, record]));
+        lines.forEach((line, index) => {
+            const heading = line.match(/^#{1,6}\s+(.+?)\s*$/);
+            if (heading) {
+                const sectionIndex = sections.findIndex(section => section.label === heading[1]);
+                interval = sectionIndex < 0 ? undefined : {
+                    start: sectionTimelineMinute(sections[sectionIndex].value),
+                    end: sections[sectionIndex + 1] ? sectionTimelineMinute(sections[sectionIndex + 1].value) : dayBoundaryHour * 60 + 1440,
+                };
+            }
+            const record = records.get(index + 1);
+            if (!record) return;
+            if (!afterSleep && interval) sectionIntervals.set(index + 1, interval);
+            if (sectionPreview.isSleep(record.line)) afterSleep = true;
+        });
+    }
+
     const tasks = rawTasks.map(({ line, sourceLine, supplements, kind }, id): ReflectionTask => {
         const parsed = TaskParser.parseLine(line);
         const plannedStartMinute = parseClock(parsed.plannedStart);
         const estimateMinutes = parseEstimateMinutes(parsed.estimate);
-        const isPlanned = parsed.status === ' ' && plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0;
-        const startMinute = parseClock(parsed.actualStart) ?? (isPlanned ? plannedStartMinute : null);
+        const section = parsed.status === ' ' && !parsed.plannedStart ? sectionIntervals.get(sourceLine) : undefined;
+        const isPlanned = parsed.status === ' ' && (section !== undefined || (plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0));
+        const startMinute = parseClock(parsed.actualStart) ?? section?.start ?? (isPlanned ? plannedStartMinute : null);
         const actualEndMinute = parseClock(parsed.actualEnd);
-        const endMinute = actualEndMinute ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
+        const endMinute = actualEndMinute ?? section?.end ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
         let start = startMinute;
         let end = endMinute;
         if (start !== null && end === null && start < dayBoundaryHour * 60) start += 1440;

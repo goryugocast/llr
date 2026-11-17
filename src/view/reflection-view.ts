@@ -8,6 +8,7 @@ import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } fr
 import { createReflectionDayHeading } from './reflection-day-heading';
 import { resolveLanguage } from '../i18n';
 import type { UILanguage } from '../i18n';
+import type { SectionBoundary } from '../service/section-timeline';
 
 export const VIEW_TYPE_REFLECTION = 'llr-reflection-view';
 interface DayEntry { date: string; file: TFile | null }
@@ -57,6 +58,7 @@ export class ReflectionView extends ItemView {
         private readonly diagnostics?: TimelineDiagnostics,
         private readonly selectCalendarDate?: (date: string) => Promise<void>,
         private readonly getUiLanguage?: () => UILanguage,
+        private readonly getSectionBoundaries?: () => SectionBoundary[],
     ) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
@@ -471,7 +473,15 @@ export class ReflectionView extends ItemView {
         });
         section.append(heading);
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
-        const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file));
+        const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file), 3,
+            day.date === this.today() && this.getSectionBoundaries ? {
+                sections: this.getSectionBoundaries(),
+                isSleep: line => {
+                    const link = line.match(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/)?.[1];
+                    const file = link ? this.app.metadataCache.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
+                    return file instanceof TFile && this.app.metadataCache.getFileCache(file)?.frontmatter?.summary_role === 'sleep';
+                },
+            } : undefined);
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
         if (this.closed) return section;
         const component = this.addChild(new Component());
