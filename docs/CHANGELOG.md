@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-11-13
+- Generated: 2026-11-17
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,18 @@
 
 ## Git History Snapshot
 
+### 2026-11-17
+- Compress narrow sidebar spacing continuously after hiding arrows (`f137008`)
+- Balance timeline spacing in very narrow sidebars (`9271929`)
+- Fit desktop sidebar controls at minimum pane width (`9aca7a8`)
+- Keep mobile Today controls stationary across views (`426de96`)
+### 2026-11-16
+- Keep Today and date headings consistent with native theme (`c87874c`)
+- Restore Today navigation and link timeline date headings (`ef53cd7`)
+### 2026-11-14
+- Finalize approved 0.5.2 release documentation (`34e6201`)
 ### 2026-11-13
+- Prepare LLR 0.5.2 mobile date navigation release (`c9a453c`)
 - Open mobile native date picker directly (`0c24b1e`)
 - Align the mobile header date with its content (`5d8632d`)
 - Constrain the mobile date field to the dialog (`9b1d323`)
@@ -95,14 +106,4 @@
 - Bump version to 0.4.0 (`a8837b6`)
 - Expand external view regression coverage (`f20aece`)
 - Refresh generated changelog (`2d7ee0d`)
-- Handle external views safely (`f0fc887`)
-### 2026-07-28
-- Stop future daily notes from advancing routine state (`317ad2b`)
-- Stop the frontmatter repair from swallowing body text (`a8b9d41`)
-- Restore the 3s grace period for mis-tapped checkboxes (`5759401`)
-- Restore the undo grace period for routine completion (`05cf906`)
-- Fix regressions found in the initial-due audit (`564d2a8`)
-- Derive an initial due date for routines without next_due (`eed3411`)
-### 2026-07-20
-- Implement multi-section routine expansion for sorting (`f55c00d`)
 
