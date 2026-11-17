@@ -351,24 +351,44 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
     .llr-nav-btns button.llr-nav-btn:nth-child(2) { width: 34px; }
     .llr-info-box { gap: 4px; }
 }
-@container (width < 280px) {
-    .llr-date-nav, .llr-reflection-toolbar { padding-inline: 12px; }
+@container (width < 264px) {
+    /* Keep the wide layout at 264px, then compress continuously down to 200px.
+       Invisible arrows retain their current slot instead of moving Today in one jump. */
+    .llr-date-nav, .llr-reflection-scroll, .llr-reflection-toolbar {
+        --llr-compact-step: clamp(0px, calc((100cqw - 200px) / 64), 1px);
+    }
+    .llr-date-nav, .llr-reflection-toolbar {
+        padding-inline: calc(8px + 12 * var(--llr-compact-step));
+    }
+    .llr-date-nav > .llr-summary-date-nav,
+    .llr-reflection-toolbar > .llr-reflection-date-nav {
+        gap: calc(8px - 4 * var(--llr-compact-step));
+    }
+    .llr-summary-date-nav > .llr-nav-btns,
+    .llr-reflection-date-nav > .llr-nav-btns { gap: calc(2 * var(--llr-compact-step)); }
     .llr-summary-date-nav > .llr-nav-btns > button:first-child,
     .llr-summary-date-nav > .llr-nav-btns > button:last-child,
     .llr-reflection-date-nav > .llr-nav-btns > button:first-child,
-    .llr-reflection-date-nav > .llr-nav-btns > button:last-child { display: none; }
-    .llr-reflection-scroll {
-        --llr-reflection-gutter: 18px;
-        --llr-reflection-gap: 4px;
-        --llr-reflection-face-inset: 22px;
-        --llr-reflection-content-inset: 28px;
-        padding-right: 8px;
+    .llr-reflection-date-nav > .llr-nav-btns > button:last-child {
+        visibility: hidden;
+        pointer-events: none;
+        width: calc(20 * var(--llr-compact-step));
+        border: 0;
     }
-    .llr-reflection-day h2 { padding-left: 12px; }
-    .llr-reflection-block-title { grid-template-columns: var(--llr-reflection-content-inset) minmax(0, 1fr) 20px; padding-right: 4px; }
-    .llr-reflection-name { padding-right: 4px; }
-    .llr-reflection-records { padding-right: 4px; }
-    .llr-reflection-time-step { column-gap: 4px; }
+    .llr-reflection-scroll {
+        --llr-reflection-gutter: calc(18px + 6 * var(--llr-compact-step));
+        --llr-reflection-gap: calc(4px + 4 * var(--llr-compact-step));
+        --llr-reflection-face-inset: calc(22px + 10 * var(--llr-compact-step));
+        --llr-reflection-content-inset: calc(28px + 12 * var(--llr-compact-step));
+        padding-right: calc(8px + 4 * var(--llr-compact-step));
+    }
+    .llr-reflection-day h2 { padding-left: calc(8px + 12 * var(--llr-compact-step)); }
+    .llr-reflection-block-title {
+        grid-template-columns: var(--llr-reflection-content-inset) minmax(0, 1fr) calc(20px + 4 * var(--llr-compact-step));
+        padding-right: calc(4px + 4 * var(--llr-compact-step));
+    }
+    .llr-reflection-name, .llr-reflection-records { padding-right: calc(4px + 4 * var(--llr-compact-step)); }
+    .llr-reflection-time-step { column-gap: calc(4px + 2 * var(--llr-compact-step)); }
 }
 .is-mobile .llr-date-label, .is-mobile .llr-reflection button.llr-reflection-date-label, .is-mobile .llr-nav-btn, .is-mobile .llr-display-switch, .is-mobile .llr-open-daily-note { min-height: 44px; }
 @media (pointer: coarse) {
