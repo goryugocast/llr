@@ -479,15 +479,17 @@ export class ReflectionView extends ItemView {
         });
         section.append(heading);
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
+        const isSleep = (line: string) => {
+            const link = line.match(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/)?.[1];
+            const file = link ? this.app.metadataCache?.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
+            const role: unknown = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter?.summary_role : undefined;
+            return typeof role === 'string' && role.trim().toLowerCase() === 'sleep';
+        };
         const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file), 3,
             day.date === this.today() && this.getSectionBoundaries ? {
                 sections: this.getSectionBoundaries(),
-                isSleep: line => {
-                    const link = line.match(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/)?.[1];
-                    const file = link ? this.app.metadataCache.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
-                    return file instanceof TFile && this.app.metadataCache.getFileCache(file)?.frontmatter?.summary_role === 'sleep';
-                },
-            } : undefined, day.date === this.today() ? moment().hours() * 60 + moment().minutes() : undefined);
+                isSleep,
+            } : undefined, day.date === this.today() ? moment().hours() * 60 + moment().minutes() : undefined, { isSleep });
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
         if (this.closed) return section;
         const component = this.addChild(new Component());
@@ -512,7 +514,7 @@ export class ReflectionView extends ItemView {
             }
         }
         for (const index of layout.untimed) {
-            if (blocks[index].isPlanned) await renderBlock(axis, index);
+            if (blocks[index].isPlanned || blocks[index].tasks.some(task => task.status === 'x' || task.status === '/')) await renderBlock(axis, index);
         }
         if (layout.outsideDay.length) {
             const continuation = section.createDiv('llr-reflection-outside-day');
@@ -641,7 +643,7 @@ export class ReflectionView extends ItemView {
                 mark.style.top = `${tick.fraction * 100}%`;
             }
         };
-        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim() || task.actualStart || task.actualEnd);
+        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim() || task.actualStart || task.actualEnd || task.rawActualTime);
         if (!hasDetails) {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
@@ -766,7 +768,9 @@ export class ReflectionView extends ItemView {
             const head = record.createDiv('llr-reflection-record-head');
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
         }
-        if (task.kind !== 'memo' && task.actualStart) {
+        if (task.rawActualTime) {
+            record.createDiv({ cls: 'llr-reflection-record-time', text: task.rawActualTime });
+        } else if (task.kind !== 'memo' && task.actualStart) {
             const time = task.actualEnd && task.actualEnd !== task.actualStart ? `${task.actualStart}–${task.actualEnd}` : task.actualStart;
             record.createDiv({ cls: 'llr-reflection-record-time', text: time });
         }

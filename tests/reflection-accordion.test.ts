@@ -121,6 +121,14 @@ async function setup() {
 }
 
 describe('reflection accordion source DOM behavior', () => {
+    it('keeps malformed clock tokens readable in an expandable record', async () => {
+        const { view, component } = await setup();
+        view.daysEl.empty();
+        const task: ReflectionTask = { ...record('スポンジ交換'), actualStart: '', actualEnd: '', rawActualTime: '99:99 - 99:99', startMinute: null, endMinute: null, supplement: '', supplements: '' };
+        await view.makeBlock(view.daysEl, day, { ...block(), title: task.title, startMinute: null, endMinute: null, tasks: [task] }, 0, component);
+        view.daysEl.querySelector('summary')!.click(); await view.pending;
+        expect(view.daysEl.querySelector('.llr-reflection-record-time')?.textContent).toBe('99:99 - 99:99');
+    });
     it.each([
         ['x', '14:18', '12:00–14:18'],
         ['x', '12:00', '12:00'],

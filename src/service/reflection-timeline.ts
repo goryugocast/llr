@@ -2,6 +2,7 @@ import { TaskParser, type ParsedTaskStatus } from './task-parser';
 import { SRS_BATCH_START, SRS_BATCH_END, SRS_BATCH_DONE } from './srs-batch';
 import { sectionTimelineMinute, type SectionBoundary } from './section-timeline';
 import { selectReflectionCandidates } from './reflection-candidates';
+import { currentReflectionRunningId } from './reflection-running';
 
 /** Internal default reflection policy. Keep this isolated so a future settings
  * control can select a different policy without changing extraction semantics. */
@@ -18,6 +19,8 @@ export interface ReflectionTask {
     isPlanned: boolean;
     actualStart: string;
     actualEnd: string;
+    /** Original malformed clock tokens, kept readable without using them as an interval. */
+    rawActualTime?: string;
     /** Original record line followed by its owned memo text, if any. */
     source: string;
     supplements: string;
@@ -56,7 +59,7 @@ export interface ReflectionTimeline {
 export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, sectionPreview?: {
     sections: SectionBoundary[];
     isSleep: (line: string) => boolean;
-}, nowMinute?: number): ReflectionTimeline {
+}, nowMinute?: number, validation?: { isSleep: (line: string) => boolean }): ReflectionTimeline {
     const lines = excludeSrsBatch(markdown.split(/\r?\n/));
     const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
     const owned = new Set<number>();
@@ -191,19 +194,30 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
 
     const tasks = rawTasks.map(({ line, sourceLine, supplements, kind }, id): ReflectionTask => {
         const parsed = TaskParser.parseLine(line);
+        const rawClock = line.match(/(?:^|\s)([^\s]*:[^\s]*)\s*-\s*([^\s]*:[^\s]*)?\s*(?:\([^)]*\))?\s*$/);
+        const invalidClock = (parsed.actualStart !== '' && parseClock(parsed.actualStart) === null)
+            || (parsed.actualEnd !== '' && parseClock(parsed.actualEnd) === null)
+            || (rawClock !== null && (parseClock(rawClock[1]) === null || (!!rawClock[2] && parseClock(rawClock[2]) === null)));
+        const actualStart = invalidClock ? '' : parsed.actualStart;
+        const actualEnd = invalidClock ? '' : parsed.actualEnd;
+        const rawActualTime = invalidClock ? (rawClock ? `${rawClock[1]} - ${rawClock[2] ?? ''}` : `${parsed.actualStart} - ${parsed.actualEnd}`) : undefined;
         const plannedStartMinute = parseClock(parsed.plannedStart);
         const estimateMinutes = parseEstimateMinutes(parsed.estimate);
         const section = parsed.status === ' ' && !parsed.plannedStart ? sectionIntervals.get(sourceLine) : undefined;
         const timedPlan = parsed.status === ' ' && plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0;
         const isPlanned = parsed.status === ' ' && (sectionPreview ? unfinishedBeforeSleep.has(sourceLine) : timedPlan);
-        const startMinute = parseClock(parsed.actualStart) ?? section?.start ?? (timedPlan ? plannedStartMinute : null);
-        const actualEndMinute = parseClock(parsed.actualEnd);
+        const startMinute = parseClock(actualStart) ?? section?.start ?? (timedPlan ? plannedStartMinute : null);
+        const actualEndMinute = parseClock(actualEnd);
         const endMinute = actualEndMinute ?? section?.end ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
         let start = startMinute;
         let end = endMinute;
         if (start !== null && end === null && start < dayBoundaryHour * 60) start += 1440;
         if (start !== null && end !== null) {
-            if (end < start) end += 1440;
+            if (end < start) {
+                const overnight = end + 1440 - start;
+                const isSleep = validation?.isSleep(line) ?? sectionPreview?.isSleep(line) ?? false;
+                end = !isPlanned && !isSleep && overnight > 12 * 60 ? start : end + 1440;
+            }
             if (start < dayBoundaryHour * 60) { start += 1440; end += 1440; }
         }
         const isRunning = parsed.status === '/' && start !== null && nowMinute !== undefined;
@@ -224,22 +238,25 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             title: parsed.content,
             status: parsed.status,
             isPlanned,
-            actualStart: parsed.actualStart,
-            actualEnd: parsed.actualEnd,
+            actualStart,
+            actualEnd,
+            rawActualTime,
             source: kind === 'memo' ? supplements.join('\n') : [line, ...supplements].join('\n'),
             supplements: supplements.join('\n'),
             supplement: supplements.join('\n'),
             startMinute: start,
             endMinute: end,
         };
-    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned || (task.status === '/' && task.startMinute !== null && nowMinute !== undefined))
+    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned || (task.status === '/' && nowMinute !== undefined))
         .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));
     const sectionCandidates = new Set(tasks.filter(task => task.isPlanned && sectionIntervals.has(task.sourceLine) && !TaskParser.parseLine(task.source.split('\n')[0]).plannedStart).map(task => task.id));
     const firstHour = dayBoundaryHour;
     // A task may cross the following day's cutoff. Keep its whole recorded interval.
-    const lastHour = Math.max(firstHour + 24, ...tasks.map(task => Math.ceil((task.endMinute ?? task.startMinute ?? 0) / 60)));
+    const lastHour = Math.min(firstHour + 48, Math.max(firstHour + 24, ...tasks.map(task => Math.ceil((task.endMinute ?? task.startMinute ?? 0) / 60))));
+    const normalizedNow = nowMinute === undefined ? undefined : (nowMinute < dayBoundaryHour * 60 ? nowMinute + 1440 : nowMinute);
+    const currentRunningId = normalizedNow === undefined ? null : currentReflectionRunningId(tasks, normalizedNow);
     const hourlyRepresentatives = new Map<number, number>();
     for (let absoluteHour = firstHour; absoluteHour < lastHour; absoluteHour++) {
         const start = absoluteHour * 60;
@@ -248,6 +265,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         let bestOverlap = 0;
         for (const task of tasks) {
             if (sectionCandidates.has(task.id)) continue;
+            if (normalizedNow !== undefined && absoluteHour === Math.floor(normalizedNow / 60) && task.status === '/' && task.id !== currentRunningId) continue;
             if (task.startMinute === null || task.endMinute === null || task.endMinute <= task.startMinute) continue;
             const overlap = Math.max(0, Math.min(task.endMinute, end) - Math.max(task.startMinute, start));
             if (overlap <= 0) continue;
