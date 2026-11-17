@@ -17,6 +17,8 @@ export interface ReflectionTask {
     title: string;
     status: ParsedTaskStatus;
     isPlanned: boolean;
+    plannedStart?: string;
+    anchorHour?: number;
     actualStart: string;
     actualEnd: string;
     /** Original malformed clock tokens, kept readable without using them as an interval. */
@@ -35,6 +37,7 @@ export interface ReflectionBlock {
     startMinute: number | null;
     endMinute: number | null;
     isPlanned?: boolean;
+    plannedStart?: string;
     tasks: ReflectionTask[];
 }
 
@@ -59,6 +62,7 @@ export interface ReflectionTimeline {
 export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, sectionPreview?: {
     sections: SectionBoundary[];
     isSleep: (line: string) => boolean;
+    getSections?: (line: string) => readonly number[] | undefined;
 }, nowMinute?: number, validation?: { isSleep: (line: string) => boolean }): ReflectionTimeline {
     const lines = excludeSrsBatch(markdown.split(/\r?\n/));
     const rawTasks: Array<{ line: string; sourceLine: number; supplements: string[]; kind: 'task' | 'memo' }> = [];
@@ -170,6 +174,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
 
     const sectionIntervals = new Map<number, { start: number; end: number }>();
     const unfinishedBeforeSleep = new Set<number>();
+    const routineSections = new Set<number>();
     if (sectionPreview) {
         const sections = [...sectionPreview.sections].sort((a, b) => sectionTimelineMinute(a.value) - sectionTimelineMinute(b.value));
         let interval: { start: number; end: number } | undefined;
@@ -187,7 +192,21 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             const record = records.get(index + 1);
             if (!record) return;
             if (!afterSleep && TaskParser.parseLine(record.line).status === ' ') unfinishedBeforeSleep.add(index + 1);
-            if (!afterSleep && interval) sectionIntervals.set(index + 1, interval);
+            let recordInterval = interval;
+            const values = sectionPreview.getSections?.(record.line);
+            // Multiple sections represent separate insertions: the daily heading identifies the occurrence.
+            if (values?.length === 1 && Number.isInteger(values[0]) && values[0] >= 0 && values[0] <= 4759 && values[0] % 100 < 60) {
+                const minute = sectionTimelineMinute(values[0]);
+                const boundary = sections.reduce((found, section, index) => sectionTimelineMinute(section.value) <= minute ? index : found, -1);
+                if (boundary >= 0) {
+                    routineSections.add(index + 1);
+                    recordInterval = {
+                        start: sectionTimelineMinute(sections[boundary].value),
+                        end: sections[boundary + 1] ? sectionTimelineMinute(sections[boundary + 1].value) : dayBoundaryHour * 60 + 1440,
+                    };
+                }
+            }
+            if (!afterSleep && recordInterval) sectionIntervals.set(index + 1, recordInterval);
             if (sectionPreview.isSleep(record.line)) afterSleep = true;
         });
     }
@@ -206,9 +225,15 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         const section = parsed.status === ' ' && !parsed.plannedStart ? sectionIntervals.get(sourceLine) : undefined;
         const timedPlan = parsed.status === ' ' && plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0;
         const isPlanned = parsed.status === ' ' && (sectionPreview ? unfinishedBeforeSleep.has(sourceLine) : timedPlan);
-        const startMinute = parseClock(actualStart) ?? section?.start ?? (timedPlan ? plannedStartMinute : null);
+        const normalizedPlanStart = plannedStartMinute !== null && plannedStartMinute < dayBoundaryHour * 60
+            ? plannedStartMinute + 1440 : plannedStartMinute;
+        const anchorStart = parsed.status === ' ' && normalizedPlanStart !== null && routineSections.has(sourceLine)
+            && sectionIntervals.has(sourceLine)
+            ? Math.max(normalizedPlanStart, sectionIntervals.get(sourceLine).start) : null;
+        const anchorHour = anchorStart === null ? undefined : Math.floor(anchorStart / 60);
+        const startMinute = parseClock(actualStart) ?? anchorStart ?? section?.start ?? (timedPlan ? plannedStartMinute : null);
         const actualEndMinute = parseClock(actualEnd);
-        const endMinute = actualEndMinute ?? section?.end ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
+        const endMinute = actualEndMinute ?? (anchorStart !== null ? Math.max(anchorStart + (estimateMinutes ?? 0), (Math.floor(anchorStart / 60) + 1) * 60) : null) ?? section?.end ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
         let start = startMinute;
         let end = endMinute;
         if (start !== null && end === null && start < dayBoundaryHour * 60) start += 1440;
@@ -238,6 +263,8 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             title: parsed.content,
             status: parsed.status,
             isPlanned,
+            plannedStart: isPlanned && plannedStartMinute !== null ? parsed.plannedStart : undefined,
+            anchorHour: isPlanned ? anchorHour : undefined,
             actualStart,
             actualEnd,
             rawActualTime,
@@ -287,6 +314,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
     }
     const selected = selectReflectionCandidates(tasks.filter(task => task.isPlanned && task.startMinute !== null && task.endMinute !== null).map(task => ({
         id: task.id,
+        anchorHour: task.anchorHour,
         estimate: parseEstimateMinutes(TaskParser.parseLine(task.source.split('\n')[0]).estimate) ?? 0,
         startMinute: task.startMinute ?? undefined,
         endMinute: task.endMinute ?? undefined,
@@ -311,6 +339,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         startMinute: run.startHour * 60,
         endMinute: run.endHour * 60,
         isPlanned: tasks[run.taskId].isPlanned,
+        plannedStart: tasks[run.taskId].plannedStart,
         tasks: [] as ReflectionTask[],
     }));
     const blockOwners = new Map(blocks.map((block, index) => [block, tasks[representativeRuns[index].taskId]]));

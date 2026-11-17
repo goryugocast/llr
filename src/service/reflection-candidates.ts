@@ -4,6 +4,7 @@ export interface ReflectionCandidate {
     startMinute?: number;
     endMinute?: number;
     fixed?: boolean;
+    anchorHour?: number;
 }
 
 /** Compare untimed remaining estimates with fixed plans' actual hourly overlap.
@@ -31,7 +32,9 @@ export function selectReflectionCandidates(
             const score = candidate.fixed
                 ? Math.max(0, Math.min(candidate.endMinute ?? Infinity, (hour + 1) * 60) - Math.max(candidate.startMinute ?? -Infinity, hour * 60))
                 : rest;
-            if (score > bestScore) { best = candidate; bestScore = score; }
+            const anchored = candidate.anchorHour === hour;
+            const bestAnchored = best?.anchorHour === hour;
+            if ((anchored && !bestAnchored) || (anchored === bestAnchored && score > bestScore)) { best = candidate; bestScore = score; }
         }
         if (best) {
             result.set(hour, best.id);

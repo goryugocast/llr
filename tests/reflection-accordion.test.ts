@@ -342,3 +342,17 @@ describe('reflection accordion source DOM behavior', () => {
         expect(view.restoreAnchor).not.toHaveBeenCalled();
     });
 });
+
+describe('section-anchored planned clock display', () => {
+    it('shows the original planned clock in the existing title without adding disclosure', async () => {
+        const { view, component } = await setup();
+        view.daysEl.replaceChildren();
+        const task = { ...record('[[Dinner]]'), status: ' ' as const, isPlanned: true,
+            plannedStart: '17:50', actualStart: '', actualEnd: '', supplement: '', startMinute: 1080, endMinute: 1150 };
+        await view.makeBlock(view.daysEl, day, { id: 0, title: task.title, startMinute: 1080,
+            endMinute: 1140, isPlanned: true, plannedStart: task.plannedStart, tasks: [task] }, 0, component);
+        expect(view.daysEl.textContent).toContain('17:50 Dinner');
+        expect(view.daysEl.querySelector('details')).toBeNull();
+        expect(view.daysEl.querySelector('a')?.dataset.href).toBe('Dinner');
+    });
+});

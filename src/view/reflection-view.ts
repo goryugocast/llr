@@ -479,16 +479,24 @@ export class ReflectionView extends ItemView {
         });
         section.append(heading);
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
-        const isSleep = (line: string) => {
+        const frontmatter = (line: string) => {
             const link = line.match(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/)?.[1];
             const file = link ? this.app.metadataCache?.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
-            const role: unknown = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter?.summary_role : undefined;
+            return file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+        };
+        const isSleep = (line: string) => {
+            const role: unknown = frontmatter(line)?.summary_role;
             return typeof role === 'string' && role.trim().toLowerCase() === 'sleep';
         };
         const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file), 3,
             day.date === this.today() && this.getSectionBoundaries ? {
                 sections: this.getSectionBoundaries(),
                 isSleep,
+                getSections: line => {
+                    const value: unknown = frontmatter(line)?.section;
+                    if (typeof value === 'number') return [value];
+                    return Array.isArray(value) ? value.filter((entry): entry is number => typeof entry === 'number') : undefined;
+                },
             } : undefined, day.date === this.today() ? moment().hours() * 60 + moment().minutes() : undefined, { isSleep });
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
         if (this.closed) return section;
@@ -648,7 +656,7 @@ export class ReflectionView extends ItemView {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
             overview.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
-            await this.renderHeading(overview, day, block.title, component);
+            await this.renderHeading(overview, day, block.plannedStart ? `${block.plannedStart} ${block.title}` : block.title, component);
             makeTicks();
             return;
         }
@@ -656,7 +664,7 @@ export class ReflectionView extends ItemView {
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
         summary.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
-        const name = await this.renderHeading(summary, day, block.title, component);
+        const name = await this.renderHeading(summary, day, block.plannedStart ? `${block.plannedStart} ${block.title}` : block.title, component);
         const disclosure = summary.createSpan({ cls: 'llr-reflection-disclosure-icon', attr: { 'aria-hidden': 'true' } });
         setIcon(disclosure, 'chevron-down');
         summary.setAttribute('aria-label', `${timeLabel} ${name.textContent ?? ''}`.trim());
@@ -766,7 +774,7 @@ export class ReflectionView extends ItemView {
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
         if (task.kind !== 'memo' && showTitle) {
             const head = record.createDiv('llr-reflection-record-head');
-            await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
+            await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.plannedStart ? `${task.plannedStart} ${task.title}` : task.title, day, component);
         }
         if (task.rawActualTime) {
             record.createDiv({ cls: 'llr-reflection-record-time', text: task.rawActualTime });
