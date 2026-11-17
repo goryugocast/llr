@@ -351,6 +351,13 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
     .llr-nav-btns button.llr-nav-btn:nth-child(2) { width: 34px; }
     .llr-info-box { gap: 4px; }
 }
+@container (width < 280px) {
+    .llr-date-nav, .llr-reflection-toolbar { padding-inline: 12px; }
+    .llr-summary-date-nav > .llr-nav-btns > button:first-child,
+    .llr-summary-date-nav > .llr-nav-btns > button:last-child,
+    .llr-reflection-date-nav > .llr-nav-btns > button:first-child,
+    .llr-reflection-date-nav > .llr-nav-btns > button:last-child { display: none; }
+}
 .is-mobile .llr-date-label, .is-mobile .llr-reflection button.llr-reflection-date-label, .is-mobile .llr-nav-btn, .is-mobile .llr-display-switch, .is-mobile .llr-open-daily-note { min-height: 44px; }
 @media (pointer: coarse) {
     .llr-date-label, .llr-reflection button.llr-reflection-date-label, button.llr-nav-btn, button.llr-display-switch, button.llr-open-daily-note { min-height: 44px; }
