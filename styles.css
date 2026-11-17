@@ -300,7 +300,7 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-disclosure-icon { display: flex; justify-self: end; width: 16px; height: 16px; color: var(--text-muted); transform: rotate(-90deg); }
 .llr-reflection-disclosure-icon svg { width: 16px; height: 16px; }
 .llr-reflection-block[open] > summary .llr-reflection-disclosure-icon { transform: none; }
-.llr-reflection-overview { grid-template-columns: 28px minmax(0, 1fr); }
+.llr-reflection-overview { grid-template-columns: var(--llr-reflection-content-inset) minmax(0, 1fr) 24px; }
 .llr-reflection-record-head { flex-direction: column; gap: 4px; align-items: stretch; }
 .llr-reflection-record-title { order: 0; font-size: 15px; line-height: 1.5; }
 .llr-reflection-record-time { order: 1; }
