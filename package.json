@@ -15,6 +15,20 @@
     "changelog:update": "bash scripts/update_changelog.sh",
     "test:reflection:obsidian": "node scripts/test_reflection_runtime.mjs"
   },
+  "overrides": {
+    "@microsoft/eslint-plugin-sdl": {
+      "eslint-plugin-n": "18.5.0"
+    },
+    "eslint-plugin-obsidianmd": {
+      "eslint-plugin-json-schema-validator": {
+        ".": "6.3.2",
+        "minimatch": "11.0.9"
+      },
+      "obsidian": {
+        "moment": "2.31.0"
+      }
+    }
+  },
   "keywords": [
     "obsidian",
     "plugin",
@@ -27,13 +41,13 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.58.2",
     "@typescript-eslint/parser": "^8.58.2",
-    "esbuild": "^0.23.0",
-    "eslint": "^8.57.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
     "eslint-plugin-obsidianmd": "^0.1.9",
     "happy-dom": "21.0.4",
     "obsidian": "^1.7.0",
     "tslib": "^2.6.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.12"
   }
 }
