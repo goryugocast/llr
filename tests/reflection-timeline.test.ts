@@ -2,6 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { buildReflectionTimeline } from '../src/service/reflection-timeline';
 
 describe('buildReflectionTimeline', () => {
+    it('gives recorded activity priority over a longer plan and only fills empty hours with plans', () => {
+        const result = buildReflectionTimeline([
+            '# 午後',
+            '- [ ] 予定',
+            '- [x] 実績 14:10 - 14:20',
+        ].join('\n'), 3, {
+            sections: [{ value: 1300, label: '午後' }, { value: 1600, label: '夕方' }],
+            isSleep: () => false,
+        });
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
+            [780, 840, '予定'], [840, 900, '実績'], [900, 960, '予定'],
+        ]);
+        expect(result.blocks.find(block => !block.isPlanned)?.tasks.map(task => task.title)).toEqual(['実績']);
+    });
+
+    it('does not recreate a plan fully covered by actual records as an overlapping block', () => {
+        const result = buildReflectionTimeline([
+            '- [ ] 14:00 予定 (30m)',
+            '- [x] 実績 14:10 - 14:20',
+        ].join('\n'));
+        expect(result.blocks.map(block => block.title)).toEqual(['実績']);
+        expect(result.blocks[0].tasks.map(task => task.title)).toEqual(['実績']);
+    });
+
     it('parses task records and keeps multiline supplements without consuming later records or headings', () => {
         const result = buildReflectionTimeline([
             '---', 'title: fake', '---', '# Daily',

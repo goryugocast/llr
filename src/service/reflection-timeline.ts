@@ -234,6 +234,12 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         for (const task of tasks) {
             if (task.startMinute === null || task.endMinute === null || task.endMinute <= task.startMinute) continue;
             const overlap = Math.max(0, Math.min(task.endMinute, end) - Math.max(task.startMinute, start));
+            if (overlap <= 0) continue;
+            // Recorded activity owns the hour. Plans only fill hours without it.
+            if (bestId !== null && tasks[bestId].isPlanned !== task.isPlanned) {
+                if (task.isPlanned) continue;
+                bestOverlap = 0;
+            }
             if (overlap > bestOverlap || (overlap > 0 && overlap === bestOverlap && (bestId === null || task.id < bestId))) { bestOverlap = overlap; bestId = task.id; }
         }
         hourlyRepresentatives.set(absoluteHour, bestId ?? -1);
@@ -268,11 +274,12 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         let bestOverlap = 0;
         for (let i = 0; i < blocks.length; i++) {
             const block = blocks[i];
+            if (!!block.isPlanned !== task.isPlanned) continue;
             const overlap = Math.max(0, Math.min(task.endMinute, block.endMinute ?? 0) - Math.max(task.startMinute, block.startMinute ?? 0));
             if (overlap > bestOverlap) { bestOverlap = overlap; bestBlock = i; }
         }
         if (bestBlock >= 0) blocks[bestBlock].tasks.push(task);
-        else blocks.push({ id: blocks.length, title: task.title, startMinute: task.startMinute, endMinute: task.endMinute, tasks: [task] });
+        else if (!task.isPlanned) blocks.push({ id: blocks.length, title: task.title, startMinute: task.startMinute, endMinute: task.endMinute, tasks: [task] });
     }
     const noActual = tasks.filter(task => task.startMinute === null);
     if (noActual.length) blocks.push({ id: blocks.length, title: '実績時刻のない記録', startMinute: null, endMinute: null, tasks: noActual });
