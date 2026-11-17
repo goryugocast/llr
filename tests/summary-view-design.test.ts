@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ setIcon: vi.fn(), notices: [] as string[] }));
+const mocks = vi.hoisted(() => ({ setIcon: vi.fn(), notices: [] as string[], language: 'auto' as 'auto' | 'ja' | 'en' }));
 vi.mock('obsidian', () => ({
     Platform: { isMobile: false },
     ItemView: class {},
@@ -58,7 +58,7 @@ function file(path: string): TFile {
 function makeView(): SummaryView {
     return Object.assign(Object.create(SummaryView.prototype), {
         currentDate: { format: (pattern: string) => pattern === 'YYYY-MM-DD' ? '2026-11-06' : '11-06', day: () => 5 },
-        delegate: { showTimeline: vi.fn(), getDailyNoteSettings: () => ({ enabled: true, folder: 'daily', format: 'YYYY-MM-DD' }) },
+        delegate: { showTimeline: vi.fn(), getUiLanguage: () => mocks.language, getDailyNoteSettings: () => ({ enabled: true, folder: 'daily', format: 'YYYY-MM-DD' }) },
         updateTargetFile: vi.fn(),
         requestAutoScrollToRunning: vi.fn(),
         requestRefresh: vi.fn(async () => {}),
@@ -100,6 +100,26 @@ describe('SummaryView unified design', () => {
         expect(openDateNote).not.toHaveBeenCalled();
         expect(header.querySelector<HTMLButtonElement>('.llr-open-daily-note')).not.toBeNull();
         expect(header.querySelector('.llr-bulk-slot')).toBeNull();
+    });
+
+    it('labels Today using the LLR language and changes only the sidebar date', () => {
+        const view = makeView();
+        const navigate = vi.spyOn(view as unknown as { navigateDate(): void }, 'navigateDate').mockImplementation(() => {});
+        const openNote = vi.spyOn(view, 'openDateNote');
+        const header = document.createElement('div');
+        mocks.language = 'ja';
+        view['renderHeader'](header, { header: { date: '11-06 (金)', total: '1:00', end: '10:00' }, pastGroups: [], futureGroups: [], hiddenItems: [] });
+        const today = header.querySelector<HTMLButtonElement>('.llr-today-button')!;
+        expect(today.textContent).toBe('今日');
+        today.click();
+        expect(navigate).toHaveBeenCalledOnce();
+        expect(openNote).not.toHaveBeenCalled();
+
+        header.replaceChildren();
+        mocks.language = 'en';
+        view['renderHeader'](header, { header: { date: '11-06 (金)', total: '1:00', end: '10:00' }, pastGroups: [], futureGroups: [], hiddenItems: [] });
+        expect(header.querySelector<HTMLButtonElement>('.llr-today-button')?.textContent).toBe('Today');
+        mocks.language = 'auto';
     });
 
     it('keeps the note and sidebar date unchanged when the selected note is missing', async () => {

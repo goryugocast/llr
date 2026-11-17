@@ -173,11 +173,15 @@ The timeline shows completed activities along a time axis and lets you scroll ac
 |---|---|
 | Clock / list icon (right edge) | Switch between tasks and timeline; future task dates return to today in the timeline |
 | Date label | Open the native date picker; in 0.5.2, selecting a date opens that day’s note and aligns the sidebar |
-| Left / right arrows, `Today` (desktop) | Move to the previous / next day, or return to today |
+| `今日` / `Today` (desktop and mobile, 0.5.3+) | Return only the sidebar to today; the open note stays unchanged |
+| Left / right arrows (desktop, when space allows) | Move the sidebar to the previous / next day |
+| Underlined timeline date heading (0.5.3+) | Open that day’s existing daily note |
 | Paper icon | Open the displayed date’s daily note (requires the core Daily Notes plugin) |
 | Expand / collapse icon (timeline only) | Expand or collapse all loaded activities |
 
 In 0.5.2, choosing a date in the shared LLR pane opens that day’s daily note and changes the sidebar to the same date (requires the core Daily Notes plugin). If a past note is missing, it is not created and the current note and sidebar date are retained. Mobile keeps a left-aligned date and direct action icons, with no intermediate date dialog. The paper icon uses the existing Daily Notes route for today and opens an existing note for other dates; it does not add a new past-date note creation feature. The timeline is limited to today and earlier, with a 03:00 day boundary; the task view keeps its midnight boundary.
+
+In 0.5.3, desktop date controls stay together on the left. At very narrow widths the arrows hide near the fit limit, then their space and the timeline margins compress gradually as the pane narrows. Mobile keeps the Today control in the same position in both views.
 
 ### Task view
 

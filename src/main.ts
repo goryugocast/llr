@@ -121,6 +121,7 @@ export default class LlrPlugin extends Plugin {
 
         const summaryDelegate: SummaryViewDelegate = {
             timelineDiagnostics: this.timelineDiagnostics,
+            getUiLanguage: () => this.getUiLanguage(),
             getRoutineFolder: () => this.settings.routineFolder,
             getSectionBoundaries: () => this.getSortedSectionBoundaries(),
             getDailyNoteSettings: () => this.getDailyNoteSettings(),
@@ -129,7 +130,7 @@ export default class LlrPlugin extends Plugin {
             VIEW_TYPE_SUMMARY,
             (leaf) => new LlrView(leaf, summaryDelegate)
         );
-        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings(), undefined, undefined, this.timelineDiagnostics));
+        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings(), undefined, undefined, this.timelineDiagnostics, undefined, () => this.getUiLanguage()));
         this.addCommand({
             id: 'timeline-diagnostic-start',
             name: 'タイムライン診断ログを開始',

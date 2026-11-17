@@ -5,6 +5,9 @@ import type { TimelineDiagnostics, TimelineDiagnosticEvent } from '../service/ti
 import { ReflectionExpansionState } from '../service/reflection-expansion';
 import { resolveDailyNoteDate, type DailyNoteSettings } from '../service/daily-note-context';
 import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } from '../service/reflection-timeline';
+import { createReflectionDayHeading } from './reflection-day-heading';
+import { resolveLanguage } from '../i18n';
+import type { UILanguage } from '../i18n';
 
 export const VIEW_TYPE_REFLECTION = 'llr-reflection-view';
 interface DayEntry { date: string; file: TFile | null }
@@ -53,6 +56,7 @@ export class ReflectionView extends ItemView {
         private readonly openDateNote?: (date: string) => Promise<void>,
         private readonly diagnostics?: TimelineDiagnostics,
         private readonly selectCalendarDate?: (date: string) => Promise<void>,
+        private readonly getUiLanguage?: () => UILanguage,
     ) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
@@ -120,7 +124,9 @@ export class ReflectionView extends ItemView {
         this.previousDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '前の日', title: '前の日' } });
         setIcon(this.previousDayButton, 'chevron-left');
         this.previousDayButton.onclick = () => this.enqueue(() => this.moveDay(-1));
-        navigation.createEl('button', { text: 'Today', cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': '今日へ移動', title: '今日へ移動' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
+        const japanese = resolveLanguage(this.getUiLanguage?.() ?? 'auto') === 'ja';
+        const todayLabel = japanese ? '今日' : 'Today';
+        navigation.createEl('button', { text: todayLabel, cls: 'llr-nav-btn llr-reflection-today', attr: { 'aria-label': japanese ? 'サイドバーを今日へ戻す' : 'Return sidebar to today', title: japanese ? 'サイドバーを今日へ戻す' : 'Return sidebar to today' } }).onclick = () => this.enqueue(() => this.jump(this.today()));
         this.followingDayButton = navigation.createEl('button', { cls: 'clickable-icon llr-nav-btn', attr: { 'aria-label': '次の日', title: '次の日' } });
         setIcon(this.followingDayButton, 'chevron-right');
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
@@ -453,9 +459,17 @@ export class ReflectionView extends ItemView {
     private async makeDay(day: DayEntry): Promise<HTMLElement> {
         const section = document.createElement('section');
         section.className = 'llr-reflection-day';
-        const heading = section.createEl('h2', { text: `${moment(day.date).format('M月D日')}（${['日', '月', '火', '水', '木', '金', '土'][moment(day.date).day()]}）` });
-        heading.dataset.anchor = day.date;
-        if (day.date === this.today()) heading.createEl('small', { text: '今日' });
+        const dateLabel = `${moment(day.date).format('M月D日')}（${['日', '月', '火', '水', '木', '金', '土'][moment(day.date).day()]}）`;
+        const heading = createReflectionDayHeading({
+            date: day.date,
+            dateLabel,
+            isToday: day.date === this.today(),
+            openNote: day.file && this.openDateNote ? date => { void this.openDateNote?.(date).catch(error => {
+                console.error('[LLR] Daily note could not be opened', error);
+                new Notice('ノートを開けませんでした。');
+            }); } : undefined,
+        });
+        section.append(heading);
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
         const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file));
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });

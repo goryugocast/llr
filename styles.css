@@ -242,8 +242,11 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-edge:disabled { opacity: 1; cursor: default; }
 .llr-reflection-day { padding-bottom: 12px; }
 .llr-reflection-day:last-child { min-height: var(--llr-reflection-viewport-height, 0px); }
-.llr-reflection-day h2 { font-family: var(--font-interface); font-size: 12px; font-weight: 400; color: var(--text-muted); display: flex; align-items: center; min-height: 52px; box-sizing: border-box; padding: 12px 8px 12px 20px; margin: 0; }
+.llr-reflection-day h2 { font-family: var(--font-interface); font-size: 12px; font-weight: 400; color: var(--text-muted); display: flex; align-items: center; min-height: 52px; box-sizing: border-box; padding: 4px 8px 4px 20px; margin: 0; }
 .llr-reflection-day h2 small { color: var(--text-muted); font-size: var(--font-ui-small); margin-left: 12px; font-weight: normal; }
+.llr-reflection button.llr-reflection-day-link { min-height: 44px; padding: 0 4px 0 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text-muted) 45%, transparent); text-underline-offset: 3px; }
+.llr-reflection button.llr-reflection-day-link:hover { background: transparent; color: var(--text-normal); text-decoration-color: currentColor; }
+.llr-reflection button.llr-reflection-day-link:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; border-radius: 4px; }
 .llr-reflection-row { position: relative; margin: 0; }
 .llr-reflection-row.is-collapsed { cursor: pointer; }
 .llr-reflection-row.is-time-band.is-collapsed:hover::before, .llr-reflection-row.is-collapsed:hover::before { background: var(--llr-item-hover); }
@@ -329,6 +332,8 @@ button.llr-nav-btn, button.llr-display-switch, button.llr-open-daily-note, butto
 }
 .llr-nav-btns button.llr-nav-btn { width: 22px; }
 .llr-nav-btns button.llr-nav-btn:nth-child(2) { width: 40px; font-family: var(--font-interface); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: uppercase; }
+.llr-nav-btns button.llr-nav-btn.llr-today-button,
+.llr-nav-btns button.llr-nav-btn.llr-reflection-today { text-transform: none; }
 .llr-nav-btns svg { width: 14px; height: 14px; }
 .llr-display-tools svg, .llr-reflection-tools svg { width: 17px; height: 17px; }
 button.llr-nav-btn:hover, button.llr-display-switch:hover, button.llr-open-daily-note:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
@@ -345,6 +350,45 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
     .llr-nav-btns button.llr-nav-btn { width: 20px; }
     .llr-nav-btns button.llr-nav-btn:nth-child(2) { width: 34px; }
     .llr-info-box { gap: 4px; }
+}
+@container (width < 264px) {
+    /* Keep the wide layout at 264px, then compress continuously down to 200px.
+       Invisible arrows retain their current slot instead of moving Today in one jump. */
+    .llr-date-nav, .llr-reflection-scroll, .llr-reflection-toolbar {
+        --llr-compact-step: clamp(0px, calc((100cqw - 200px) / 64), 1px);
+    }
+    .llr-date-nav, .llr-reflection-toolbar {
+        padding-inline: calc(8px + 12 * var(--llr-compact-step));
+    }
+    .llr-date-nav > .llr-summary-date-nav,
+    .llr-reflection-toolbar > .llr-reflection-date-nav {
+        gap: calc(8px - 4 * var(--llr-compact-step));
+    }
+    .llr-summary-date-nav > .llr-nav-btns,
+    .llr-reflection-date-nav > .llr-nav-btns { gap: calc(2 * var(--llr-compact-step)); }
+    .llr-summary-date-nav > .llr-nav-btns > button:first-child,
+    .llr-summary-date-nav > .llr-nav-btns > button:last-child,
+    .llr-reflection-date-nav > .llr-nav-btns > button:first-child,
+    .llr-reflection-date-nav > .llr-nav-btns > button:last-child {
+        visibility: hidden;
+        pointer-events: none;
+        width: calc(20 * var(--llr-compact-step));
+        border: 0;
+    }
+    .llr-reflection-scroll {
+        --llr-reflection-gutter: calc(18px + 6 * var(--llr-compact-step));
+        --llr-reflection-gap: calc(4px + 4 * var(--llr-compact-step));
+        --llr-reflection-face-inset: calc(22px + 10 * var(--llr-compact-step));
+        --llr-reflection-content-inset: calc(28px + 12 * var(--llr-compact-step));
+        padding-right: calc(8px + 4 * var(--llr-compact-step));
+    }
+    .llr-reflection-day h2 { padding-left: calc(8px + 12 * var(--llr-compact-step)); }
+    .llr-reflection-block-title {
+        grid-template-columns: var(--llr-reflection-content-inset) minmax(0, 1fr) calc(20px + 4 * var(--llr-compact-step));
+        padding-right: calc(4px + 4 * var(--llr-compact-step));
+    }
+    .llr-reflection-name, .llr-reflection-records { padding-right: calc(4px + 4 * var(--llr-compact-step)); }
+    .llr-reflection-time-step { column-gap: calc(4px + 2 * var(--llr-compact-step)); }
 }
 .is-mobile .llr-date-label, .is-mobile .llr-reflection button.llr-reflection-date-label, .is-mobile .llr-nav-btn, .is-mobile .llr-display-switch, .is-mobile .llr-open-daily-note { min-height: 44px; }
 @media (pointer: coarse) {
@@ -428,19 +472,37 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
     flex-wrap: nowrap;
     min-width: 0;
 }
+.llr-summary-date-nav,
+.llr-reflection-date-nav { justify-content: flex-start; }
 .is-mobile .llr-summary-date-nav,
 .is-mobile .llr-reflection-date-nav {
     flex: 1 1 100px;
     min-width: 0;
 }
-.is-mobile .llr-summary-date-nav > .llr-nav-btns,
-.is-mobile .llr-reflection-date-nav > .llr-nav-btns {
+.is-mobile .llr-summary-date-nav > .llr-nav-btns > button:first-child,
+.is-mobile .llr-summary-date-nav > .llr-nav-btns > button:last-child,
+.is-mobile .llr-reflection-date-nav > .llr-nav-btns > button:first-child,
+.is-mobile .llr-reflection-date-nav > .llr-nav-btns > button:last-child {
     display: none;
+}
+.is-mobile .llr-summary-date-nav > .llr-nav-btns,
+.is-mobile .llr-reflection-date-nav > .llr-nav-btns { gap: 0; }
+.is-mobile .llr-summary-date-nav > .llr-nav-btns > .llr-today-button,
+.is-mobile .llr-reflection-date-nav > .llr-nav-btns > .llr-reflection-today {
+    flex: 0 0 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 2px;
+    font-size: 13px;
+    text-transform: none;
 }
 .is-mobile .llr-summary-container .llr-reflection-date-picker,
 .is-mobile .llr-reflection .llr-reflection-date-picker {
     position: relative;
-    flex: 1 1 auto;
+    /* Use the same date slot in both views, independent of the right action count.
+       Reserve 32px insets + 140px actions + 12px gap + 44px Today + 6px date gap. */
+    flex: 0 0 clamp(44px, calc(100cqw - 234px), 94px);
     min-width: 0;
     overflow: hidden;
 }
@@ -448,13 +510,21 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
 .is-mobile .llr-reflection button.llr-reflection-date-label {
     width: 100%;
     min-width: 44px;
-    height: 44px;
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    align-content: center;
     justify-content: flex-start;
+    row-gap: 0;
+    line-height: 1.05;
     color: var(--text-normal);
     font-size: max(20px, var(--font-ui-medium));
     font-weight: var(--font-normal);
     letter-spacing: 0;
 }
+.is-mobile .llr-date-main,
+.is-mobile .llr-date-dow,
+.is-mobile .llr-reflection-date-weekday { white-space: nowrap; line-height: 1; }
 .is-mobile .llr-date-chevron {
     display: inline-flex;
     align-items: center;
@@ -480,6 +550,7 @@ button.llr-nav-btn:disabled { opacity: 0.35; cursor: default; background: transp
     font-size: max(13px, var(--font-ui-small));
     font-weight: var(--font-normal);
 }
+.is-mobile .llr-reflection-day-link { min-width: 44px; }
 .is-mobile input.llr-reflection-date-input {
     display: block;
     position: absolute;
