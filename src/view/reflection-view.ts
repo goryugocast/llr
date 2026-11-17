@@ -599,6 +599,7 @@ export class ReflectionView extends ItemView {
         const displayDuration = interval ? interval.endMinute - interval.startMinute : duration;
         const isTimed = block.startMinute !== null && duration > 0;
         row.toggleClass('is-time-band', isTimed);
+        row.toggleClass('is-planned', !!block.isPlanned);
         row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
         if (isTimed) {

@@ -252,6 +252,7 @@ body.is-mobile.llr-mobile-large-checkbox .markdown-source-view.mod-cm6 .HyperMD-
 .llr-reflection-row.is-time-band.is-collapsed:hover::before, .llr-reflection-row.is-collapsed:hover::before { background: var(--llr-item-hover); }
 .llr-reflection-row::before { content: ''; position: absolute; inset: 1px 0 1px var(--llr-reflection-face-inset); border-radius: var(--llr-item-radius); background: transparent; pointer-events: none; transition: var(--llr-item-transition); }
 .llr-reflection-row.is-time-band::before { background: color-mix(in srgb, var(--llr-item-hover) 35%, transparent); }
+.llr-reflection-row.is-planned::before { background: color-mix(in srgb, var(--text-muted) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--text-muted) 42%, transparent); }
 .llr-reflection-row.is-time-band.is-collapsed:has(summary:focus-visible)::before, .llr-reflection-row.is-collapsed:has(summary:focus-visible)::before { background: var(--llr-item-hover); outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .llr-reflection-row.is-collapsed summary:focus-visible { outline: none; }
 .llr-reflection-row > details, .llr-reflection-row > .llr-reflection-time-step, .llr-reflection-row > .llr-reflection-overview { position: relative; }

@@ -13,6 +13,7 @@ export interface ReflectionTask {
     sourceLine: number;
     title: string;
     status: ParsedTaskStatus;
+    isPlanned: boolean;
     actualStart: string;
     actualEnd: string;
     /** Original record line followed by its owned memo text, if any. */
@@ -28,6 +29,7 @@ export interface ReflectionBlock {
     title: string;
     startMinute: number | null;
     endMinute: number | null;
+    isPlanned?: boolean;
     tasks: ReflectionTask[];
 }
 
@@ -41,7 +43,7 @@ export interface ReflectionTimeline {
     tasks: ReflectionTask[];
     hours: ReflectionHour[];
     blocks: ReflectionBlock[];
-    /** Tasks that have no positive actual interval; planned time is deliberately ignored. */
+    /** Tasks that have no positive interval available for the timeline. */
     withoutActualInterval: number[];
 }
 
@@ -160,8 +162,12 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
 
     const tasks = rawTasks.map(({ line, sourceLine, supplements, kind }, id): ReflectionTask => {
         const parsed = TaskParser.parseLine(line);
-        const startMinute = parseClock(parsed.actualStart);
-        const endMinute = parseClock(parsed.actualEnd);
+        const plannedStartMinute = parseClock(parsed.plannedStart);
+        const estimateMinutes = parseEstimateMinutes(parsed.estimate);
+        const isPlanned = parsed.status === ' ' && plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0;
+        const startMinute = parseClock(parsed.actualStart) ?? (isPlanned ? plannedStartMinute : null);
+        const actualEndMinute = parseClock(parsed.actualEnd);
+        const endMinute = actualEndMinute ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
         let start = startMinute;
         let end = endMinute;
         if (start !== null && end === null && start < dayBoundaryHour * 60) start += 1440;
@@ -176,6 +182,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
             sourceLine,
             title: parsed.content,
             status: parsed.status,
+            isPlanned,
             actualStart: parsed.actualStart,
             actualEnd: parsed.actualEnd,
             source: kind === 'memo' ? supplements.join('\n') : [line, ...supplements].join('\n'),
@@ -184,7 +191,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
             startMinute: start,
             endMinute: end,
         };
-    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status))
+    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned)
         .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));
@@ -219,6 +226,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
         title: tasks[run.taskId].title,
         startMinute: run.startHour * 60,
         endMinute: run.endHour * 60,
+        isPlanned: tasks[run.taskId].isPlanned,
         tasks: [] as ReflectionTask[],
     }));
     for (const task of tasks) {
@@ -249,6 +257,11 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3): 
         blocks,
         withoutActualInterval: tasks.filter(t => t.startMinute === null || t.endMinute === null || t.endMinute <= t.startMinute).map(t => t.id),
     };
+}
+
+function parseEstimateMinutes(value: string): number | null {
+    const match = value.match(/^(\d+)m$/);
+    return match ? Number(match[1]) : null;
 }
 
 /** Exclude generated SRS batch content while retaining the original line map. */
