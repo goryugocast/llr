@@ -1,6 +1,7 @@
 import { TaskParser, type ParsedTaskStatus } from './task-parser';
 import { SRS_BATCH_START, SRS_BATCH_END, SRS_BATCH_DONE } from './srs-batch';
 import { sectionTimelineMinute, type SectionBoundary } from './section-timeline';
+import { selectReflectionCandidates } from './reflection-candidates';
 
 /** Internal default reflection policy. Keep this isolated so a future settings
  * control can select a different policy without changing extraction semantics. */
@@ -232,6 +233,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));
+    const sectionCandidates = new Set(tasks.filter(task => task.isPlanned && sectionIntervals.has(task.sourceLine) && !TaskParser.parseLine(task.source.split('\n')[0]).plannedStart).map(task => task.id));
     const firstHour = dayBoundaryHour;
     // A task may cross the following day's cutoff. Keep its whole recorded interval.
     const lastHour = Math.max(firstHour + 24, ...tasks.map(task => Math.ceil((task.endMinute ?? task.startMinute ?? 0) / 60)));
@@ -242,6 +244,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         let bestId: number | null = null;
         let bestOverlap = 0;
         for (const task of tasks) {
+            if (sectionCandidates.has(task.id)) continue;
             if (task.startMinute === null || task.endMinute === null || task.endMinute <= task.startMinute) continue;
             const overlap = Math.max(0, Math.min(task.endMinute, end) - Math.max(task.startMinute, start));
             if (overlap <= 0) continue;
@@ -255,6 +258,30 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         hourlyRepresentatives.set(absoluteHour, bestId ?? -1);
         const clockHour = absoluteHour % 24;
         hours[clockHour].representativeTaskId = bestId;
+    }
+    const candidateGroups = new Map<number, ReflectionTask[]>();
+    for (const task of tasks) {
+        if (!sectionCandidates.has(task.id)) continue;
+        const start = sectionIntervals.get(task.sourceLine)?.start;
+        if (start === undefined) continue;
+        const group = candidateGroups.get(start) ?? [];
+        group.push(task);
+        candidateGroups.set(start, group);
+    }
+    for (const [, group] of [...candidateGroups].sort(([a], [b]) => a - b)) {
+        const first = group[0];
+        const available: number[] = [];
+        for (let hour = Math.floor((first.startMinute ?? 0) / 60); hour * 60 < (first.endMinute ?? 0); hour++) {
+            if ((hourlyRepresentatives.get(hour) ?? -1) < 0) available.push(hour);
+        }
+        const selected = selectReflectionCandidates(group.map(task => ({
+            id: task.id,
+            estimate: parseEstimateMinutes(TaskParser.parseLine(task.source.split('\n')[0]).estimate) ?? 0,
+        })), available);
+        for (const [hour, id] of selected) {
+            hourlyRepresentatives.set(hour, id);
+            hours[hour % 24].representativeTaskId = id;
+        }
     }
     const representativeRuns: Array<{ startHour: number; endHour: number; taskId: number }> = [];
     for (let hour = firstHour; hour < lastHour; hour++) {
@@ -272,6 +299,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         isPlanned: tasks[run.taskId].isPlanned,
         tasks: [] as ReflectionTask[],
     }));
+    const blockOwners = new Map(blocks.map((block, index) => [block, tasks[representativeRuns[index].taskId]]));
     for (const task of tasks) {
         if (task.startMinute === null) continue;
         if (task.endMinute === null || task.endMinute <= task.startMinute) {
@@ -285,6 +313,15 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         for (let i = 0; i < blocks.length; i++) {
             const block = blocks[i];
             if (!!block.isPlanned !== task.isPlanned) continue;
+            if (sectionCandidates.has(task.id)) {
+                const section = sectionIntervals.get(task.sourceLine);
+                const owner = blockOwners.get(block);
+                if (!owner || sectionIntervals.get(owner.sourceLine)?.start !== section?.start) continue;
+                // A displayed candidate owns its own details; other candidates
+                // stay readable in the first band belonging to their section.
+                const represented = representativeRuns.some(run => run.taskId === task.id);
+                if (represented && !representativeRuns.some(run => run.taskId === task.id && run.startHour * 60 === block.startMinute)) continue;
+            }
             const overlap = Math.max(0, Math.min(task.endMinute, block.endMinute ?? 0) - Math.max(task.startMinute, block.startMinute ?? 0));
             if (overlap > bestOverlap) { bestOverlap = overlap; bestBlock = i; }
         }

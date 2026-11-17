@@ -13,6 +13,8 @@ vi.mock('obsidian', async () => {
         registerDomEvent(element: HTMLElement, name: string, callback: EventListener) { element.addEventListener(name, callback); }
         register() {}
         registerEvent() {}
+        // These DOM tests do not advance time; dispose registered intervals.
+        registerInterval(id: number) { window.clearInterval(id); return id; }
     }
     return {
         Component: ComponentStub,
@@ -78,7 +80,7 @@ beforeEach(() => {
 type Day = { date: string; file: { path: string } | null };
 const day: Day = { date: '2026-11-05', file: null };
 const record = (title = 'Lunch'): ReflectionTask => ({
-    id: 0, kind: 'task', line: 0, sourceLine: 1, status: 'x', title,
+    id: 0, kind: 'task', line: 0, sourceLine: 1, status: 'x', title, isPlanned: false,
     actualStart: '12:00', actualEnd: '14:18', startMinute: 720, endMinute: 858,
     source: '', supplement: 'Read the memo without closing it.', supplements: '',
 });
