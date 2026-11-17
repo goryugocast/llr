@@ -11,7 +11,8 @@ describe('buildReflectionTimeline', () => {
             sections: [{ value: 600, label: '朝' }, { value: 1300, label: '午後' }, { value: 1700, label: '夕方' }],
             isSleep: () => false,
         }, 14 * 60 + 20);
-        expect(result.tasks.map(task => task.title)).toEqual(['午後の予定', '実行中']);
+        expect(result.tasks.map(task => task.title)).toEqual(['音楽練習', '午後の予定', '実行中', '過ぎた予約']);
+        expect(result.blocks.flatMap(block => block.tasks).map(task => task.title).sort()).toEqual(result.tasks.map(task => task.title).sort());
         expect(result.tasks.find(task => task.status === '/')?.endMinute).toBe(860);
         expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
             [780, 900, '実行中'], [900, 960, '午後の予定'],
@@ -302,6 +303,28 @@ describe('buildReflectionTimeline', () => {
 
 
 describe('today section candidate integration', () => {
+    it('keeps an all-past backlog readable without recreating a past time band', () => {
+        const result = buildReflectionTimeline('# 朝\n- [ ] やり残し', 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 900, label: '午前' }], isSleep: () => false,
+        }, 14 * 60);
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.tasks.map(task => task.title)])).toEqual([[840, 900, ['やり残し']]]);
+    });
+    it('keeps all before-sleep unfinished items reachable even without a section slot', () => {
+        const result = buildReflectionTimeline([
+            '# 朝', '- [ ] 朝のやり残し',
+            '# 午後', '- [ ] 枠なし候補', '- [ ] 15:00 見積なし予約',
+            '- [x] 実績 14:00 - 18:00',
+            '# 任意の見出し', '- [ ] 見出し不一致',
+            '# 夜', '- [ ] 睡眠', '- [ ] 23:00 睡眠後予約 (30m)', '- [ ] 睡眠後候補',
+        ].join('\n'), 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 1400, label: '午後' }, { value: 1800, label: '夜' }],
+            isSleep: line => line.includes('睡眠') && !line.includes('睡眠後'),
+        }, 16 * 60);
+        const visible = result.blocks.flatMap(block => block.tasks).filter(task => task.status === ' ').map(task => task.title);
+        expect(visible.sort()).toEqual(['朝のやり残し', '枠なし候補', '見積なし予約', '見出し不一致', '睡眠'].sort());
+        expect(new Set(visible).size).toBe(visible.length);
+        expect(result.blocks.filter(block => block.isPlanned).every(block => (block.startMinute ?? 0) >= 16 * 60)).toBe(true);
+    });
     const preview = { sections: [{ value: 1400, label: '午後' }, { value: 1800, label: '夜' }], isSleep: (line: string) => line.includes('睡眠') };
     const rows = ['# 午後', '- [ ] テーマ', '- [ ] KS記事', '- [ ] iPad記事', '- [ ] dot'];
     const titles = (lines: string[], now: number) => buildReflectionTimeline(lines.join('\n'), 3, preview, now).blocks.filter(block => block.isPlanned).map(block => block.title);

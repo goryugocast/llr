@@ -638,7 +638,8 @@ export class ReflectionView extends ItemView {
                 mark.style.top = `${tick.fraction * 100}%`;
             }
         };
-        if (!block.tasks.length) {
+        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim());
+        if (!hasDetails) {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
             overview.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });

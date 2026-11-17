@@ -166,6 +166,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
     rawTasks.sort((a, b) => a.sourceLine - b.sourceLine);
 
     const sectionIntervals = new Map<number, { start: number; end: number }>();
+    const unfinishedBeforeSleep = new Set<number>();
     if (sectionPreview) {
         const sections = [...sectionPreview.sections].sort((a, b) => sectionTimelineMinute(a.value) - sectionTimelineMinute(b.value));
         let interval: { start: number; end: number } | undefined;
@@ -182,6 +183,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             }
             const record = records.get(index + 1);
             if (!record) return;
+            if (!afterSleep && TaskParser.parseLine(record.line).status === ' ') unfinishedBeforeSleep.add(index + 1);
             if (!afterSleep && interval) sectionIntervals.set(index + 1, interval);
             if (sectionPreview.isSleep(record.line)) afterSleep = true;
         });
@@ -192,8 +194,9 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         const plannedStartMinute = parseClock(parsed.plannedStart);
         const estimateMinutes = parseEstimateMinutes(parsed.estimate);
         const section = parsed.status === ' ' && !parsed.plannedStart ? sectionIntervals.get(sourceLine) : undefined;
-        const isPlanned = parsed.status === ' ' && (section !== undefined || (plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0));
-        const startMinute = parseClock(parsed.actualStart) ?? section?.start ?? (isPlanned ? plannedStartMinute : null);
+        const timedPlan = parsed.status === ' ' && plannedStartMinute !== null && estimateMinutes !== null && estimateMinutes > 0;
+        const isPlanned = parsed.status === ' ' && (sectionPreview ? unfinishedBeforeSleep.has(sourceLine) : timedPlan);
+        const startMinute = parseClock(parsed.actualStart) ?? section?.start ?? (timedPlan ? plannedStartMinute : null);
         const actualEndMinute = parseClock(parsed.actualEnd);
         const endMinute = actualEndMinute ?? section?.end ?? (isPlanned && plannedStartMinute !== null && estimateMinutes !== null ? plannedStartMinute + estimateMinutes : null);
         let start = startMinute;
@@ -212,6 +215,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             const now = nowMinute < dayBoundaryHour * 60 ? nowMinute + 1440 : nowMinute;
             start = Math.max(start, now);
         }
+        if (isPlanned && (start === null || end === null || end <= start)) { start = null; end = null; }
         return {
             id,
             kind,
@@ -228,8 +232,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
             startMinute: start,
             endMinute: end,
         };
-    }).filter(task => !task.isPlanned || (task.startMinute !== null && task.endMinute !== null && task.endMinute > task.startMinute))
-        .filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned || (task.status === '/' && task.startMinute !== null && nowMinute !== undefined))
+    }).filter(task => task.kind === 'memo' || !/^\s*-\s+\[[ /x]\]/.test(task.source) || reflectionIncludesTask(task.status) || task.isPlanned || (task.status === '/' && task.startMinute !== null && nowMinute !== undefined))
         .map((task, id) => ({ ...task, id }));
 
     const hours: ReflectionHour[] = Array.from({ length: 24 }, (_, hour): ReflectionHour => ({ hour, representativeTaskId: null, taskIds: [] }));
@@ -261,7 +264,7 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
     }
     const candidateGroups = new Map<number, ReflectionTask[]>();
     for (const task of tasks) {
-        if (!sectionCandidates.has(task.id)) continue;
+        if (!sectionCandidates.has(task.id) || task.startMinute === null || task.endMinute === null) continue;
         const start = sectionIntervals.get(task.sourceLine)?.start;
         if (start === undefined) continue;
         const group = candidateGroups.get(start) ?? [];
@@ -328,7 +331,23 @@ export function buildReflectionTimeline(markdown: string, dayBoundaryHour = 3, s
         if (bestBlock >= 0) blocks[bestBlock].tasks.push(task);
         else if (!task.isPlanned) blocks.push({ id: blocks.length, title: task.title, startMinute: task.startMinute, endMinute: task.endMinute, tasks: [task] });
     }
-    const noActual = tasks.filter(task => task.startMinute === null);
+    if (sectionPreview) {
+        const assigned = new Set(blocks.flatMap(block => block.tasks.map(task => task.id)));
+        const missing = tasks.filter(task => task.isPlanned && !assigned.has(task.id));
+        for (const task of missing) {
+            const sectionStart = sectionIntervals.get(task.sourceLine)?.start;
+            const target = blocks.find(block => block.isPlanned && sectionStart !== undefined && sectionIntervals.get(blockOwners.get(block)?.sourceLine ?? -1)?.start === sectionStart)
+                ?? blocks.find(block => block.isPlanned)
+                ?? blocks.filter(block => block.startMinute !== null).at(-1);
+            if (target) target.tasks.push(task);
+            else if (nowMinute !== undefined) {
+                const now = nowMinute < dayBoundaryHour * 60 ? nowMinute + 1440 : nowMinute;
+                const hour = Math.floor(now / 60) * 60;
+                blocks.push({ id: blocks.length, title: task.title, startMinute: hour, endMinute: hour + 60, isPlanned: true, tasks: [task] });
+            }
+        }
+    }
+    const noActual = tasks.filter(task => task.startMinute === null && !task.isPlanned);
     if (noActual.length) blocks.push({ id: blocks.length, title: '実績時刻のない記録', startMinute: null, endMinute: null, tasks: noActual });
     for (const block of blocks) block.tasks.sort((a, b) => (a.startMinute ?? Infinity) - (b.startMinute ?? Infinity) || a.id - b.id);
     blocks.sort((a, b) => (a.startMinute ?? Number.MAX_SAFE_INTEGER) - (b.startMinute ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);

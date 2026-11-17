@@ -121,6 +121,20 @@ async function setup() {
 }
 
 describe('reflection accordion source DOM behavior', () => {
+    it('renders a lone plan without a disclosure, retaining its title link', async () => {
+        const { view, component } = await setup();
+        view.daysEl.empty();
+        const task = { ...record('[[音楽練習]]'), status: ' ' as const, isPlanned: true, actualStart: '', actualEnd: '', supplement: '', supplements: '' };
+        await view.makeBlock(view.daysEl, day, { ...block(1260, task.title), isPlanned: true, tasks: [task] }, 0, component);
+        expect(view.daysEl.querySelector('details')).toBeNull();
+        expect(view.daysEl.querySelector('.llr-reflection-disclosure-icon')).toBeNull();
+        view.daysEl.querySelector<HTMLAnchorElement>('a')!.click();
+        expect(view.app.workspace.openLinkText).toHaveBeenCalledWith('音楽練習', '', 'tab');
+        const hidden = { ...task, id: 1, title: '隠れた項目' };
+        view.daysEl.empty();
+        await view.makeBlock(view.daysEl, day, { ...block(1260, task.title), isPlanned: true, tasks: [task, hidden] }, 0, component);
+        expect(view.daysEl.querySelector('details')).not.toBeNull();
+    });
     it('opens inline, avoids a duplicate plain title, and closes only from its heading', async () => {
         const { view, summary, details } = await setup();
         expect(details.open).toBe(false);
