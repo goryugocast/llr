@@ -316,7 +316,8 @@ describe('reflection accordion source DOM behavior', () => {
         const button = document.createElement('button');
         view.expandButton = button;
         let release!: () => void;
-        view.renderMarkdown = async () => await new Promise<void>(resolve => { release = resolve; });
+        view.renderMarkdown = vi.fn(view.renderMarkdown.bind(view))
+            .mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
 
         const operation = view.setAllDetails(true);
         expect(button.disabled).toBe(true);
