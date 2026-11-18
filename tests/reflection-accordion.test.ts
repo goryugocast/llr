@@ -159,14 +159,14 @@ describe('reflection accordion source DOM behavior', () => {
         await view.makeBlock(view.daysEl, day, { ...block(1260, task.title), isPlanned: true, tasks: [task, hidden] }, 0, component);
         expect(view.daysEl.querySelector('details')).not.toBeNull();
     });
-    it('opens inline, avoids a duplicate plain title, and closes only from its heading', async () => {
+    it('opens inline with the record title and closes only from its heading', async () => {
         const { view, summary, details } = await setup();
         expect(details.open).toBe(false);
         expect(view.daysEl.querySelector('.llr-reflection-record')).toBeNull();
         summary.click(); await view.pending;
         expect(details.open).toBe(true);
         expect(summary.getAttribute('aria-expanded')).toBe('true');
-        expect(view.daysEl.querySelector('.llr-reflection-record-title')).toBeNull();
+        expect(view.daysEl.querySelector('.llr-reflection-record-title')?.textContent).toBe(summary.querySelector('.llr-reflection-name')?.textContent);
         expect(view.daysEl.querySelector('.llr-reflection-record-time')?.textContent).toBe('12:00–14:18');
         view.daysEl.querySelector<HTMLElement>('.llr-reflection-supplement')!.click(); await view.pending;
         expect(details.open).toBe(true);
@@ -182,14 +182,16 @@ describe('reflection accordion source DOM behavior', () => {
         expect(details.open).toBe(true);
         expect(view.daysEl.querySelectorAll('.llr-reflection-record')).toHaveLength(1);
     });
-    it('keeps the linked title in the activity heading without repeating it in the record', async () => {
+    it('keeps the linked title in both the activity heading and its first record', async () => {
         const { view, component } = await setup();
         await view.makeBlock(view.daysEl, day, block(960, '[[Reference|Reading]]'), 0, component);
         const heading = view.daysEl.querySelector<HTMLAnchorElement>('.llr-reflection-name a');
         expect(heading?.textContent).toBe('Reading');
         expect(heading?.getAttribute('data-href')).toBe('Reference');
         await view.setAllDetails(true);
-        expect(view.daysEl.querySelectorAll('.llr-reflection-record-title')).toHaveLength(0);
+        const recordLink = view.daysEl.querySelector('.llr-reflection-record-title a');
+        expect(recordLink?.textContent).toBe('Reading');
+        expect(recordLink?.getAttribute('data-href')).toBe('Reference');
         expect(view.app.workspace.openLinkText).not.toHaveBeenCalled();
     });
     it('opens the linked title without toggling a closed or open activity', async () => {
@@ -460,7 +462,7 @@ describe('timeline resolves linked routine frontmatter', () => {
 
 
 describe('planned expansion order', () => {
-    it('shows hidden candidates in source order without repeating a later representative title', async () => {
+    it('shows candidates in source order and retains the link of a later representative', async () => {
         const { view, component } = await setup();
         view.daysEl.replaceChildren();
         const plans = buildReflectionTimeline('# 夜\n- [ ] 22:30 [[hidden]] (5m)\n- [ ] [[zero]]\n- [ ] [[music]] (180m)', 3,
@@ -472,8 +474,8 @@ describe('planned expansion order', () => {
         expect(records).toHaveLength(3);
         expect(records[0].textContent).toContain('22:30 hidden');
         expect(records[1].textContent).toContain('zero');
-        expect(records[2].querySelector('.llr-reflection-record-title')).toBeNull();
-        expect(view.daysEl.querySelectorAll('a[data-href="music"]')).toHaveLength(1);
+        expect(records[2].querySelector('.llr-reflection-record-title a')?.getAttribute('data-href')).toBe('music');
+        expect(view.daysEl.querySelectorAll('a[data-href="music"]')).toHaveLength(2);
     });
 });
 

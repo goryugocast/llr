@@ -150,7 +150,8 @@ async function checkReflectionRuntime() {
         await view.pending;
         assert(details.open, 'Continued-hour clicks must not collapse an open reading area.');
         const renderedRecord = host.querySelector('.llr-reflection-record');
-        assert(!renderedRecord.querySelector('.llr-reflection-record-title'), 'The representative title must not be repeated after expansion.');
+        const recordTitleLink = renderedRecord.querySelector('.llr-reflection-record-title a');
+        assert(recordTitleLink?.textContent === headingLink.textContent && recordTitleLink.getAttribute('data-href') === headingLink.getAttribute('data-href'), 'The expanded record must retain its title and note link.');
         assert(host.querySelector('.llr-reflection-supplement strong')?.textContent === '大切なメモ', 'Memo Markdown must render rather than show raw syntax.');
         assert(host.querySelectorAll('.llr-reflection-supplement > p').length >= 2, 'Multi-paragraph memos must retain separate paragraphs.');
         assert(host.querySelector('.llr-reflection-supplement a')?.textContent === '補足の別名', 'Memo wiki alias must render as a link.');

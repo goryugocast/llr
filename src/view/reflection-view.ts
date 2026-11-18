@@ -694,15 +694,11 @@ export class ReflectionView extends ItemView {
             if (details.open) {
                 bodyComponent = component.addChild(new Component());
                 const occurrences = new Map<string, number>();
-                const representativeIndex = block.tasks.findIndex(record => record.title === block.title);
-                for (const [index, task] of block.tasks.entries()) {
+                for (const task of block.tasks) {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
-                    // The heading retains its title links, so avoid repeating the
-                    // same representative title in the expanded record.
-                    const repeatTitle = index !== representativeIndex;
-                    await this.makeRecord(records, day, task, occurrence, bodyComponent, repeatTitle);
+                    await this.makeRecord(records, day, task, occurrence, bodyComponent);
                 }
             }
         };
@@ -783,12 +779,12 @@ export class ReflectionView extends ItemView {
         }
     }
 
-    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component, showTitle = true) {
+    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
         const record = parent.createDiv('llr-reflection-record');
         record.dataset.status = task.status;
         record.toggleClass('has-memo', !!task.supplement);
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
-        if (task.kind !== 'memo' && showTitle) {
+        if (task.kind !== 'memo') {
             const head = record.createDiv('llr-reflection-record-head');
             await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.plannedStart ? `${task.plannedStart} ${task.title}` : task.title, day, component);
         }
