@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-11-17
+- Generated: 2026-11-19
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,7 +13,32 @@
 
 ## Git History Snapshot
 
+### 2026-11-18
+- Release only the first deferred Markdown render in the accordion test (`0a8a09a`)
+- Keep task titles in expanded timeline records (`15feb20`)
 ### 2026-11-17
+- Show plans from existing future daily notes in the timeline (`171724f`)
+- Remove the timeline end-of-today message (`ddc7e42`)
+- Preserve section context and planned source order in reflection (`c99f22d`)
+- Document timeline review gaps and reconcile current specifications (`8ecccae`)
+- Align Obsidian runtime checks with current navigation and records (`c57e291`)
+- Separate planned start clocks from timeline section anchors (`3c55111`)
+- Handle malformed timeline clocks and stale running tasks (`4b6172f`)
+- Document sleep exceptions and long overnight records (`77c6267`)
+- Clarify running-task succession and midnight validation examples (`085f759`)
+- Specify malformed-input scenarios and open display decisions (`ed13569`)
+- Draft timeline behavior for malformed inputs (`ae8c58f`)
+- Document distinct intent of routine start and section (`713a00a`)
+- Compare hourly candidate scores and preserve recorded-time disclosure (`723598a`)
+- Align plain timeline bands with expandable bands (`24ead6d`)
+- Keep unfinished tasks reachable and omit empty disclosures (`df371fc`)
+- Select hourly timeline candidates from remaining section tasks (`510a932`)
+- Show running activity and hide elapsed timeline plans (`4155708`)
+- Prioritize recorded activity over timeline plans (`241ec16`)
+- Preview today's unfinished tasks in section time bands (`27a7c3f`)
+- Update vulnerable development dependencies (`6a80a02`)
+- Show scheduled tasks in reflection timeline (`aa65717`)
+- Release LLR 0.5.3 sidebar navigation improvements (`a5c7fe7`)
 - Compress narrow sidebar spacing continuously after hiding arrows (`f137008`)
 - Balance timeline spacing in very narrow sidebars (`9271929`)
 - Fit desktop sidebar controls at minimum pane width (`9aca7a8`)
@@ -76,34 +101,4 @@
 - Record reflection visual design findings (`9795a54`)
 - Add a single reflection details toggle (`41f10f4`)
 - Add repeatable reflection rendering regression checks (`342677d`)
-- Keep daily-note preamble out of reflection (`c244853`)
-- Exclude unfinished tasks and SRS from reflection (`6fe0a0e`)
-- Restore readable memos in the reflection view (`2cf1a2d`)
-- Preserve deployed fixes before reflection rollout (`3dbb250`)
-- Add a central reflection timeline view (`52bfa6c`)
-### 2026-10-10
-- Ignore Obsidian property checkboxes and guard task source lines (`6e1430e`)
-- Add regression coverage for YAML property checkbox and task-line guard (`1e060b3`)
-### 2026-10-18
-- Fix Japanese whole-hour routine sections (`310ea42`)
-### 2026-10-07
-- Refresh changelog for 0.4.2 (`4410221`)
-- Prepare the 0.4.2 section ordering release (`18b3d16`)
-- Keep extended sleep sections after midnight routines (`11d4ed8`)
-- Align section ordering with the existing logical day (`706e605`)
-### 2026-08-22
-- Refresh changelog for 0.4.1 (`0e5d11c`)
-- Correct plugin version to 0.4.1 (`630c825`)
-- Refresh changelog for 0.5.0 (`3ff7f10`)
-- Bump plugin version to 0.5.0 (`f36f634`)
-### 2026-08-21
-- Broaden routine section value parsing (`b3f9956`)
-- Support comma-separated routine sections (`47435fb`)
-### 2026-08-19
-- Refresh changelog after release docs (`859a2f4`)
-- Document the 0.4.0 release (`2850939`)
-- Refresh changelog for 0.4.0 (`efca36d`)
-- Bump version to 0.4.0 (`a8837b6`)
-- Expand external view regression coverage (`f20aece`)
-- Refresh generated changelog (`2d7ee0d`)
 

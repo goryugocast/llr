@@ -8,6 +8,7 @@ import { buildReflectionTimeline, type ReflectionTask, type ReflectionBlock } fr
 import { createReflectionDayHeading } from './reflection-day-heading';
 import { resolveLanguage } from '../i18n';
 import type { UILanguage } from '../i18n';
+import type { SectionBoundary } from '../service/section-timeline';
 
 export const VIEW_TYPE_REFLECTION = 'llr-reflection-view';
 interface DayEntry { date: string; file: TFile | null }
@@ -57,6 +58,7 @@ export class ReflectionView extends ItemView {
         private readonly diagnostics?: TimelineDiagnostics,
         private readonly selectCalendarDate?: (date: string) => Promise<void>,
         private readonly getUiLanguage?: () => UILanguage,
+        private readonly getSectionBoundaries?: () => SectionBoundary[],
     ) { super(leaf); }
     getViewType() { return VIEW_TYPE_REFLECTION; }
     getDisplayText() { return '振り返り'; }
@@ -132,7 +134,7 @@ export class ReflectionView extends ItemView {
         this.followingDayButton.onclick = () => this.enqueue(() => this.moveDay(1));
         const tools = toolbar.createDiv('llr-reflection-tools');
         this.dateInput = dateLabel.createEl('input', { type: 'date', cls: 'llr-reflection-date-input', attr: { 'aria-label': '日付を選ぶ', tabindex: '-1' } });
-        this.dateInput.max = this.today();
+        this.dateInput.max = this.latestDate();
         this.dateInput.value = this.today();
         this.calendarDisplayDate = this.dateInput.value;
         wireNativeDatePicker(this.currentDayLabel, this.dateInput);
@@ -223,6 +225,12 @@ export class ReflectionView extends ItemView {
                 this.scheduleRefresh();
             }
         }));
+        this.registerInterval(window.setInterval(() => {
+            const day = this.visible.find(entry => entry.date === this.today());
+            if (!day?.file || !this.sections.get(day.date)?.querySelector('[data-status="/"], .is-planned')) return;
+            this.dirty.add(day.file.path);
+            this.scheduleRefresh();
+        }, 60_000));
         this.trace('open');
         return this.enqueue(() => this.jump(this.today()));
     }
@@ -237,6 +245,11 @@ export class ReflectionView extends ItemView {
     }
 
     private today(): string { return moment().subtract(3, 'hours').format('YYYY-MM-DD'); }
+
+    private latestDate(): string {
+        const last = this.index.at(-1)?.date;
+        return last && last > this.today() ? last : this.today();
+    }
 
     private enqueue(work: () => Promise<void>) {
         const operation = this.pending.then(async () => { if (!this.closed) await work(); });
@@ -257,7 +270,7 @@ export class ReflectionView extends ItemView {
             });
             if (!date) continue;
             const key = moment(date).format('YYYY-MM-DD');
-            if (key <= this.today()) dates.set(key, { date: key, file });
+            dates.set(key, { date: key, file });
         }
         if (!dates.has(this.today())) dates.set(this.today(), { date: this.today(), file: null });
         this.index = [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -266,14 +279,22 @@ export class ReflectionView extends ItemView {
     private async moveDay(direction: -1 | 1) {
         const current = moment(this.dateInput.value, 'YYYY-MM-DD', true);
         if (!current.isValid()) return;
-        await this.jump(current.add(direction, 'day').format('YYYY-MM-DD'));
+        let date = current.add(direction, 'day').format('YYYY-MM-DD');
+        if (date > this.today()) {
+            this.rebuildIndex();
+            const available = direction > 0 ? this.index : [...this.index].reverse();
+            const next = available.find(day => direction > 0 ? day.date >= date : day.date <= date);
+            if (!next) return;
+            date = next.date;
+        }
+        await this.jump(date);
     }
 
     private async jump(date: string) {
         if (!moment(date, 'YYYY-MM-DD', true).isValid()) return;
-        date = date > this.today() ? this.today() : date;
-        this.trace('jump-start', { date });
         this.rebuildIndex();
+        if (date > this.today() && !this.index.some(day => day.date === date && day.file)) return;
+        this.trace('jump-start', { date });
         if (!this.index.some(day => day.date === date)) {
             this.index.push({ date, file: null });
             this.index.sort((a, b) => a.date.localeCompare(b.date));
@@ -293,7 +314,7 @@ export class ReflectionView extends ItemView {
         }
         this.dateInput.value = date;
         this.calendarDisplayDate = date;
-        this.dateInput.max = this.today();
+        this.dateInput.max = this.latestDate();
         // Saved workspace state can arrive before the leaf is shown. Zero-sized
         // geometry cannot position a day; retain the requested date until visible.
         this.pendingDisplayDate = this.scrollToDate(date) ? null : date;
@@ -374,8 +395,10 @@ export class ReflectionView extends ItemView {
         if (!this.visible.length) return;
         this.pastButton.disabled = !this.index.some(day => day.date < this.visible[0].date);
         this.pastButton.textContent = this.pastButton.disabled ? 'ここからが最初の記録' : '↑ 過去の記録';
-        this.nextButton.disabled = this.visible[this.visible.length - 1].date >= this.today();
-        this.nextButton.textContent = this.nextButton.disabled ? 'ここまでが今日の記録' : '新しい記録 ↓';
+        this.nextButton.disabled = !this.index.some(day => day.date > this.visible[this.visible.length - 1].date);
+        this.nextButton.hidden = this.nextButton.disabled;
+        this.nextButton.textContent = '新しい記録 ↓';
+        if (this.followingDayButton) this.followingDayButton.disabled = !this.index.some(day => day.date > this.getDisplayDate());
         this.daysEl.querySelectorAll('.llr-reflection-gap').forEach(el => el.remove());
         for (let i = 1; i < this.visible.length; i++) {
             const gap = moment(this.visible[i].date).diff(moment(this.visible[i - 1].date), 'days') - 1;
@@ -397,8 +420,8 @@ export class ReflectionView extends ItemView {
 
     private async refresh() {
         this.trace('refresh-start');
-        this.dateInput.max = this.today();
         this.rebuildIndex();
+        this.dateInput.max = this.latestDate();
         const dirty = this.dirty;
         this.dirty = new Set();
         const updates: Array<{ day: DayEntry; section: HTMLElement }> = [];
@@ -471,7 +494,25 @@ export class ReflectionView extends ItemView {
         });
         section.append(heading);
         if (!day.file) { section.createEl('p', { text: 'デイリーノートがありません。', cls: 'llr-reflection-empty' }); return section; }
-        const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file));
+        const frontmatter = (line: string) => {
+            const link = line.match(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/)?.[1];
+            const file = link ? this.app.metadataCache?.getFirstLinkpathDest(link, day.file?.path ?? '') : null;
+            return file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+        };
+        const isSleep = (line: string) => {
+            const role: unknown = frontmatter(line)?.summary_role;
+            return typeof role === 'string' && role.trim().toLowerCase() === 'sleep';
+        };
+        const timeline = buildReflectionTimeline(await this.app.vault.cachedRead(day.file), 3,
+            day.date >= this.today() && this.getSectionBoundaries ? {
+                sections: this.getSectionBoundaries(),
+                isSleep,
+                getSections: line => {
+                    const value: unknown = frontmatter(line)?.section;
+                    if (typeof value === 'number') return [value];
+                    return Array.isArray(value) ? value.filter((entry): entry is number => typeof entry === 'number') : undefined;
+                },
+            } : undefined, day.date === this.today() ? moment().hours() * 60 + moment().minutes() : undefined, { isSleep });
         if (!timeline.tasks.length) section.createEl('p', { text: '記録がありません。', cls: 'llr-reflection-empty' });
         if (this.closed) return section;
         const component = this.addChild(new Component());
@@ -494,6 +535,9 @@ export class ReflectionView extends ItemView {
                     if (activities.some(item => item.endMinute <= segment.startMinute) && activities.some(item => item.startMinute >= segment.endMinute)) this.makeTimeSpace(axis, day, segment.startMinute, segment.endMinute);
                 } else if (segment.kind === 'activity' && segment.blockIndex !== undefined) await renderBlock(axis, segment.blockIndex, segment);
             }
+        }
+        for (const index of layout.untimed) {
+            if (blocks[index].isPlanned || blocks[index].tasks.some(task => task.status === 'x' || task.status === '/')) await renderBlock(axis, index);
         }
         if (layout.outsideDay.length) {
             const continuation = section.createDiv('llr-reflection-outside-day');
@@ -574,7 +618,7 @@ export class ReflectionView extends ItemView {
             this.openNoteButton.setAttribute('aria-label', label);
             setTooltip(this.openNoteButton, label);
         }
-        if (this.followingDayButton) this.followingDayButton.disabled = day.date >= this.today();
+        if (this.followingDayButton) this.followingDayButton.disabled = !this.index.some(entry => entry.date > day.date);
         if (document.activeElement !== this.dateInput) {
             this.dateInput.value = day.date;
             this.calendarDisplayDate = day.date;
@@ -595,10 +639,12 @@ export class ReflectionView extends ItemView {
     private async makeBlock(section: HTMLElement, day: DayEntry, block: ReflectionBlock, occurrence: number, component: Component, interval?: { startMinute: number; endMinute: number }) {
         const key = `${day.date}:block:${block.startMinute}:${occurrence}`;
         const row = section.createDiv('llr-reflection-row');
+        if (block.tasks.some(task => task.status === '/')) row.dataset.status = '/';
         const duration = Math.max(0, (block.endMinute ?? block.startMinute ?? 0) - (block.startMinute ?? 0));
         const displayDuration = interval ? interval.endMinute - interval.startMinute : duration;
         const isTimed = block.startMinute !== null && duration > 0;
         row.toggleClass('is-time-band', isTimed);
+        row.toggleClass('is-planned', !!block.isPlanned);
         row.toggleClass('is-multi-hour', isTimed && displayDuration > 60);
         row.toggleClass('is-point', block.startMinute !== null && !isTimed);
         if (isTimed) {
@@ -620,11 +666,12 @@ export class ReflectionView extends ItemView {
                 mark.style.top = `${tick.fraction * 100}%`;
             }
         };
-        if (!block.tasks.length) {
+        const hasDetails = block.tasks.length > 1 || block.tasks.some(task => task.title !== block.title || task.supplement.trim() || task.actualStart || task.actualEnd || task.rawActualTime);
+        if (!hasDetails) {
             const overview = row.createDiv('llr-reflection-block-title llr-reflection-overview');
             overview.dataset.anchor = key;
             overview.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
-            await this.renderHeading(overview, day, block.title, component);
+            await this.renderHeading(overview, day, block.plannedStart ? `${block.plannedStart} ${block.title}` : block.title, component);
             makeTicks();
             return;
         }
@@ -632,7 +679,7 @@ export class ReflectionView extends ItemView {
         const summary = details.createEl('summary', { cls: 'llr-reflection-block-title' });
         summary.dataset.anchor = key;
         summary.createSpan({ cls: 'llr-reflection-hour', attr: { 'aria-hidden': 'true' } });
-        const name = await this.renderHeading(summary, day, block.title, component);
+        const name = await this.renderHeading(summary, day, block.plannedStart ? `${block.plannedStart} ${block.title}` : block.title, component);
         const disclosure = summary.createSpan({ cls: 'llr-reflection-disclosure-icon', attr: { 'aria-hidden': 'true' } });
         setIcon(disclosure, 'chevron-down');
         summary.setAttribute('aria-label', `${timeLabel} ${name.textContent ?? ''}`.trim());
@@ -647,14 +694,11 @@ export class ReflectionView extends ItemView {
             if (details.open) {
                 bodyComponent = component.addChild(new Component());
                 const occurrences = new Map<string, number>();
-                for (const [index, task] of block.tasks.entries()) {
+                for (const task of block.tasks) {
                     const signature = `${task.actualStart}:${task.actualEnd}:${task.title}`;
                     const occurrence = occurrences.get(signature) ?? 0;
                     occurrences.set(signature, occurrence + 1);
-                    // The heading retains its title links, so avoid repeating the
-                    // same representative title in the expanded record.
-                    const repeatTitle = index !== 0 || task.title !== block.title;
-                    await this.makeRecord(records, day, task, occurrence, bodyComponent, repeatTitle);
+                    await this.makeRecord(records, day, task, occurrence, bodyComponent);
                 }
             }
         };
@@ -735,16 +779,18 @@ export class ReflectionView extends ItemView {
         }
     }
 
-    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component, showTitle = true) {
+    private async makeRecord(parent: HTMLElement, day: DayEntry, task: ReflectionTask, occurrence: number, component: Component) {
         const record = parent.createDiv('llr-reflection-record');
         record.dataset.status = task.status;
         record.toggleClass('has-memo', !!task.supplement);
         record.dataset.anchor = `${day.date}:record:${task.actualStart}:${task.actualEnd}:${task.title}:${occurrence}`;
-        if (task.kind !== 'memo' && showTitle) {
+        if (task.kind !== 'memo') {
             const head = record.createDiv('llr-reflection-record-head');
-            await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.title, day, component);
+            await this.renderMarkdown(head.createDiv('llr-reflection-record-title'), task.plannedStart ? `${task.plannedStart} ${task.title}` : task.title, day, component);
         }
-        if (task.kind !== 'memo' && task.actualStart) {
+        if (task.rawActualTime) {
+            record.createDiv({ cls: 'llr-reflection-record-time', text: task.rawActualTime });
+        } else if (task.kind !== 'memo' && task.actualStart) {
             const time = task.actualEnd && task.actualEnd !== task.actualStart ? `${task.actualStart}–${task.actualEnd}` : task.actualStart;
             record.createDiv({ cls: 'llr-reflection-record-time', text: time });
         }

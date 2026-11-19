@@ -165,13 +165,13 @@ Available in **0.5.0 and later**.
 
 The LLR pane combines the existing task view and a read-only timeline. Use the clock/list button in the header to switch between them. The task view keeps its existing task interactions and estimate summaries; it does not show memo items.
 
-The timeline shows completed activities along a time axis and lets you scroll across days. Press an activity to expand its summary in place and read its recorded times and notes. Collapse the summary when finished, or use the header control to expand or collapse all loaded summaries. Links open their linked notes separately. The timeline reads daily notes without changing them or storing a separate database.
+The timeline shows completed activities along a time axis and lets you scroll across days. Starting with 0.5.4, it shows running activities today and dashed previews of plans in today’s and existing future daily notes. Actual activity takes priority over plans. Press an activity to expand its summary in place and read its recorded times and notes. Collapse the summary when finished, or use the header control to expand or collapse all loaded summaries. Links open their linked notes separately. The timeline reads daily notes without changing them or storing a separate database.
 
 ### Navigation and controls
 
 | Control | Action |
 |---|---|
-| Clock / list icon (right edge) | Switch between tasks and timeline; future task dates return to today in the timeline |
+| Clock / list icon (right edge) | Switch between tasks and timeline |
 | Date label | Open the native date picker; in 0.5.2, selecting a date opens that day’s note and aligns the sidebar |
 | `今日` / `Today` (desktop and mobile, 0.5.3+) | Return only the sidebar to today; the open note stays unchanged |
 | Left / right arrows (desktop, when space allows) | Move the sidebar to the previous / next day |
@@ -179,7 +179,7 @@ The timeline shows completed activities along a time axis and lets you scroll ac
 | Paper icon | Open the displayed date’s daily note (requires the core Daily Notes plugin) |
 | Expand / collapse icon (timeline only) | Expand or collapse all loaded activities |
 
-In 0.5.2, choosing a date in the shared LLR pane opens that day’s daily note and changes the sidebar to the same date (requires the core Daily Notes plugin). If a past note is missing, it is not created and the current note and sidebar date are retained. Mobile keeps a left-aligned date and direct action icons, with no intermediate date dialog. The paper icon uses the existing Daily Notes route for today and opens an existing note for other dates; it does not add a new past-date note creation feature. The timeline is limited to today and earlier, with a 03:00 day boundary; the task view keeps its midnight boundary.
+Choosing a date in the shared LLR pane opens that day’s daily note and changes the sidebar to the same date (requires the core Daily Notes plugin). If a past or future note is missing, it is not created and the current note and sidebar date are retained. Mobile keeps a left-aligned date and direct action icons, with no intermediate date dialog. The paper icon uses the existing Daily Notes route for today and opens an existing note for other dates; it does not add a new past-date note creation feature. The timeline includes existing future daily notes, with a 03:00 day boundary; the task view keeps its midnight boundary.
 
 In 0.5.3, desktop date controls stay together on the left. At very narrow widths the arrows hide near the fit limit, then their space and the timeline margins compress gradually as the pane narrows. Mobile keeps the Today control in the same position in both views.
 
