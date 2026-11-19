@@ -150,7 +150,8 @@ async function checkReflectionRuntime() {
         await view.pending;
         assert(details.open, 'Continued-hour clicks must not collapse an open reading area.');
         const renderedRecord = host.querySelector('.llr-reflection-record');
-        assert(!renderedRecord.querySelector('.llr-reflection-record-title'), 'The representative title must not be repeated after expansion.');
+        const recordTitleLink = renderedRecord.querySelector('.llr-reflection-record-title a');
+        assert(recordTitleLink?.textContent === headingLink.textContent && recordTitleLink.getAttribute('data-href') === headingLink.getAttribute('data-href'), 'The expanded record must retain its title and note link.');
         assert(host.querySelector('.llr-reflection-supplement strong')?.textContent === '大切なメモ', 'Memo Markdown must render rather than show raw syntax.');
         assert(host.querySelectorAll('.llr-reflection-supplement > p').length >= 2, 'Multi-paragraph memos must retain separate paragraphs.');
         assert(host.querySelector('.llr-reflection-supplement a')?.textContent === '補足の別名', 'Memo wiki alias must render as a link.');
@@ -241,9 +242,19 @@ async function checkReflectionRuntime() {
             targetFile: summary.targetFile,
         });
         let dateChanged = null;
-        let noteOpened = null;
-        summaryRenderer.setDisplayDate = async date => { dateChanged = date; };
-        summaryRenderer.openDateNote = date => { noteOpened = date; };
+        const openedFiles = [];
+        const selectedFile = { path: '__llr_date_runtime_fixture__.md' };
+        let availableFile = selectedFile;
+        // Exercise the real calendar transaction while isolating vault and workspace writes.
+        summaryRenderer.app = { workspace: {
+            getActiveFile: () => summary.targetFile,
+            getLeaf: () => ({ openFile: async file => { openedFiles.push(file); } }),
+        } };
+        summaryRenderer.ensureDateNote = async () => availableFile;
+        summaryRenderer.setDisplayDate = async date => {
+            dateChanged = date;
+            summaryRenderer.currentDate = summary.currentDate.clone().set({ year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) - 1, date: Number(date.slice(8, 10)) });
+        };
         const summaryData = {
             header: { date: '2026-11-11', total: '1h 30m', end: '16:30', wake: '00:30' },
             pastGroups: [],
@@ -269,7 +280,16 @@ async function checkReflectionRuntime() {
                 assert(pickerOpened, 'Clicking the SummaryView date must open its native picker.');
                 dateInput.value = '2026-11-12';
                 dateInput.dispatchEvent(new Event('change'));
-                assert(dateChanged === '2026-11-12' && noteOpened === null, 'Changing the selected day must move the display date without opening a note.');
+                await summaryRenderer.calendarNavigation;
+                assert(dateChanged === '2026-11-12' && openedFiles.length === 1 && openedFiles[0] === selectedFile,
+                    'Selecting a date must move the display and open the matching daily note.');
+                availableFile = null;
+                dateInput.value = '2026-11-13';
+                dateInput.dispatchEvent(new Event('change'));
+                await summaryRenderer.calendarNavigation;
+                assert(dateChanged === '2026-11-12' && openedFiles.length === 1
+                    && summaryRenderer.getDisplayDate() === '2026-11-12' && dateInput.value === '2026-11-12',
+                    'A missing daily note must preserve the previous date and must not open or create a note.');
             } finally {
                 dateInput.showPicker = originalShowPicker;
             }
@@ -342,9 +362,18 @@ async function checkReflectionRuntime() {
             host.append(fixtureSection);
             const axis = fixtureSection.querySelector('.llr-reflection-axis');
             assert(!fixtureSection.querySelector('.llr-reflection-point-list'), 'Point records must not be isolated in a confusing separate category.');
-            assert(!fixtureSection.querySelector('.llr-reflection-untimed') && !fixtureSection.textContent.includes('時刻なし'), 'Untimed records must stay in source data but be omitted from the timeline display.');
+            const rows = [...axis.querySelectorAll('.llr-reflection-row')];
+            const timedRows = rows.filter(row => row.querySelector('.llr-reflection-axis-tick'));
+            const untimedRow = rows.find(row => !row.querySelector('.llr-reflection-axis-tick'));
+            assert(untimedRow, 'Completed records without a clock must remain readable without an invented time.');
             assert(!!axis.querySelector('.llr-reflection-axis-tick[data-minute="720"]'), 'A point record must appear in its own hourly overview.');
-            assert(Math.abs(axis.getBoundingClientRect().height - 3 * view.hourHeight()) < 1, 'The overview must retain equal cells between the first and last recorded hours.');
+            assert(Math.abs(timedRows[timedRows.length - 1].getBoundingClientRect().bottom
+                - timedRows[0].getBoundingClientRect().top - 3 * view.hourHeight()) < 1,
+                'Timed cells must retain equal hour spacing, independently of untimed records.');
+            const untimedDetails = untimedRow.querySelector('details');
+            await view.detailSetters.get(untimedDetails).setOpen(true);
+            assert(untimedRow.textContent.includes('時刻なし') && !untimedRow.querySelector('.llr-reflection-record-time'),
+                'Expanding an untimed completed record must show its title without a fabricated clock.');
             view.releaseDay(fixtureSection); fixtureSection.remove();
             fixtureText = '- [x] 睡眠 00:00 - 10:00\n  大切な日跨ぎメモ';
             fixtureSection = await view.makeDay({ date: '1900-01-02', file: fixtureFile });
@@ -360,8 +389,8 @@ async function checkReflectionRuntime() {
             app.vault.cachedRead = originalRead;
             if (fixtureSection) { view.releaseDay(fixtureSection); fixtureSection.remove(); }
         }
-        return { passed: true, checks: ['single-row date navigation without duplicate input', 'SummaryView rendering at 280/320/520px with non-overlapping controls and summary columns', 'Summary date picker changes the displayed date without opening a note', '15px summary activity names, title-first rows, shared 4px/8px spacing and 2px bars capped at 92px', '1h 30m aggregated task rows do not overlap',
-            'narrow-pane typography, gutter and responsive hour geometry', 'linked representative heading and separate disclosure', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
+        return { passed: true, checks: ['single-row date navigation without duplicate input', 'SummaryView rendering at 280/320/520px with non-overlapping controls and summary columns', 'Summary date picker synchronizes note and display, preserves date when missing', '15px summary activity names, title-first rows, shared 4px/8px spacing and 2px bars capped at 92px', '1h 30m aggregated task rows do not overlap',
+            'narrow-pane typography, gutter and responsive hour geometry', 'linked representative heading and separate disclosure', 'uniform expansion geometry and two-hour labels', 'point records integrated into hourly overview', 'untimed completed records remain readable without consuming elapsed time', 'removed count UI', 'memo Markdown and paragraphs', 'literal code', 'readonly checklists', 'native body link dispatch', 'individual and global expansion interplay', 'new detail in open-all mode', 'redraw after global collapse', 'body disposal', 'manual scrollbar intent during bulk rendering'] };
     } finally {
         app.workspace.openLinkText = originalOpen;
         view.expansion = originalExpansion;

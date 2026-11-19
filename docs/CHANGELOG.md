@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-11-17
+- Generated: 2026-11-19
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -14,6 +14,7 @@
 ## Git History Snapshot
 
 ### 2026-11-17
+- Release LLR 0.5.3 sidebar navigation improvements (`a5c7fe7`)
 - Compress narrow sidebar spacing continuously after hiding arrows (`f137008`)
 - Balance timeline spacing in very narrow sidebars (`9271929`)
 - Fit desktop sidebar controls at minimum pane width (`9aca7a8`)
@@ -105,5 +106,4 @@
 - Refresh changelog for 0.4.0 (`efca36d`)
 - Bump version to 0.4.0 (`a8837b6`)
 - Expand external view regression coverage (`f20aece`)
-- Refresh generated changelog (`2d7ee0d`)
 

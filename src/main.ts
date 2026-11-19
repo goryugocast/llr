@@ -51,7 +51,7 @@ const SKIP_COMMAND_ID = 'skip-task-log-only';
 
 export default class LlrPlugin extends Plugin {
     private routineEngine: RoutineEngine;
-    private settings: LlrSettings = DEFAULT_SETTINGS;
+    settings: LlrSettings = DEFAULT_SETTINGS;
     private statusBar: HTMLElement;
     private statusBarDebounce: ReturnType<typeof setTimeout> | null = null;
     // Checkbox tap/long-press gesture handling is delegated to CheckboxInteractionController.
@@ -130,7 +130,7 @@ export default class LlrPlugin extends Plugin {
             VIEW_TYPE_SUMMARY,
             (leaf) => new LlrView(leaf, summaryDelegate)
         );
-        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings(), undefined, undefined, this.timelineDiagnostics, undefined, () => this.getUiLanguage()));
+        this.registerView(VIEW_TYPE_REFLECTION, leaf => new ReflectionView(leaf, () => this.getDailyNoteSettings(), undefined, undefined, this.timelineDiagnostics, undefined, () => this.getUiLanguage(), () => this.getSortedSectionBoundaries()));
         this.addCommand({
             id: 'timeline-diagnostic-start',
             name: 'タイムライン診断ログを開始',

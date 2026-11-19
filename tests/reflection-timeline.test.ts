@@ -2,6 +2,53 @@ import { describe, expect, it } from 'vitest';
 import { buildReflectionTimeline } from '../src/service/reflection-timeline';
 
 describe('buildReflectionTimeline', () => {
+    it('shows running activity through now ahead of plans and removes elapsed plans', () => {
+        const result = buildReflectionTimeline([
+            '# 朝', '- [ ] 音楽練習 (60m)',
+            '# 午後', '- [ ] 午後の予定', '- [/] 実行中 13:10 -',
+            '- [ ] 12:00 過ぎた予約 (30m)',
+        ].join('\n'), 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 1300, label: '午後' }, { value: 1700, label: '夕方' }],
+            isSleep: () => false,
+        }, 14 * 60 + 20);
+        expect(result.tasks.map(task => task.title)).toEqual(['音楽練習', '午後の予定', '実行中', '過ぎた予約']);
+        expect(result.blocks.flatMap(block => block.tasks).map(task => task.title).sort()).toEqual(result.tasks.map(task => task.title).sort());
+        expect(result.tasks.find(task => task.status === '/')?.endMinute).toBe(860);
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
+            [780, 900, '実行中'], [900, 960, '午後の予定'], [null, null, '音楽練習'],
+        ]);
+    });
+
+    it('normalizes running activity and now across midnight on the logical day', () => {
+        const result = buildReflectionTimeline('- [/] 夜の作業 23:30 -', 3, undefined, 30);
+        expect(result.tasks[0].startMinute).toBe(1410);
+        expect(result.tasks[0].endMinute).toBe(1470);
+    });
+
+    it('gives recorded activity priority over a longer plan and only fills empty hours with plans', () => {
+        const result = buildReflectionTimeline([
+            '# 午後',
+            '- [ ] 予定',
+            '- [x] 実績 14:10 - 14:20',
+        ].join('\n'), 3, {
+            sections: [{ value: 1300, label: '午後' }, { value: 1600, label: '夕方' }],
+            isSleep: () => false,
+        });
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.title])).toEqual([
+            [780, 840, '予定'], [840, 900, '実績'],
+        ]);
+        expect(result.blocks.find(block => !block.isPlanned)?.tasks.map(task => task.title)).toEqual(['実績']);
+    });
+
+    it('does not recreate a plan fully covered by actual records as an overlapping block', () => {
+        const result = buildReflectionTimeline([
+            '- [ ] 14:00 予定 (30m)',
+            '- [x] 実績 14:10 - 14:20',
+        ].join('\n'));
+        expect(result.blocks.map(block => block.title)).toEqual(['実績']);
+        expect(result.blocks[0].tasks.map(task => task.title)).toEqual(['実績']);
+    });
+
     it('parses task records and keeps multiline supplements without consuming later records or headings', () => {
         const result = buildReflectionTimeline([
             '---', 'title: fake', '---', '# Daily',
@@ -251,5 +298,57 @@ describe('buildReflectionTimeline', () => {
             '- [x] inside 09:00 - 10:00', 'memo inside',
         ].join('\n'));
         expect(result.tasks.map(task => task.title)).toEqual(['before']);
+    });
+});
+
+
+describe('today section candidate integration', () => {
+    it('keeps an all-past backlog readable without recreating a past time band', () => {
+        const result = buildReflectionTimeline('# 朝\n- [ ] やり残し', 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 900, label: '午前' }], isSleep: () => false,
+        }, 14 * 60);
+        expect(result.blocks.map(block => [block.startMinute, block.endMinute, block.tasks.map(task => task.title)])).toEqual([[null, null, ['やり残し']]]);
+    });
+    it('keeps all before-sleep unfinished items reachable even without a section slot', () => {
+        const result = buildReflectionTimeline([
+            '# 朝', '- [ ] 朝のやり残し',
+            '# 午後', '- [ ] 枠なし候補', '- [ ] 15:00 見積なし予約',
+            '- [x] 実績 14:00 - 18:00',
+            '# 任意の見出し', '- [ ] 見出し不一致',
+            '# 夜', '- [ ] 睡眠', '- [ ] 23:00 睡眠後予約 (30m)', '- [ ] 睡眠後候補',
+        ].join('\n'), 3, {
+            sections: [{ value: 600, label: '朝' }, { value: 1400, label: '午後' }, { value: 1800, label: '夜' }],
+            isSleep: line => line.includes('睡眠') && !line.includes('睡眠後'),
+        }, 16 * 60);
+        const visible = result.blocks.flatMap(block => block.tasks).filter(task => task.status === ' ').map(task => task.title);
+        expect(visible.sort()).toEqual(['朝のやり残し', '枠なし候補', '見積なし予約', '見出し不一致', '睡眠'].sort());
+        expect(new Set(visible).size).toBe(visible.length);
+        expect(result.blocks.filter(block => block.isPlanned && block.startMinute !== null).every(block => block.startMinute! >= 16 * 60)).toBe(true);
+    });
+    const preview = { sections: [{ value: 1400, label: '午後' }, { value: 1800, label: '夜' }], isSleep: (line: string) => line.includes('睡眠') };
+    const rows = ['# 午後', '- [ ] テーマ', '- [ ] KS記事', '- [ ] iPad記事', '- [ ] dot'];
+    const titles = (lines: string[], now: number) => buildReflectionTimeline(lines.join('\n'), 3, preview, now).blocks.filter(block => block.isPlanned).map(block => block.title);
+    it('reselects remaining candidates as the clock advances and tasks complete', () => {
+        expect(titles(rows, 14 * 60)).toEqual(['テーマ', 'KS記事', 'iPad記事', 'dot']);
+        expect(titles(rows, 16 * 60)).toEqual(['テーマ', 'KS記事']);
+        const completed = rows.map(line => line === '- [ ] テーマ' ? '- [x] テーマ 15:00 - 15:30' : line);
+        expect(titles(completed, 16 * 60)).toEqual(['KS記事', 'iPad記事']);
+        expect(titles(completed, 17 * 60)).toEqual(['KS記事']);
+        const result = buildReflectionTimeline(rows.join('\n'), 3, preview, 16 * 60);
+        expect(result.blocks.flatMap(block => block.tasks).map(task => task.title).sort()).toEqual(['テーマ', 'KS記事', 'iPad記事', 'dot'].sort());
+    });
+    it('reserves fixed starts and actual hours before section candidates', () => {
+        const result = buildReflectionTimeline([...rows, '- [ ] 16:00 予約 (30m)', '- [x] 実績 17:10 - 17:20'].join('\n'), 3, preview, 15 * 60);
+        expect(result.blocks.map(block => block.title)).toEqual(['テーマ', '予約', '実績']);
+        expect(result.blocks.filter(block => block.isPlanned).flatMap(block => block.tasks).some(task => task.title === '実績')).toBe(false);
+    });
+    it('selects by estimate and excludes sleep tail and SRS', () => {
+        const lines = ['# 午後', '- [ ] 充電 (5m)', '- [ ] 音楽 (60m)', '- [ ] 風呂 (30m)', '- [ ] 睡眠', '- [ ] 本', '<!-- llr:srs start -->', '- [ ] SRS', '<!-- llr:srs end -->'];
+        const result = buildReflectionTimeline(lines.join('\n'), 3, preview, 16 * 60);
+        expect(result.blocks.map(block => block.title)).toEqual(['音楽', '風呂']);
+        expect(result.tasks.some(task => task.title === '本' || task.title === 'SRS')).toBe(false);
+    });
+    it('does not add section candidates to a past-day call without preview options', () => {
+        expect(buildReflectionTimeline(rows.join('\n')).blocks).toEqual([]);
     });
 });

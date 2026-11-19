@@ -9,7 +9,7 @@ const block = (startMinute: number | null, endMinute: number | null, title = 'wo
 describe('reflection axis layout', () => {
     it('groups point records into hour cells without changing their actual times', () => {
         const point = (id: number, minute: number, title: string) => ({
-            id, kind: 'task' as const, line: id, sourceLine: id + 1, title, status: 'x' as const,
+            id, kind: 'task' as const, line: id, sourceLine: id + 1, title, status: 'x' as const, isPlanned: false,
             actualStart: '20:01', actualEnd: '20:01', source: title, supplements: '', supplement: '',
             startMinute: minute, endMinute: minute,
         });

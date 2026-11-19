@@ -7,11 +7,11 @@ export function expandRoutineNotesBySection<T extends { section?: number[] }>(
     for (const item of items) {
         const { section, ...rest } = item;
         if (!section || section.length === 0) {
-            result.push({ ...rest, section: undefined } as Omit<T, 'section'> & { section: number | undefined });
+            result.push({ ...rest, section: undefined });
             continue;
         }
         for (const value of section) {
-            result.push({ ...rest, section: value } as Omit<T, 'section'> & { section: number | undefined });
+            result.push({ ...rest, section: value });
         }
     }
     return result;
