@@ -3,7 +3,7 @@
 プレリリース期間の変更履歴。
 
 - Source: `git log --date=short --no-merges`
-- Generated: 2026-11-19
+- Generated: 2026-11-28
 - Scope: 最新 80 コミット
 
 ## 更新ルール
@@ -13,6 +13,12 @@
 
 ## Git History Snapshot
 
+### 2026-11-28
+- Keep routine confirmations attached to their source tasks (`f07f417`)
+- Keep checkbox long presses single and preserve concurrent daily edits (`a897c6b`)
+- Honor the mobile checkbox click target (`0ba7439`)
+### 2026-11-19
+- Refresh the changelog for 0.5.4 (`93912e2`)
 ### 2026-11-18
 - Release only the first deferred Markdown render in the accordion test (`0a8a09a`)
 - Keep task titles in expanded timeline records (`15feb20`)
@@ -97,8 +103,4 @@
 - Improve reflection reading space and day context (`178cfad`)
 - Record unresolved reflection design findings (`27fbe75`)
 - Use a proportional reading timeline for reflection (`2ec8f22`)
-- Define equal conditions for reflection design comparison (`beaa4cc`)
-- Record reflection visual design findings (`9795a54`)
-- Add a single reflection details toggle (`41f10f4`)
-- Add repeatable reflection rendering regression checks (`342677d`)
 
