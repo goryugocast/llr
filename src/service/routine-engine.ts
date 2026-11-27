@@ -462,7 +462,7 @@ export class RoutineEngine {
      * Includes a pre-check to repair malformed frontmatter (e.g. unclosed or indented).
      * @param options - Can include nextDue (string or null to delete) and optional repeat.
      */
-    async updateNextDue(file: TFile, options: { nextDue: string | null; repeat?: string | number }): Promise<void> {
+    async updateNextDue(file: TFile, options: { nextDue: string | null; repeat?: string | number }): Promise<void | false> {
         this.emitDebugEvent('updateNextDue:start', {
             file: file.path,
             nextDue: options.nextDue,
@@ -500,7 +500,7 @@ export class RoutineEngine {
                         });
                         console.debug(`[LLR] Unclosed "---" with no property line; skipping ${file.path}`);
                         this.emitNotice('LLR: YAMLを修復できませんでした。next_due は更新していません', 5000);
-                        return;
+                        return false;
                     }
                     lines.splice(frontmatterEnd + 1, 0, '---');
                     repairNeeded = true;
@@ -541,7 +541,7 @@ export class RoutineEngine {
         routineNote: RoutineNote,
         completionDate: Date,
         options: { mode?: RoutineCompletionMode } = {}
-    ): Promise<void> {
+    ): Promise<void | false> {
         const { file, next_due } = routineNote;
         let { frequency } = routineNote;
         const requestedMode = options.mode ?? 'normal';
@@ -553,45 +553,35 @@ export class RoutineEngine {
             mode: requestedMode,
         });
 
+        const completionDay = this.normalizeToDateOnly(completionDate);
+        let nextDue: string | null;
+        let repeat: number | undefined;
+        let anchorMode: string;
         try {
-            const completionDay = this.normalizeToDateOnly(completionDate);
-
             if (this.isSrsFile(file)) {
-                const { nextDue, grownRepeat } = this.computeSrsCompletion(routineNote, completionDay);
-                await this.updateNextDue(file, { nextDue, repeat: grownRepeat });
-                this.emitDebugEvent('processCompletion:done', {
-                    file: file.path,
-                    newNextDue: nextDue,
-                    baseDate: toDateString(completionDay),
-                    anchorMode: 'srs',
-                    grownRepeat,
-                });
-                return;
+                const srs = this.computeSrsCompletion(routineNote, completionDay);
+                nextDue = srs.nextDue;
+                repeat = srs.grownRepeat;
+                anchorMode = 'srs';
+            } else {
+                // If repeat was not explicit in frontmatter (repeatExplicit === false), write repeat: 1 to make the default permanent.
+                repeat = routineNote.repeatExplicit === false ? 1 : undefined;
+
+                // frequency is always set via readRoutineNote, but guard here for safety.
+                if (!frequency) frequency = { type: 'schedule', expression: 'every day' };
+
+                const isDueAnchored = usesDueAnchor(frequency);
+                const shouldAdvanceFromDue = this.shouldAdvanceFromCurrentDue(routineNote, completionDay, requestedMode);
+                // `@done` closes the occurrence the user can currently see, which may be a derived one.
+                const effectiveDue = next_due ?? resolveInitialDue(frequency, completionDay) ?? undefined;
+                nextDue = shouldAdvanceFromDue && effectiveDue
+                    ? calculateNextDue(frequency, fromDateString(effectiveDue))
+                    : isDueAnchored
+                        ? this.calculateNextDueForDueAnchor(frequency, next_due, completionDay)
+                        : calculateNextDue(frequency, completionDay);
+
+                anchorMode = shouldAdvanceFromDue ? 'atdone' : isDueAnchored ? 'due' : 'completion';
             }
-
-            // If repeat was not explicit in frontmatter (repeatExplicit === false), write repeat: 1 to make the default permanent.
-            const repeatToAppend: number | undefined = routineNote.repeatExplicit === false ? 1 : undefined;
-
-            // frequency is always set via readRoutineNote, but guard here for safety.
-            if (!frequency) frequency = { type: 'schedule', expression: 'every day' };
-
-            const isDueAnchored = usesDueAnchor(frequency);
-            const shouldAdvanceFromDue = this.shouldAdvanceFromCurrentDue(routineNote, completionDay, requestedMode);
-            // `@done` closes the occurrence the user can currently see, which may be a derived one.
-            const effectiveDue = next_due ?? resolveInitialDue(frequency, completionDay) ?? undefined;
-            const newNextDue = shouldAdvanceFromDue && effectiveDue
-                ? calculateNextDue(frequency, fromDateString(effectiveDue))
-                : isDueAnchored
-                    ? this.calculateNextDueForDueAnchor(frequency, next_due, completionDay)
-                    : calculateNextDue(frequency, completionDay);
-
-            await this.updateNextDue(file, { nextDue: newNextDue, repeat: repeatToAppend });
-            this.emitDebugEvent('processCompletion:done', {
-                file: file.path,
-                newNextDue,
-                baseDate: toDateString(completionDay),
-                anchorMode: shouldAdvanceFromDue ? 'atdone' : isDueAnchored ? 'due' : 'completion',
-            });
         } catch (e) {
             console.error('[LLR] processCompletion error:', e);
             this.emitDebugEvent('processCompletion:fallback', {
@@ -601,9 +591,22 @@ export class RoutineEngine {
             // Fallback: If calculation fails, set to tomorrow
             const tomorrow = new Date(completionDate);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            await this.updateNextDue(file, { nextDue: toDateString(tomorrow) });
-            this.emitNotice('LLR: 設定不備で翌日に設定しました', 5000);
+            nextDue = toDateString(tomorrow);
+            repeat = undefined;
+            anchorMode = 'fallback';
         }
+
+        // Storage errors must reach the caller. Only a calculation failure uses tomorrow.
+        const saved = await this.updateNextDue(file, repeat === undefined ? { nextDue } : { nextDue, repeat });
+        if (saved === false) return false;
+        if (anchorMode === 'fallback') this.emitNotice('LLR: 設定不備で翌日に設定しました', 5000);
+        this.emitDebugEvent('processCompletion:done', {
+            file: file.path,
+            newNextDue: nextDue,
+            baseDate: toDateString(completionDay),
+            anchorMode,
+            ...(anchorMode === 'srs' ? { grownRepeat: repeat } : {}),
+        });
     }
 
     /**
@@ -658,7 +661,10 @@ export class RoutineEngine {
                             routineFile: routineFile.path,
                         });
                     }
-                })();
+                })().catch(error => {
+                    this.emitDebugEvent('scheduleUpdate:save-failed', { key, error: String(error) });
+                    this.emitNotice(`LLR: ${routineFile.path} の次回日を保存できませんでした。`, 5000);
+                });
             }, DEBOUNCE_DELAY_MS);
 
             this.pendingTimers.set(key, { timer, request });

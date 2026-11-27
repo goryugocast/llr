@@ -128,6 +128,15 @@ describe('RoutineEngine', () => {
             expect(calledArg).toEqual({ nextDue: '2026-02-23' });
         });
 
+        it('propagates a storage failure without writing a fallback date', async () => {
+            const file = { path: 'routine/task.md' } as TFile;
+            const note = { file, frequency: { type: 'schedule' as const, expression: 'every day' }, next_due: '2026-02-22' };
+            const save = vi.spyOn(engine, 'updateNextDue').mockRejectedValue(new Error('storage unavailable'));
+            await expect(engine.processCompletion(note, new Date('2026-02-22T12:00:00'), { mode: 'advanceFromDue' }))
+                .rejects.toThrow('storage unavailable');
+            expect(save).toHaveBeenCalledTimes(1);
+        });
+
         it('should write repeat: 1 and advance to tomorrow when no repeat in frontmatter', async () => {
             const mockFile = { path: 'routine/no-freq.md' } as TFile;
             mockApp.metadataCache.getFileCache.mockReturnValue({
@@ -1015,7 +1024,7 @@ describe('RoutineEngine', () => {
                 ['---', '# タイトル', '本文', '参考: https://example.com'].join('\n')
             );
 
-            await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' });
+            expect(await repairEngine.updateNextDue(mockFile, { nextDue: '2026-07-29' })).toBe(false);
 
             expect(mockApp.vault.modify).not.toHaveBeenCalled();
             expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();

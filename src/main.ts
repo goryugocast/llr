@@ -1,3 +1,5 @@
+import { MapMode, type Text } from '@codemirror/state';
+import { EditorView, type ViewUpdate } from '@codemirror/view';
 import { Editor, EditorPosition, MarkdownView, Notice, Platform, Plugin, TFile, WorkspaceLeaf, moment } from 'obsidian';
 import { calculateDuration, findLatestCompletionEndTime } from './service/time-calculator';
 import { CheckboxPressIntent, adjustTaskTimeByMinutes, formatTime, prepareCursorBeforeActualStart, getCursorAfterActualEndCh, normalizeCompletedTaskActualDuration, transformCheckboxPress, transformTaskLine } from './service/task-transformer';
@@ -33,7 +35,19 @@ interface LlrPostActionContext {
     file: TFile;
     reason: string;
     skipAtDoneLineIndexes?: Set<number>;
-    processedAtDoneCompletions?: Map<string, Set<string>>;
+}
+
+interface RoutineMarkerSave {
+    save: Promise<void | false>;
+    file: TFile;
+    routine: TFile;
+    completedOffset: number | null;
+    unresolved?: boolean;
+    original: string;
+    lineIndex: number;
+    cm: EditorView | null;
+    doc?: Text;
+    offset: number | null;
 }
 
 interface LlrPostActionPassResult {
@@ -62,6 +76,8 @@ export default class LlrPlugin extends Plugin {
     // Start and Open のループ用。開いた先ノートのパス → 開始元（デイリーノート）のパス。
     // 開いた先で toggle したとき、開始元の実行中行を完了させてタブを閉じるのに使う。メモリ上のみ（再起動で消える）。
     private startOpenBackrefs: Map<string, string> = new Map();
+    private readonly completedMarkerSaves = new Set<RoutineMarkerSave>();
+    private readonly markerSaves = new Map<string, RoutineMarkerSave>();
     private snapshots!: RoutineCompletionSnapshotStore;
     private dailyAutoInsert!: DailyNoteAutoInsertController;
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -73,6 +89,7 @@ export default class LlrPlugin extends Plugin {
     private timelineDiagnostics!: TimelineDiagnostics;
 
     async onload() {
+        this.registerEditorExtension(EditorView.updateListener.of(update => this.trackRoutineMarkerEdits(update)));
         this.debug = new DebugLog(
             this.app,
             () => this.settings.debugModeEnabled,
@@ -1086,6 +1103,8 @@ export default class LlrPlugin extends Plugin {
         this.scheduleValidationTimers.clear();
         this.lastScheduleValidationError.clear();
         this.snapshots.clear();
+        this.markerSaves.clear();
+        this.completedMarkerSaves.clear();
         // Flush any pending routine updates immediately before unload
         this.routineEngine.flushAll().catch(e => console.error('[LLR] flushAll error:', e));
     }
@@ -1114,21 +1133,44 @@ export default class LlrPlugin extends Plugin {
         }
 
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        const processedAtDoneCompletions = new Map<string, Set<string>>();
         if (activeView?.file?.path === file.path) {
             await this.processPendingRoutineAtDoneMarkersInEditor({
                 editor: activeView.editor,
                 view: activeView,
                 file,
                 reason: 'metadata-changed',
-                processedAtDoneCompletions,
             });
         }
 
+        const completedMarkers = [...this.completedMarkerSaves].filter(marker => marker.file === file);
+        if (completedMarkers.length) await Promise.allSettled(completedMarkers.map(marker => marker.save));
         const currentSnapshot = this.snapshots.build(file);
         if (!currentSnapshot) {
             this.snapshots.delete(file.path);
             return;
+        }
+
+        const handled = new Map<string, Set<string>>();
+        for (const marker of completedMarkers) {
+            if (!this.completedMarkerSaves.has(marker)) continue;
+            const cm = marker.cm;
+            const entry = currentSnapshot.get(marker.routine.path);
+            const isTracked = cm?.state?.doc && cm.state.doc === marker.doc && activeView?.file === file &&
+                getCM6View(activeView.editor) === (cm as unknown);
+            if (isTracked && marker.completedOffset === null) {
+                this.completedMarkerSaves.delete(marker);
+                continue;
+            }
+            const liveLine = isTracked ? cm.state.doc.lineAt(marker.completedOffset) : null;
+            const lineIndex = liveLine ? liveLine.number - 1 : marker.lineIndex;
+            const line = liveLine?.text ?? (activeView?.file === file ? activeView.editor.getLine(lineIndex) : '');
+            const signature = buildRoutineCompletionSignature(lineIndex, line ?? '');
+            if (entry?.completedSignatures.has(signature)) {
+                const signatures = handled.get(marker.routine.path) ?? new Set<string>();
+                signatures.add(signature);
+                handled.set(marker.routine.path, signatures);
+                this.completedMarkerSaves.delete(marker);
+            }
         }
 
         const previousSnapshot = this.snapshots.get(file.path);
@@ -1187,11 +1229,9 @@ export default class LlrPlugin extends Plugin {
             }
 
             const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
-            const suppressedCompletedSignatures = processedAtDoneCompletions.get(routinePath) ?? new Set<string>();
             const addedCompletedSignatures = completionDelta > 0
                 ? [...current.completedSignatures]
-                    .filter((signature) => !prev.completedSignatures.has(signature))
-                    .filter((signature) => !suppressedCompletedSignatures.has(signature))
+                    .filter((signature) => !prev.completedSignatures.has(signature) && !handled.get(routinePath)?.has(signature))
                 : [];
             const hasAtDoneCompletion = addedCompletedSignatures.some((signature) =>
                 current.atDoneCompletedSignatures.has(signature)
@@ -1212,7 +1252,6 @@ export default class LlrPlugin extends Plugin {
                     to: current.completedCount,
                     delta: completionDelta,
                 },
-                suppressedCompletedSignatures: [...suppressedCompletedSignatures],
                 addedCompletedSignatures,
                 completionMode: completionRequest?.mode ?? null,
             });
@@ -1455,17 +1494,18 @@ export default class LlrPlugin extends Plugin {
         if (!this.ensureDailyNoteView(view, 'Fix Duration Drift (All Completed Tasks)')) return;
         if (!view.file) return;
 
+        const file = view.file;
         const changedCount = this.fixDurationDriftAcrossEditor(editor);
         const atDoneCount = await this.processPendingRoutineAtDoneMarkersInEditor({
             editor,
             view,
-            file: view.file,
+            file,
             reason: 'fix-duration-drift-all',
         });
         const markerCount = await this.processPendingRoutineRescheduleMarkersInEditor({
             editor,
             view,
-            file: view.file,
+            file,
             reason: 'fix-duration-drift-all',
         });
 
@@ -1509,7 +1549,7 @@ export default class LlrPlugin extends Plugin {
             },
             {
                 kind: 'duration-drift',
-                changedCount: this.fixDurationDriftAcrossEditor(editor),
+                changedCount: view.file === file && view.editor === editor ? this.fixDurationDriftAcrossEditor(editor) : 0,
             },
             {
                 kind: 'routine-reschedule-marker',
@@ -1578,6 +1618,143 @@ export default class LlrPlugin extends Plugin {
         return this.isRoutineRescheduleEligibleLine(lineText);
     }
 
+    private trackRoutineMarkerEdits(update: ViewUpdate): void {
+        if (!update.docChanged || (!this.markerSaves.size && !this.completedMarkerSaves.size)) return;
+        for (const marker of new Set([...this.markerSaves.values(), ...this.completedMarkerSaves])) {
+            if (marker.cm !== update.view || marker.doc !== update.startState.doc) continue;
+            if (marker.offset !== null) marker.offset = update.changes.mapPos(marker.offset, 1, MapMode.TrackAfter);
+            if (marker.completedOffset !== null) {
+                marker.completedOffset = update.changes.mapPos(marker.completedOffset, 1, MapMode.TrackAfter);
+            }
+            marker.doc = update.state.doc;
+        }
+    }
+
+    private changedMarkerColumn(line: string, updated: string): number {
+        let column = 0;
+        while (column < line.length && line[column] === updated[column]) column++;
+        return column;
+    }
+
+    private routineMarkerKey(file: TFile, routineFile: TFile, marker: string): string {
+        return JSON.stringify([file.path, routineFile.path, marker]);
+    }
+
+    /** Confirm a saved routine change in the latest daily text. A retry shares the save if
+     * the routine succeeded but acknowledging the marker in the source file is still pending. */
+    private async saveRoutineMarker(
+        context: LlrPostActionContext,
+        lineIndex: number,
+        routineFile: TFile,
+        marker: string,
+        transform: (line: string) => string | null,
+        save: () => Promise<void | false>,
+    ): Promise<boolean> {
+        const { editor, file, view } = context;
+        const key = this.routineMarkerKey(file, routineFile, marker);
+        let receipt = this.markerSaves.get(key);
+        if (!receipt) {
+            const original = editor.getValue();
+            const line = editor.getLine(lineIndex);
+            const updated = transform(line);
+            if (!updated) return false;
+            const markerColumn = this.changedMarkerColumn(line, updated);
+            const cm = getCM6View(editor) as unknown as EditorView | null;
+            const doc = cm?.state?.doc;
+            const start = doc?.line(lineIndex + 1).from ?? 0;
+            const completed = marker === '@done' && /^\s*- \[x\]/.test(line);
+            receipt = {
+                original, lineIndex, file, routine: routineFile, save: save(), cm, doc,
+                offset: doc ? start + markerColumn : null,
+                completedOffset: doc && completed ? start + line.indexOf('[x]') + 1 : null,
+            };
+            if (completed) this.completedMarkerSaves.add(receipt);
+            this.markerSaves.set(key, receipt);
+        }
+        const { original, lineIndex: originalIndex } = receipt;
+        const originalLines = original.split('\n');
+        const originalLine = originalLines[originalIndex];
+        try {
+            if (await receipt.save === false) {
+                this.completedMarkerSaves.delete(receipt);
+                if (this.markerSaves.get(key) === receipt) this.markerSaves.delete(key);
+                return false;
+            }
+        } catch (error) {
+            if (this.markerSaves.get(key) === receipt) this.markerSaves.delete(key);
+            this.completedMarkerSaves.delete(receipt);
+            this.debugLog('Could not save routine marker', { file: routineFile.path, error: String(error) });
+            this.showLlrNotice(`LLR: ${routineFile.path} の次回日を保存できませんでした。`);
+            return false;
+        }
+
+        if (this.markerSaves.get(key) !== receipt) return false;
+        const isSameMarker = (line: string) => transform(line) !== null
+            && this.resolveSingleRoutineFileForLine(line, file.path)?.path === routineFile.path;
+        let ambiguous = false;
+        const locate = (text: string): { index: number; line: string; updated: string } | null => {
+            const lines = text.split('\n');
+            let index = originalIndex;
+            const cm = receipt.cm;
+            if (cm?.state?.doc && view.file === file && view.editor === editor &&
+                getCM6View(editor) === (cm as unknown) && cm.state.doc === receipt.doc) {
+                // A deleted @ belongs to the old request. A newly inserted @ is a new request.
+                if (receipt.offset === null) return null;
+                const liveLine = cm.state.doc.lineAt(receipt.offset);
+                const updated = transform(liveLine.text);
+                if (!updated || !isSameMarker(liveLine.text) ||
+                    liveLine.from + this.changedMarkerColumn(liveLine.text, updated) !== receipt.offset) return null;
+                return { index: liveLine.number - 1, line: liveLine.text, updated };
+            }
+            if (text !== original) {
+                // With no transaction history only an unchanged, unique line can be relocated.
+                const exact = lines.flatMap((line, i) => line === originalLine ? [i] : []);
+                if (exact.length !== 1 || originalLines.filter(line => line === originalLine).length !== 1) {
+                    ambiguous = lines.some(isSameMarker);
+                    return null;
+                }
+                index = exact[0];
+            }
+            const line = lines[index];
+            const updated = transform(line);
+            return updated === null ? null : { index, line, updated };
+        };
+
+        let changed = false;
+        if (view.file === file && view.editor === editor) {
+            const target = locate(editor.getValue());
+            if (target) {
+                const column = this.changedMarkerColumn(target.line, target.updated);
+                editor.replaceRange(target.updated.slice(column), { line: target.index, ch: column }, { line: target.index, ch: target.line.length });
+                changed = true;
+            }
+        } else {
+            // The editor may now display a different file. Patch the original file atomically.
+            try {
+                await this.app.vault.process(file, text => {
+                    const target = locate(text);
+                    if (!target) return text;
+                    const lines = text.split('\n');
+                    lines[target.index] = target.updated;
+                    changed = true;
+                    return lines.join('\n');
+                });
+            } catch (error) {
+                receipt.cm = null;
+                receipt.doc = undefined;
+                this.debugLog('Could not acknowledge saved routine marker', { file: file.path, error: String(error) });
+                this.showLlrNotice(`LLR: 次回日は保存しました。${file.path} のマーカー更新は再試行します。`);
+                return false;
+            }
+        }
+        if (ambiguous && !receipt.unresolved) {
+            receipt.unresolved = true;
+            this.showLlrNotice(`LLR: ${routineFile.path} の次回日は保存しました。元の行を特定できないので、${file.path} のマーカーを確認してください。`);
+        }
+        if (!ambiguous && this.markerSaves.get(key) === receipt) this.markerSaves.delete(key);
+        return changed;
+    }
+
     private async processPendingRoutineAtDoneMarkersInEditor(context: LlrPostActionContext): Promise<number> {
         const { editor, view, file, reason } = context;
         if (!this.ensureDailyNoteView(view, '@done')) return 0;
@@ -1587,6 +1764,7 @@ export default class LlrPlugin extends Plugin {
         const completionBaseDate = resolveMutationReferenceDate(this.parseDailyNoteDate(file), new Date());
 
         for (let lineIndex = 0; lineIndex <= editor.lastLine(); lineIndex++) {
+            if (view.file !== file || view.editor !== editor) break;
             const lineText = editor.getLine(lineIndex);
             if (context.skipAtDoneLineIndexes?.has(lineIndex)) continue;
             if (!this.isRoutineAtDoneEligibleLine(lineText)) continue;
@@ -1596,21 +1774,15 @@ export default class LlrPlugin extends Plugin {
             if (!routineFile) continue;
 
             const routineNote = this.routineEngine.readRoutineNote(routineFile);
-            if (!this.shouldApplyAtDoneToRoutine(routineNote, completionBaseDate)) continue;
+            if (!routineNote) continue;
+            if (!this.markerSaves.has(this.routineMarkerKey(file, routineFile, '@done')) &&
+                !this.shouldApplyAtDoneToRoutine(routineNote, completionBaseDate)) continue;
 
-            const updatedLine = replacePendingRoutineAtDoneMarker(lineText);
-            if (!updatedLine) continue;
+            const changed = await this.saveRoutineMarker(context, lineIndex, routineFile, '@done',
+                line => this.isRoutineAtDoneEligibleLine(line) ? replacePendingRoutineAtDoneMarker(line) : null,
+                () => this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' }));
+            if (!changed) continue;
 
-            await this.routineEngine.processCompletion(routineNote, completionBaseDate, { mode: 'advanceFromDue' });
-
-            if (context.processedAtDoneCompletions && TaskParser.parseLine(lineText).status === 'x') {
-                const signature = buildRoutineCompletionSignature(lineIndex, updatedLine);
-                const signatures = context.processedAtDoneCompletions.get(routineFile.path) ?? new Set<string>();
-                signatures.add(signature);
-                context.processedAtDoneCompletions.set(routineFile.path, signatures);
-            }
-
-            editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
             processedCount += 1;
             this.debugLog('Routine @done marker applied', {
                 reason,
@@ -1619,7 +1791,6 @@ export default class LlrPlugin extends Plugin {
                 routinePath: routineFile.path,
                 completionBaseDate: completionBaseDate.toISOString(),
                 originalLine: lineText,
-                updatedLine,
             });
         }
 
@@ -1636,6 +1807,7 @@ export default class LlrPlugin extends Plugin {
         baseDate.setHours(0, 0, 0, 0);
 
         for (let lineIndex = 0; lineIndex <= editor.lastLine(); lineIndex++) {
+            if (view.file !== file || view.editor !== editor) break;
             const lineText = editor.getLine(lineIndex);
             if (!this.isRoutineRescheduleEligibleLine(lineText)) continue;
 
@@ -1648,12 +1820,16 @@ export default class LlrPlugin extends Plugin {
             const routineNote = this.routineEngine.readRoutineNote(routineFile);
             if (!routineNote) continue;
 
-            if (routineNote.next_due !== marker.canonicalDate) {
-                await this.routineEngine.updateNextDue(routineFile, { nextDue: marker.canonicalDate });
-            }
+            const changed = await this.saveRoutineMarker(context, lineIndex, routineFile, marker.canonicalDate,
+                line => {
+                    if (!this.isRoutineRescheduleEligibleLine(line)) return null;
+                    const latest = parseRoutineRescheduleMarker(line, baseDate);
+                    return latest?.canonicalDate === marker.canonicalDate ? replaceRoutineRescheduleMarker(line, latest) : null;
+                },
+                () => routineNote.next_due === marker.canonicalDate ? Promise.resolve() :
+                    this.routineEngine.updateNextDue(routineFile, { nextDue: marker.canonicalDate }));
+            if (!changed) continue;
 
-            const updatedLine = replaceRoutineRescheduleMarker(lineText, marker);
-            editor.replaceRange(updatedLine, { line: lineIndex, ch: 0 }, { line: lineIndex, ch: lineText.length });
             processedCount += 1;
             this.debugLog('Routine reschedule marker applied', {
                 reason,
@@ -1662,7 +1838,6 @@ export default class LlrPlugin extends Plugin {
                 routinePath: routineFile.path,
                 nextDue: marker.canonicalDate,
                 originalLine: lineText,
-                updatedLine,
             });
         }
 
