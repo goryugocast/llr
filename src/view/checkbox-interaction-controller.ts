@@ -46,8 +46,8 @@ export class CheckboxInteractionController {
 
     onPointerDown(ev: PointerEvent): void {
         if (!this.delegate.isOverrideEnabled()) return;
-        const target = this.getCheckboxAtPoint(ev.clientX, ev.clientY);
-        if (!target || !this.delegate.isEditableMarkdownView()) return;
+        const target = this.getCheckboxForEvent(ev);
+        if (!target || target.lineIndex === null || !this.delegate.isEditableMarkdownView()) return;
         if (ev.button !== 0 || ev.isPrimary === false) return;
 
         const { checkbox, lineIndex } = target;
@@ -124,7 +124,7 @@ export class CheckboxInteractionController {
         // モーダル（設定画面など）の中で発生したクリックには干渉しない
         if (ev.target instanceof Element && ev.target.closest('.modal-container')) return;
 
-        const target = this.getCheckboxAtPoint(ev.clientX, ev.clientY);
+        const target = this.getCheckboxForEvent(ev);
         if (!target) {
             this.delegate.updateUI();
             return;
@@ -152,6 +152,7 @@ export class CheckboxInteractionController {
             return;
         }
 
+        if (lineIndex === null) return;
         this.triggerHaptic(false);
         if (checkbox instanceof HTMLElement && Platform.isMobile) {
             checkbox.blur();
@@ -196,8 +197,23 @@ export class CheckboxInteractionController {
         vibrate(20);
     }
 
-    /** 指定された座標にあるチェックボックスとその行番号を特定する。 */
-    private getCheckboxAtPoint(x: number, y: number): { checkbox: HTMLElement; lineIndex: number } | null {
+    private getCheckboxForEvent(ev: MouseEvent): { checkbox: HTMLElement; lineIndex: number | null } | null {
+        const { clientX: x, clientY: y } = ev;
+        if (Platform.isMobile) {
+            const direct = this.getCheckboxElement(ev.target);
+            if (direct) {
+                const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                if (!view?.editor || !view.contentEl.contains(direct)) return null;
+
+                // Mobile may deliver a checkbox click even when the reported point misses it.
+                // Use the checkbox's own row and consume its native click even if the row is unresolved.
+                const rect = direct.getBoundingClientRect();
+                const center = { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 };
+                const line = this.resolveLineIndex(view.editor, direct) ?? this.resolveLineIndex(view.editor, direct, center);
+                return { checkbox: direct, lineIndex: this.isTaskLine(view.editor, line) ? line : null };
+            }
+        }
+
         const element = document.elementFromPoint(x, y);
         const checkbox = this.getCheckboxElement(element, x, y);
         if (!checkbox) return null;
@@ -217,10 +233,13 @@ export class CheckboxInteractionController {
 
         // The coordinates/CodeMirror fallback may resolve a nearby YAML line.
         // Never dispatch a task action unless the actual editor line is a Markdown task.
-        const sourceLine = view.editor.getLine(lineIndex);
-        if (!/^\s*(?:[-*+]|\d+[.)])\s+\[[^\]\r\n]\](?:\s|$)/.test(sourceLine)) return null;
+        if (!this.isTaskLine(view.editor, lineIndex)) return null;
 
         return { checkbox, lineIndex };
+    }
+
+    private isTaskLine(editor: Editor, line: number | null): boolean {
+        return line !== null && /^\s*(?:[-*+]|\d+[.)])\s+\[[^\]\r\n]\](?:\s|$)/.test(editor.getLine(line));
     }
 
     private isCoordInsideElement(x: number, y: number, el: HTMLElement, padding = 0): boolean {
@@ -242,12 +261,13 @@ export class CheckboxInteractionController {
         // Only task checkboxes inside the Markdown editor, never arbitrary inputs.
         const direct = target.closest('.markdown-source-view .task-list-item-checkbox, .markdown-source-view .HyperMD-task-line input[type="checkbox"], .markdown-source-view .task-list-item input[type="checkbox"]');
         if (direct instanceof HTMLElement) return direct;
+        if (x === undefined || y === undefined) return null;
 
         // 2. 行内フォールバックは、チェックボックス近傍だけに限定する
         const line = target.closest('.HyperMD-task-line, .cm-line, .task-list-item');
         if (line instanceof HTMLElement) {
             const nested = line.querySelector('.task-list-item-checkbox, .HyperMD-task-line input[type="checkbox"], .task-list-item input[type="checkbox"]');
-            if (nested instanceof HTMLElement && typeof x === 'number' && typeof y === 'number') {
+            if (nested instanceof HTMLElement) {
                 const fallbackPadding = Platform.isMobile ? 6 : 3;
                 if (this.isCoordInsideElement(x, y, nested, fallbackPadding)) {
                     return nested;

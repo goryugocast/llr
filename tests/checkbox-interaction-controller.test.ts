@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Platform } from 'obsidian';
 import { CheckboxInteractionController, type CheckboxInteractionDelegate } from '../src/view/checkbox-interaction-controller';
 
 vi.mock('obsidian', () => ({
@@ -20,6 +21,7 @@ function buildDelegate(isEditableMarkdownView: boolean, isOverrideEnabled = true
 
 describe('CheckboxInteractionController', () => {
     afterEach(() => {
+        Platform.isMobile = false;
         vi.useRealTimers();
         vi.unstubAllGlobals();
     });
@@ -155,8 +157,12 @@ describe('CheckboxInteractionController', () => {
         expect(delegate.onCheckboxPress).not.toHaveBeenCalled();
     });
 
-    it('intercepts a checkbox in a daily note and dispatches its resolved line', () => {
+    it.each([
+        { scenario: 'desktop click on the checkbox', mobile: false },
+        { scenario: 'mobile click delivered to the checkbox with coordinates over nearby text', mobile: true },
+    ])('intercepts a $scenario and dispatches its resolved line once', ({ mobile }) => {
         vi.useFakeTimers();
+        Platform.isMobile = mobile;
 
         class FakeElement {
             closest(_selector: string): FakeElement | null {
@@ -185,7 +191,7 @@ describe('CheckboxInteractionController', () => {
         const checkbox = new FakeCheckbox();
         vi.stubGlobal('Element', FakeElement);
         vi.stubGlobal('HTMLElement', FakeCheckbox);
-        vi.stubGlobal('document', { elementFromPoint: vi.fn(() => checkbox) });
+        vi.stubGlobal('document', { elementFromPoint: vi.fn(() => mobile ? new FakeElement() : checkbox) });
         vi.stubGlobal('window', { navigator: {} });
 
         const delegate = buildDelegate(true);
@@ -200,7 +206,7 @@ describe('CheckboxInteractionController', () => {
         const controller = new CheckboxInteractionController(app as never, delegate);
         const event = {
             target: checkbox,
-            clientX: 10,
+            clientX: mobile ? 30 : 10,
             clientY: 10,
             preventDefault: vi.fn(),
             stopImmediatePropagation: vi.fn(),
@@ -211,6 +217,7 @@ describe('CheckboxInteractionController', () => {
 
         expect(event.preventDefault).toHaveBeenCalledOnce();
         expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
+        expect(delegate.onCheckboxPress).toHaveBeenCalledOnce();
         expect(delegate.onCheckboxPress).toHaveBeenCalledWith('short', 3);
     });
 });
