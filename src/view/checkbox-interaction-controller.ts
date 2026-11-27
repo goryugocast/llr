@@ -28,7 +28,6 @@ export class CheckboxInteractionController {
     private readonly longPressMsDesktop = 900;
     private longPressTimer: ReturnType<typeof setTimeout> | null = null;
     private suppressNextClick = false;
-    private suppressResetTimer: ReturnType<typeof setTimeout> | null = null;
     private pendingLineIndex: number | null = null;
     private pointerDownAtMs: number | null = null;
     private pointerDownPointerType: string | null = null;
@@ -46,9 +45,11 @@ export class CheckboxInteractionController {
 
     onPointerDown(ev: PointerEvent): void {
         if (!this.delegate.isOverrideEnabled()) return;
+        if (ev.button !== 0 || ev.isPrimary === false) return;
+        // A new physical press ends the previous gesture, even if it produced no click.
+        this.suppressNextClick = false;
         const target = this.getCheckboxForEvent(ev);
         if (!target || target.lineIndex === null || !this.delegate.isEditableMarkdownView()) return;
-        if (ev.button !== 0 || ev.isPrimary === false) return;
 
         const { checkbox, lineIndex } = target;
         this.pendingLineIndex = lineIndex;
@@ -76,11 +77,6 @@ export class CheckboxInteractionController {
                 elapsedMs,
             });
             this.suppressNextClick = true;
-            if (this.suppressResetTimer) clearTimeout(this.suppressResetTimer);
-            this.suppressResetTimer = setTimeout(() => {
-                this.suppressNextClick = false;
-                this.suppressResetTimer = null;
-            }, 800);
             this.triggerHaptic(true);
 
             const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor ?? null;
@@ -110,8 +106,7 @@ export class CheckboxInteractionController {
     }
 
     onPointerCancel(): void {
-        this.clearLongPressTimer();
-        this.pendingLineIndex = null;
+        this.reset();
     }
 
     onDocumentClick(ev: MouseEvent): void {
@@ -142,7 +137,7 @@ export class CheckboxInteractionController {
             elapsedSincePointerDownMs,
         });
 
-        if (this.suppressNextClick) {
+        if (this.suppressNextClick && ev.detail !== 0) {
             this.suppressNextClick = false;
             this.delegate.debugLog('Checkbox click suppressed after long press', {
                 lineIndex,
@@ -167,10 +162,6 @@ export class CheckboxInteractionController {
     /** 設定 OFF 時やアンロード時に保留中のジェスチャ状態を全消去する。 */
     reset(): void {
         this.clearLongPressTimer();
-        if (this.suppressResetTimer) {
-            clearTimeout(this.suppressResetTimer);
-            this.suppressResetTimer = null;
-        }
         this.suppressNextClick = false;
         this.pendingLineIndex = null;
         this.pointerDownAtMs = null;

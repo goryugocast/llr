@@ -111,14 +111,18 @@ export class DailyNoteAutoInsertController {
             const stamp = this.buildExpandedStamp(targetDate);
             const block = [...outputLines, stamp].join('\n');
 
-            let replaced = content;
-            for (const marker of DAILY_ROUTINE_TEMPLATE_MARKERS) {
-                if (!replaced.includes(marker)) continue;
-                replaced = replaced.split(marker).join(block);
-            }
+            let expanded = false;
+            await this.app.vault.process(file, (latest) => {
+                if (latest.includes(DAILY_ROUTINE_EXPANDED_STAMP_PREFIX)) return latest;
+                let replaced = latest;
+                for (const marker of DAILY_ROUTINE_TEMPLATE_MARKERS) {
+                    replaced = replaced.split(marker).join(block);
+                }
+                expanded = replaced !== latest;
+                return replaced;
+            });
 
-            if (replaced !== content) {
-                await this.app.vault.modify(file, replaced);
+            if (expanded) {
                 this.deps.debugLog('Daily template marker expanded to routines', {
                     file: file.path,
                     date: targetDate.toISOString(),

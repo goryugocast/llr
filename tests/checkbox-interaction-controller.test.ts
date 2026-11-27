@@ -157,10 +157,7 @@ describe('CheckboxInteractionController', () => {
         expect(delegate.onCheckboxPress).not.toHaveBeenCalled();
     });
 
-    it.each([
-        { scenario: 'desktop click on the checkbox', mobile: false },
-        { scenario: 'mobile click delivered to the checkbox with coordinates over nearby text', mobile: true },
-    ])('intercepts a $scenario and dispatches its resolved line once', ({ mobile }) => {
+    function setupCheckbox(mobile: boolean) {
         vi.useFakeTimers();
         Platform.isMobile = mobile;
 
@@ -171,12 +168,13 @@ describe('CheckboxInteractionController', () => {
         }
 
         class FakeCheckbox extends FakeElement {
+            constructor(readonly lineIndex: number) { super(); }
             readonly blur = vi.fn();
 
             closest(selector: string): FakeElement | null {
                 if (selector === '.cm-line, [data-line]') {
                     return {
-                        getAttribute: (name: string) => name === 'data-line' ? '3' : null,
+                        getAttribute: (name: string) => name === 'data-line' ? String(this.lineIndex) : null,
                     } as unknown as FakeElement;
                 }
                 if (selector.includes('.task-list-item-checkbox')) return this;
@@ -188,7 +186,7 @@ describe('CheckboxInteractionController', () => {
             }
         }
 
-        const checkbox = new FakeCheckbox();
+        const checkbox = new FakeCheckbox(3);
         vi.stubGlobal('Element', FakeElement);
         vi.stubGlobal('HTMLElement', FakeCheckbox);
         vi.stubGlobal('document', { elementFromPoint: vi.fn(() => mobile ? new FakeElement() : checkbox) });
@@ -204,13 +202,24 @@ describe('CheckboxInteractionController', () => {
             },
         };
         const controller = new CheckboxInteractionController(app as never, delegate);
-        const event = {
-            target: checkbox,
+        const eventFor = (target: FakeCheckbox) => ({
+            target,
+            detail: 1,
+            button: 0,
+            pointerType: mobile ? 'touch' : 'mouse',
             clientX: mobile ? 30 : 10,
             clientY: 10,
             preventDefault: vi.fn(),
             stopImmediatePropagation: vi.fn(),
-        } as unknown as MouseEvent;
+        } as unknown as PointerEvent);
+        return { controller, delegate, event: eventFor(checkbox), nextEvent: eventFor(new FakeCheckbox(4)) };
+    }
+
+    it.each([
+        { scenario: 'desktop click on the checkbox', mobile: false },
+        { scenario: 'mobile click delivered to the checkbox with coordinates over nearby text', mobile: true },
+    ])('intercepts a $scenario and dispatches its resolved line once', ({ mobile }) => {
+        const { controller, delegate, event } = setupCheckbox(mobile);
 
         controller.onDocumentClick(event);
         vi.runAllTimers();
@@ -220,4 +229,36 @@ describe('CheckboxInteractionController', () => {
         expect(delegate.onCheckboxPress).toHaveBeenCalledOnce();
         expect(delegate.onCheckboxPress).toHaveBeenCalledWith('short', 3);
     });
+    it('consumes the release click after a two-second mobile hold', () => {
+        const { controller, delegate, event } = setupCheckbox(true);
+        controller.onPointerDown(event);
+        vi.advanceTimersByTime(2000);
+        controller.onPointerUp(event);
+        controller.onDocumentClick(event);
+        vi.runAllTimers();
+
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(delegate.onCheckboxPress).toHaveBeenCalledTimes(1);
+        expect(delegate.onCheckboxPress).toHaveBeenCalledWith('long', 3);
+    });
+
+    it.each(['released without a click', 'cancelled'])(
+        'allows the next tap when a long press is %s', (ending) => {
+            const { controller, delegate, event, nextEvent } = setupCheckbox(true);
+            controller.onPointerDown(event);
+            vi.advanceTimersByTime(450);
+            if (ending === 'cancelled') controller.onPointerCancel();
+            else controller.onPointerUp(event);
+
+            controller.onPointerDown(nextEvent);
+            controller.onPointerUp(nextEvent);
+            controller.onDocumentClick(nextEvent);
+            vi.runAllTimers();
+
+            expect(delegate.onCheckboxPress).toHaveBeenCalledTimes(2);
+            expect(delegate.onCheckboxPress).toHaveBeenNthCalledWith(1, 'long', 3);
+            expect(delegate.onCheckboxPress).toHaveBeenNthCalledWith(2, 'short', 4);
+        },
+    );
+
 });
